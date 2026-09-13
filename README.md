@@ -181,6 +181,9 @@ selection, offline names and rejection of degraded regression results.
 
 ## Future extensions
 
+- **RGB photometry and horizon-constrained extinction:** see the
+  [deferred research note](docs/PHOTOMETRY_ZENITH_EXTINCTION_NOTE.md) for Peter's
+  proposed equal-airmass consistency test of the zenith, its inputs and caveats.
 - **Bright stars plus Gaia DR3/DR4 instead of Tycho:** develop a Gaia-based
   reference catalogue with an explicit bright-star supplement, cross-matching
   and epoch propagation; evaluate DR4 when its data are available.
