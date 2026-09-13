@@ -119,6 +119,6 @@
     592
   ],
   "control_crop_size": 260,
-  "baseline": "/home/pth/WORKSHOP/STARTRAILS-DISTRIBUTION/results/point_star_with_blobs_20260913",
+  "baseline": "examples/milky_way/reference",
   "note": "Prior solution is used for scoring only. No withheld-star split."
 }
