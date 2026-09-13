@@ -90,6 +90,9 @@ Each complete run produces:
 The [two-symbol overlay](examples/milky_way/diagnostics/astrometry_overlay.png)
 plots both coordinates independently for all 3,653 fitted associations, without
 magnifying their separation. Open the full-resolution image and zoom in.
+The plotting code applies no astrometric correction or cosmetic shift. Any
+future correction must come through the Barghini model and its exported
+coordinates; remaining discrepancies stay visible in the overlay.
 
 ![Full-field residual vectors and centre-to-edge residual statistics](examples/milky_way/diagnostics/astrometry_residuals.png)
 

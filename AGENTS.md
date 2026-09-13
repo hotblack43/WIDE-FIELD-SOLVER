@@ -11,6 +11,12 @@ All detected sources are available for association and fitting. Do not introduce
 withheld stars by default. Keep large/saturated source detection. Names are
 display-only; cached identifiers or saved solutions must never seed the demo.
 
+Astrometric corrections must be made in the Barghini model and propagated to
+the saved coordinates. Plot measured centroids and model predictions faithfully:
+never apply cosmetic radial shifts or move symbols to improve their agreement.
+Any magnification of residual vectors must be explicitly labelled and must not
+alter the actual-position overlay or numerical residuals.
+
 Before committing changes, run both:
 
 ```sh
