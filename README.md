@@ -80,8 +80,51 @@ Each complete run produces:
 - `star_coordinates.csv`: measured and predicted pixels, catalogue coordinates and IDs.
 - `blob_candidates.csv`: broad/saturated sources, including unmatched objects.
 - `identified_40_stars.png`: the requested number of named stars (40 by default).
-- `astrometry_overlay.png`: association coverage and residual vectors.
+- `astrometry_overlay.png`: measured cyan crosses and predicted orange circles at their true positions; unmatched detections are pink crosses.
+- `astrometry_residuals.png`: residual vectors magnified ×20 and centre-to-edge residual statistics.
+- `radial_residuals.csv` / `.json`: counts, RMS, median, 90th percentile and signed radial offsets by image-centred annulus.
 - `dots/`, `bootstrap.json`, `display_names.json`, `labelled_stars.json`: measurement and naming audit.
+
+## Does the fit deteriorate towards the edge?
+
+The [two-symbol overlay](examples/milky_way/diagnostics/astrometry_overlay.png)
+plots both coordinates independently for all 3,653 fitted associations, without
+magnifying their separation. Open the full-resolution image and zoom in.
+
+![Full-field residual vectors and centre-to-edge residual statistics](examples/milky_way/diagnostics/astrometry_residuals.png)
+
+The radial bands give:
+
+| Distance from image centre | Fitted stars | RMS | 90th percentile |
+|---|---:|---:|---:|
+| 0–200 px | 405 | 0.536 px | 0.806 px |
+| 200–400 px | 1,179 | 0.379 px | 0.562 px |
+| 400–600 px | 1,548 | 0.343 px | 0.492 px |
+| 600–800 px | 521 | 0.461 px | 0.711 px |
+
+There is a modest outer-band rise, with no progressive edge blow-up in these
+matched stars. Small systematic structure remains visible in the magnified
+vectors; for example, the inner band has a mean outward radial offset of
+0.329 px. The outermost matched source is at radius 734.75 px, so the last
+populated band is only partially sampled. The hatched part of the plot has
+no matched sources and is untested. All fitted pairs are included, with no
+extra residual clipping. These remain fit residuals after catalogue matching;
+unmatched detections have no evaluated star-pair residual.
+
+A field identification and a good distortion correction are separate aspects
+of astrometry. Astrometry.net fits
+[polynomial distortion terms](https://astrometry.net/doc/readme.html);
+an insufficient or poorly constrained distortion model can plausibly explain
+good central alignment with increasing edge errors. Diagnosing an old solve
+would require its WCS and measured positions. This image's comparison does
+not establish that every astrometry.net configuration has such a problem.
+
+Regenerate diagnostics from an existing solve, without refitting:
+
+```sh
+uv run --frozen python point_star_diagnostics.py examples/milky_way/input.jpeg \
+  --solution results/demo --output results/diagnostic-check
+```
 
 ## Method and scope
 

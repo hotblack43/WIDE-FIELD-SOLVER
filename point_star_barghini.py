@@ -319,26 +319,13 @@ def run(image_path, output, catalog_path, *, label_count=40, names_cache=None, o
     result['broad_or_saturated_without_star_match'] = sum(not r['catalogue_star_id'] for r in blobs)
     result['code_sha256'] = {name:hashlib.sha256((Path(__file__).parent/name).read_bytes()).hexdigest()
         for name in ['point_star_detection.py', 'point_star_barghini.py', 'barghini_model.py',
-                     'point_star_names.py']}
+                     'point_star_names.py', 'point_star_diagnostics.py']}
     (output/'result.json').write_text(json.dumps(result, indent=2)+'\n')
     annotate_stars(image_path, matched_records, output, label_count,
                    names_cache=names_cache, offline=offline)
-    import matplotlib
-    matplotlib.use('Agg')
-    import matplotlib.pyplot as plt
-    rgb = np.asarray(Image.open(image_path).convert('RGB'))
-    fig, axes = plt.subplots(1, 2, figsize=(15, 7))
-    axes[0].imshow(rgb)
-    for (ii, jj, split), colour in zip(pairs, ['cyan', 'orange']):
-        axes[0].scatter(*xy[ii].T, s=20, facecolors='none', edgecolors=colour, linewidths=.5,
-                        label=f'{split}: {len(ii)}')
-    axes[0].legend()
-    axes[0].set_title('Barghini fit to directly measured point stars')
-    axes[1].quiver(*xy[train[train_i]].T, *train_delta.T, angles='xy', scale_units='xy', scale=.05)
-    axes[1].set_xlim(0, shape[1]); axes[1].set_ylim(shape[0], 0)
-    axes[1].set_aspect('equal')
-    axes[1].set_title(f"Fit residuals: RMS {fit_score['rms_px']:.2f} px; arrows x20")
-    fig.tight_layout(); fig.savefig(output/'astrometry_overlay.png', dpi=160); plt.close(fig)
+    from point_star_diagnostics import write_diagnostics
+    write_diagnostics(image_path, xy[train[train_i]], camera.project(sky[train_j]), output,
+                      unmatched=xy[np.setdiff1d(train, train[train_i])])
     print(json.dumps({k:result[k] for k in ('status', 'fit', 'unmatched_dots', 'withheld_stars')}, indent=2))
     return result
 
