@@ -1,0 +1,124 @@
+{
+  "source": "examples/milky_way/input.jpeg",
+  "source_sha256": "f06569c1397e92d60740d55cf9910113418f8bfc01ee0d9b24aa6cd1f8d467c2",
+  "solver_version": "0.93",
+  "source_shape": [
+    1444,
+    1569
+  ],
+  "dots": 3688,
+  "supplied_astrometric_hint": false,
+  "indices": [
+    {
+      "path": "INDEX_DIRECTORY/index-4107.fits",
+      "sha256": "0bfe80012338923d1a7db3a0660a00f67a79c9e8ca51563619001c32d6cb94d7",
+      "pattern_scale_deg": [
+        0.3666666666663301,
+        0.4999999999999056
+      ]
+    },
+    {
+      "path": "INDEX_DIRECTORY/index-4108.fits",
+      "sha256": "192086ee4ba56b6f74e3bc313d1bf56cbbbb486b23b66686a6e121978a06cdf2",
+      "pattern_scale_deg": [
+        0.4999999999999056,
+        0.7000000000022742
+      ]
+    },
+    {
+      "path": "INDEX_DIRECTORY/index-4109.fits",
+      "sha256": "855bc69ae651d7e83fc0e817faa4db9a9df4a389fc12ffd9d2881c22b5f91916",
+      "pattern_scale_deg": [
+        0.7000000000022742,
+        0.9999999999975194
+      ]
+    },
+    {
+      "path": "INDEX_DIRECTORY/index-4110.fits",
+      "sha256": "ca5f9470d259c95d1c9ad73facf999de8aa0c97b2c94b700fcbfbf7d350c0169",
+      "pattern_scale_deg": [
+        0.9999999999975194,
+        1.4166666666674494
+      ]
+    },
+    {
+      "path": "INDEX_DIRECTORY/index-4111.fits",
+      "sha256": "b0d76303ff1aa4cee1894a4d5bb5209f2a16f683882200cd5bd428e82c213120",
+      "pattern_scale_deg": [
+        1.4166666666674494,
+        2.0000000000007683
+      ]
+    },
+    {
+      "path": "INDEX_DIRECTORY/index-4112.fits",
+      "sha256": "59745b09bb8197acf8d3736ef58716017926837a1ae45021af85591bfd30dd33",
+      "pattern_scale_deg": [
+        2.0000000000007683,
+        2.833333333334899
+      ]
+    },
+    {
+      "path": "INDEX_DIRECTORY/index-4113.fits",
+      "sha256": "241d4547e7c2de49286f1d5cddd6d3b66535fa3a485b136e21a9af8b091af841",
+      "pattern_scale_deg": [
+        2.833333333334899,
+        4.0000000000015365
+      ]
+    },
+    {
+      "path": "COMPARISON_WORKDIR/indices/index-4114.fits",
+      "sha256": "f4ebfbd1a5c05693967f38171bfb86476afc14e5e534054739ec206c7725a1b4",
+      "pattern_scale_deg": [
+        4.0000000000015365,
+        5.666666666664069
+      ]
+    },
+    {
+      "path": "COMPARISON_WORKDIR/indices/index-4115.fits",
+      "sha256": "548f6c438b5062519e27e83bc7cdc1743705068e327fabe4cc039a4319542953",
+      "pattern_scale_deg": [
+        5.666666666664069,
+        8.000000000025992
+      ]
+    },
+    {
+      "path": "COMPARISON_WORKDIR/indices/index-4116.fits",
+      "sha256": "de811b8513cb2499ace8ce26a79ed8082e5ec19972f2a5d967e5c3b93c475b5a",
+      "pattern_scale_deg": [
+        8.000000000025992,
+        11.333333333351057
+      ]
+    },
+    {
+      "path": "COMPARISON_WORKDIR/indices/index-4117.fits",
+      "sha256": "7de4d4f8827d5622ff1ed5252ab8b18d6b576b48f63a8927b5887bc8fa418f45",
+      "pattern_scale_deg": [
+        11.333333333351057,
+        16.66666666668262
+      ]
+    },
+    {
+      "path": "COMPARISON_WORKDIR/indices/index-4118.fits",
+      "sha256": "5e79c1812ac6fdf11a360b04e82079b87e318ed36a618c21de23441195e67d0f",
+      "pattern_scale_deg": [
+        16.66666666668262,
+        23.33333333333275
+      ]
+    },
+    {
+      "path": "COMPARISON_WORKDIR/indices/index-4119.fits",
+      "sha256": "79b36eea45b72448c8471f6e8af0e1c8635a3821d04f1a23d6cf5ecd5f59d31c",
+      "pattern_scale_deg": [
+        23.33333333333275,
+        33.33333333330794
+      ]
+    }
+  ],
+  "control_crop_origin_xy": [
+    458,
+    592
+  ],
+  "control_crop_size": 260,
+  "baseline": "/home/pth/WORKSHOP/STARTRAILS-DISTRIBUTION/results/point_star_with_blobs_20260913",
+  "note": "Prior solution is used for scoring only. No withheld-star split."
+}

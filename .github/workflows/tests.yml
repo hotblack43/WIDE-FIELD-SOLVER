@@ -1,0 +1,19 @@
+name: Solver regression
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: "0.9.30"
+          python-version: "3.12"
+      - run: uv sync --frozen
+      - name: Synthetic and unit checks
+        run: uv run --frozen python -m unittest discover -v
+      - name: Fresh pixel-to-sky solution (offline)
+        run: ./demo.sh
