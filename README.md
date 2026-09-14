@@ -1,5 +1,7 @@
 # WIDE-FIELD SOLVER
 
+by Peter Thejll and Chris Flynn
+
 Astrometry directly from untrailed, wide-field star images, using the
 Barghini O/Z fish-eye model. Find dots, identify a small star pattern, then
 fit the lens across the image.
