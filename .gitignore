@@ -5,6 +5,7 @@ __pycache__/
 results/
 .DS_Store
 /THIS2/
+/.worktrees/
 *.pdf
 *.png
 *.jpg
