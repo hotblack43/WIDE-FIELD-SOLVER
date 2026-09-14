@@ -66,6 +66,13 @@ Supported input is a raster image readable by Pillow, converted to 8-bit RGB.
 This first release is tuned and demonstrated on the included fisheye image;
 success across arbitrary cameras and fields remains to be established.
 
+If detection succeeds but the run ends with
+`No blind catalogue bootstrap from the measured training dots`, see the
+[blind-bootstrap failure diagnosis](docs/BOOTSTRAP_FAILURES.md). It records a
+confirmed working point-source control, the diagnosed Paranal failure, the
+current tetra3 search limits, and the requirements for improving bootstrap
+robustness without withholding sources or weakening the historical regression.
+
 For the complete per-image analysis, use the standalone entrypoint:
 
 ```sh
