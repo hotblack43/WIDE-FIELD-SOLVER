@@ -27,6 +27,14 @@ from point_star_plotting import save_png
 
 
 SUPPORTED_LIMITS2 = (7.5, 8.0, 8.5)
+RUNTIME_CODE_FILES2 = (
+    "point_star_detection.py",
+    "point_star_barghini2.py",
+    "barghini_model.py",
+    "point_star_names.py",
+    "point_star_diagnostics.py",
+    "point_star_report.py",
+)
 _BASE_STAGES2 = (
     (.30, 5.0, 12.0),
     (.40, 5.5, 12.0),
@@ -386,9 +394,10 @@ def run2(image_path, output, catalog_path, *, magnitude_limit, label_count=40,
         writer.writeheader(); writer.writerows(blobs)
     result['broad_or_saturated_objects'] = len(blobs)
     result['broad_or_saturated_without_star_match'] = sum(not r['catalogue_star_id'] for r in blobs)
-    result['code_sha256'] = {name:hashlib.sha256((Path(__file__).parent/name).read_bytes()).hexdigest()
-        for name in ['point_star_detection.py', 'point_star_barghini.py', 'barghini_model.py',
-                     'point_star_names.py', 'point_star_diagnostics.py', 'point_star_report.py']}
+    result['code_sha256'] = {
+        name: hashlib.sha256((Path(__file__).parent/name).read_bytes()).hexdigest()
+        for name in RUNTIME_CODE_FILES2
+    }
     if observation_time is not None:
         result['observation'] = dict(time_utc=observation_time, latitude_deg=latitude,
             longitude_deg=longitude, elevation_m=elevation_m, pressure_hpa=pressure_hpa,

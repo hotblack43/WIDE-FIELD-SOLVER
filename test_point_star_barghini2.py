@@ -2,6 +2,7 @@ import unittest
 
 import numpy as np
 
+import point_star_barghini2 as solver2
 from point_star_barghini2 import (
     SUPPORTED_LIMITS2,
     association_stages2,
@@ -10,6 +11,10 @@ from point_star_barghini2 import (
 
 
 class WideSolver2Tests(unittest.TestCase):
+    def test_runtime_manifest_names_v2_solver_not_v1_solver(self):
+        self.assertIn("point_star_barghini2.py", solver2.RUNTIME_CODE_FILES2)
+        self.assertNotIn("point_star_barghini.py", solver2.RUNTIME_CODE_FILES2)
+
     def test_supported_limits_are_modest_and_ordered(self):
         self.assertEqual(SUPPORTED_LIMITS2, (7.5, 8.0, 8.5))
 
