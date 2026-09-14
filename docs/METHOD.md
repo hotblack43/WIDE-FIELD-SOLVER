@@ -1,5 +1,8 @@
 # Method notes
 
+The following describes the preserved baseline. For the version 0.3 default
+proper-motion and epoch fit, see [the numerical change notes](PROPER_MOTION_V03.md).
+
 The mathematical implementation is a snapshot of the successful point-star
 experiment. Packaging changes only import/data paths, command-line annotation
 options and cached display-name support; the detector and projection equations

@@ -16,7 +16,7 @@ def main():
         sys.executable, str(ROOT/'point_star_barghini.py'),
         str(ROOT/'examples/milky_way/input.jpeg'), '--output', str(output),
         '--catalog', str(ROOT/'data/stars_tycho2_mag75.csv'),
-        '--labels', '40', '--offline', '--names-cache',
+        '--epoch-mode', 'catalog', '--labels', '40', '--offline', '--names-cache',
         str(ROOT/'examples/milky_way/reference/display_names.json'),
     ], check=True)
     subprocess.run([sys.executable, str(ROOT/'scripts/check_demo.py'), str(output)], check=True)

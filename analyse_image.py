@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from point_star_barghini import run
+from point_star_barghini import SOLVER_VERSION, run
 from point_star_report import write_report
 from point_star_science import analyse_existing
 
@@ -15,8 +15,13 @@ ROOT = Path(__file__).resolve().parent
 
 def parser():
     p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument('--version', action='version', version=f'%(prog)s {SOLVER_VERSION}')
     p.add_argument('image', type=Path, help='JPEG, PNG or TIFF all-sky image')
-    p.add_argument('--output', type=Path, required=True, help='Output directory (replaced if present)')
+    p.add_argument('--output', type=Path, required=True, help='New output directory (protected by default)')
+    p.add_argument('--overwrite', action='store_true', help='Explicitly replace an existing output directory')
+    p.add_argument('--epoch-mode', choices=('fit', 'fixed', 'catalog'), default='fit')
+    p.add_argument('--epoch-year', type=float, help='Julian year required for fixed epoch mode')
+    p.add_argument('--epoch-limits', type=float, nargs=2, default=(1850., 2150.))
     p.add_argument('--catalog', type=Path, default=ROOT/'data/stars_tycho2_mag75.csv')
     p.add_argument('--labels', type=int, default=40)
     p.add_argument('--names-cache', type=Path)
@@ -31,12 +36,16 @@ def parser():
 def main():
     p = parser()
     args = p.parse_args()
+    if (args.epoch_mode == 'fixed') != (args.epoch_year is not None):
+        p.error('--epoch-year is required exactly when --epoch-mode fixed is used')
     if (args.latitude is None) != (args.longitude is None):
         p.error('--latitude and --longitude must be supplied together')
     result = run(args.image, args.output, args.catalog, label_count=args.labels,
                  names_cache=args.names_cache, offline=args.offline,
                  observation_time=args.observation_time, latitude=args.latitude,
-                 longitude=args.longitude, elevation_m=args.elevation_m)
+                 longitude=args.longitude, elevation_m=args.elevation_m,
+                 overwrite=args.overwrite, epoch_mode=args.epoch_mode,
+                 epoch_year=args.epoch_year, epoch_limits=args.epoch_limits)
     science = analyse_existing(args.image.resolve(), args.output, result, args.catalog)
     report = write_report(args.output, result, science=science)
     result['report_pdf'] = report.name

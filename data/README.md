@@ -15,8 +15,11 @@ The builder propagates the Hipparcos positions to 2000.0 for duplicate
 checking within 60 arcseconds, while writing the original positions and epoch.
 The Hipparcos supplement uses V ≤ 2.0, rather than Tycho VT.
 
-The baseline solver reads the stored RA/Dec directly. Observation-epoch
-propagation is future work. Keep this distinction when interpreting precision.
+The preserved v0.1.0 baseline and explicit `--epoch-mode catalog` replay read
+the stored RA/Dec directly. Version 0.3.0 propagates each entry from its own
+reference epoch in the normal solve. Missing proper motions are flagged and
+use stationary reference positions; these stars remain available for fitting.
+See [version 0.3 notes](../docs/PROPER_MOTION_V03.md).
 
 To download a new candidate catalogue from VizieR (requires network access):
 

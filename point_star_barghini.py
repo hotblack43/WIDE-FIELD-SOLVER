@@ -3,7 +3,8 @@
 Input is the original untrailed image. The dot finder supplies measured pixels.
 Tetra3 supplies a blind pattern bootstrap only; all final fitting uses equations
 (5), (6), (11). Z is a fixed celestial reference direction, not a terrestrial
-zenith: no observing location or time is supplied or inferred.
+zenith. Stellar epoch is fitted from catalogue proper motions by default;
+no observing location or timestamp seeds that search.
 """
 import argparse
 import csv
@@ -24,6 +25,9 @@ from barghini_model import (
     BarghiniParameters, detector_to_horizontal, horizontal_to_detector, radial_du_dr)
 from point_star_detection import write_products
 from point_star_plotting import save_png
+
+
+SOLVER_VERSION = '0.3.0'
 
 
 def vectors(ra, dec):
@@ -227,6 +231,10 @@ def prepare_output(output, *, overwrite=True):
     working_directory = Path.cwd().resolve()
     protected = {repository, *repository.parents,
                  working_directory, *working_directory.parents}
+    roots = [repository] + [parent for parent in repository.parents if (parent/'.git').exists()]
+    preserved = [root/name for root in roots for name in ('examples', 'data', '.git')]
+    if any(resolved == path or path in resolved.parents for path in preserved):
+        raise ValueError(f'Refusing to overwrite preserved repository assets: {output}')
     if resolved in protected:
         raise ValueError(f'Refusing to use protected directory as output: {output}')
     if output.exists() or output.is_symlink():
@@ -241,11 +249,25 @@ def prepare_output(output, *, overwrite=True):
 
 
 def run(image_path, output, catalog_path, *, label_count=40, names_cache=None, offline=False,
-        overwrite=True, observation_time=None, latitude=None, longitude=None,
+        overwrite=False, observation_time=None, latitude=None, longitude=None,
         elevation_m=0., pressure_hpa=None, temperature_c=10., relative_humidity=.5,
-        extinction_mag_per_airmass=None):
+        extinction_mag_per_airmass=None, epoch_mode='fit', epoch_year=None,
+        epoch_limits=(1850., 2150.)):
+    if epoch_mode not in ('fit', 'fixed', 'catalog'):
+        raise ValueError('Unknown epoch mode')
+    if (epoch_mode == 'fixed') != (epoch_year is not None):
+        raise ValueError('Supply epoch_year exactly when epoch_mode is fixed')
+    if epoch_year is not None and not np.isfinite(epoch_year):
+        raise ValueError('Supplied epoch must be finite')
+    if len(epoch_limits) != 2 or not np.isfinite(epoch_limits).all() or epoch_limits[0] >= epoch_limits[1]:
+        raise ValueError('Epoch limits must be finite and increasing')
     started = time.monotonic()
     image_path = Path(image_path).expanduser().resolve()
+    destination = Path(output).expanduser().resolve()
+    for source in (image_path, Path(catalog_path).expanduser().resolve(),
+                   Path(names_cache).expanduser().resolve() if names_cache else None):
+        if source is not None and (source == destination or destination in source.parents):
+            raise ValueError(f'Output would remove an input file: {source}')
     output = prepare_output(output, overwrite=overwrite)
     detection = write_products(image_path, output/'dots')
     with (output/'dots/star_candidates.csv').open() as handle:
@@ -262,6 +284,11 @@ def run(image_path, output, catalog_path, *, label_count=40, names_cache=None, o
         catalog_rows = list(csv.DictReader(handle))
     sky = vectors([float(r['ra_deg']) for r in catalog_rows],
                   [float(r['dec_deg']) for r in catalog_rows])
+    stellar_epoch = None
+    if epoch_mode != 'catalog':
+        from point_star_epoch import Catalogue, fit_epoch, write_epoch_products
+        catalogue = Catalogue.from_rows(catalog_rows)
+        sky = catalogue.at_year(epoch_year if epoch_mode == 'fixed' else 2000.)
     mags = np.array([float(r['mag']) for r in catalog_rows])
     centre = (np.array(shape[::-1])-1)/2
     radius = np.linalg.norm(xy[train]-centre, axis=1)
@@ -288,6 +315,25 @@ def run(image_path, output, catalog_path, *, label_count=40, names_cache=None, o
         raise RuntimeError('Insufficient catalogue associations after Barghini refinement')
     # Refine all current catalogue associations together.
     camera, final_fit = fit_camera(camera, xy[train[train_i]], sky[train_j], max_nfev=600)
+    if epoch_mode != 'catalog':
+        # Each epoch profile uses a fixed set. All dots remain eligible when
+        # reassociating between profiles, including large/saturated sources.
+        for association_iteration in range(6):
+            camera, final_fit, stellar_epoch = fit_epoch(
+                camera, xy[train[train_i]], catalogue.subset(train_j), epoch_limits,
+                fixed_year=epoch_year)
+            sky = catalogue.at_year(stellar_epoch['applied_epoch_jyear'])
+            next_i, next_j = associate(camera, xy[train], sky, 3.)
+            if np.array_equal(next_i, train_i) and np.array_equal(next_j, train_j):
+                break
+            if len(next_i) < 20:
+                raise RuntimeError('Insufficient associations after proper-motion propagation')
+            train_i, train_j = next_i, next_j
+        else:
+            raise RuntimeError('Proper-motion association did not converge after six profiles')
+        stellar_epoch.update(association_iterations=association_iteration+1,
+                             association_converged=True)
+        write_epoch_products(output, stellar_epoch)
     train_delta = camera.project(sky[train_j])-xy[train[train_i]]
     fit_score = stats(train_delta)
     accepted = final_fit['success'] and camera.is_monotonic()
@@ -303,20 +349,42 @@ def run(image_path, output, catalog_path, *, label_count=40, names_cache=None, o
           'validation or a completeness measurement. No date, terrestrial orientation, '
           'proper-motion epoch or atmospheric-refraction solution is claimed.',
         elapsed_seconds=time.monotonic()-started)
+    result.update(solver_version=SOLVER_VERSION, epoch_mode=epoch_mode,
+                  coordinate_frame='ICRS')
+    if stellar_epoch is not None:
+        result['stellar_epoch'] = stellar_epoch
+        result['coordinate_epoch_jyear'] = stellar_epoch['applied_epoch_jyear']
+        result['metadata_used'] = epoch_mode == 'fixed'
+        result['limitation'] = (
+            'All detected sources are available; no stars are withheld. Residuals describe '
+            'fitted associations with a 3-pixel gate, not independent validation. '
+            + stellar_epoch['limitation'])
     pairs = [(train[train_i], train_j, 'fitted')]
     matched_records = []
     with (output/'star_coordinates.csv').open('w') as handle:
         writer = csv.writer(handle)
         writer.writerow(['detection_id', 'star_id', 'catalog_ra_deg', 'catalog_dec_deg',
                          'magnitude', 'x_px', 'y_px', 'predicted_x_px', 'predicted_y_px',
-                         'residual_px', 'usage', 'source_class', 'saturated'])
+                         'residual_px', 'usage', 'source_class', 'saturated'] +
+                        (['propagated_ra_deg', 'propagated_dec_deg', 'coordinate_epoch_jyear',
+                          'reference_epoch_jyear', 'proper_motion_available',
+                          'measured_ra_deg', 'measured_dec_deg'] if stellar_epoch else []))
         for measured, reference, split in pairs:
             prediction = camera.project(sky[reference])
             for i, j, p in zip(measured, reference, prediction):
                 r = catalog_rows[j]
+                extra = []
+                if stellar_epoch is not None:
+                    measured_sky = camera.to_sky(xy[i:i+1])[0]
+                    extra = [np.rad2deg(np.arctan2(sky[j, 1], sky[j, 0])) % 360,
+                             np.rad2deg(np.arctan2(sky[j, 2], np.linalg.norm(sky[j, :2]))),
+                             stellar_epoch['applied_epoch_jyear'], r['reference_epoch_jyear'],
+                             bool(catalogue.has_motion[j]),
+                             np.rad2deg(np.arctan2(measured_sky[1], measured_sky[0])) % 360,
+                             np.rad2deg(np.arctan2(measured_sky[2], np.linalg.norm(measured_sky[:2])))]
                 writer.writerow([rows[i]['detection_id'], r['star_id'], r['ra_deg'], r['dec_deg'],
                                  r['mag'], *xy[i], *p, np.linalg.norm(p-xy[i]), split,
-                                 rows[i]['source_class'], rows[i]['saturated']])
+                                 rows[i]['source_class'], rows[i]['saturated']] + extra)
                 matched_records.append(dict(detection_id=int(rows[i]['detection_id']),
                     star_id=r['star_id'], magnitude=float(r['mag']),
                     x_px=float(xy[i, 0]), y_px=float(xy[i, 1]),
@@ -341,7 +409,8 @@ def run(image_path, output, catalog_path, *, label_count=40, names_cache=None, o
     result['broad_or_saturated_without_star_match'] = sum(not r['catalogue_star_id'] for r in blobs)
     result['code_sha256'] = {name:hashlib.sha256((Path(__file__).parent/name).read_bytes()).hexdigest()
         for name in ['point_star_detection.py', 'point_star_barghini.py', 'barghini_model.py',
-                     'point_star_names.py', 'point_star_diagnostics.py', 'point_star_report.py']}
+                     'point_star_names.py', 'point_star_diagnostics.py', 'point_star_report.py',
+                     'point_star_epoch.py']}
     if observation_time is not None:
         result['observation'] = dict(time_utc=observation_time, latitude_deg=latitude,
             longitude_deg=longitude, elevation_m=elevation_m, pressure_hpa=pressure_hpa,
@@ -367,6 +436,7 @@ def run(image_path, output, catalog_path, *, label_count=40, names_cache=None, o
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--version', action='version', version=f'%(prog)s {SOLVER_VERSION}')
     parser.add_argument('image', type=Path)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--catalog', type=Path,
@@ -378,7 +448,12 @@ def main():
     parser.add_argument('--names-cache', type=Path, help='Display-only name cache JSON')
     parser.add_argument('--offline', action='store_true', help='Disable SIMBAD name queries')
     parser.add_argument('--no-overwrite', action='store_true',
-                        help='Refuse to replace an existing output directory')
+                        help='Refuse to replace an existing output directory (default)')
+    parser.add_argument('--overwrite', action='store_true', help='Explicitly replace the output directory')
+    parser.add_argument('--epoch-mode', choices=('fit', 'fixed', 'catalog'), default='fit',
+                        help='Fit stellar epoch (default), use supplied year, or replay native catalogue positions')
+    parser.add_argument('--epoch-year', type=float, help='Julian year required with --epoch-mode fixed')
+    parser.add_argument('--epoch-limits', type=float, nargs=2, default=(1850., 2150.), metavar=('MIN', 'MAX'))
     parser.add_argument('--observation-time',
                         help='UTC observation time for planets/refraction, for example 2026-09-13T22:00:00')
     parser.add_argument('--latitude', type=float, help='Observing-site latitude in degrees')
@@ -393,6 +468,10 @@ def main():
     parser.add_argument('--extinction-mag-per-airmass', type=float,
                         help='Assumed extinction coefficient for the report')
     args = parser.parse_args()
+    if args.overwrite and args.no_overwrite:
+        parser.error('--overwrite conflicts with --no-overwrite')
+    if (args.epoch_mode == 'fixed') != (args.epoch_year is not None):
+        parser.error('--epoch-year is required exactly when --epoch-mode fixed is used')
     if args.labels < 1:
         parser.error('--labels must be positive')
     if (args.latitude is None) != (args.longitude is None):
@@ -414,17 +493,18 @@ def main():
             parser.error('The image does not match this astrometric solution')
         with (args.annotations_from/'star_coordinates.csv').open() as handle:
             records = list(csv.DictReader(handle))
-        output = prepare_output(args.output, overwrite=not args.no_overwrite)
+        output = prepare_output(args.output, overwrite=args.overwrite)
         annotate_stars(source, records, output, args.labels,
                        names_cache=args.names_cache, offline=args.offline)
         return
     result = run(args.image, args.output, args.catalog, label_count=args.labels,
                  names_cache=args.names_cache, offline=args.offline,
-                 overwrite=not args.no_overwrite, observation_time=args.observation_time,
+                 overwrite=args.overwrite, observation_time=args.observation_time,
                  latitude=args.latitude, longitude=args.longitude, elevation_m=args.elevation_m,
                  pressure_hpa=args.pressure_hpa, temperature_c=args.temperature_c,
                  relative_humidity=args.relative_humidity,
-                 extinction_mag_per_airmass=args.extinction_mag_per_airmass)
+                 extinction_mag_per_airmass=args.extinction_mag_per_airmass,
+                 epoch_mode=args.epoch_mode, epoch_year=args.epoch_year, epoch_limits=args.epoch_limits)
     raise SystemExit(0 if result['status'] == 'point_star_fit_converged' else 1)
 
 

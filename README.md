@@ -1,5 +1,16 @@
 # WIDE-FIELD SOLVER
 
+**Version 0.3.0 — integrated proper-motion astrometry.** This version uses the
+existing local Tycho/Hipparcos catalogue. `solve.sh` and `analyse.sh` now fit a
+stellar epoch and save the corresponding Barghini camera and propagated
+coordinates. The `v0.1.0` tag and historical reference products remain preserved;
+`demo.sh` explicitly replays the native-catalogue baseline.
+
+See [version 0.3 numerical changes and validation](docs/PROPER_MOTION_V03.md)
+and the [implemented-versus-planned feature inventory](docs/FEATURE_STATUS.md).
+The proposed photometric zenith optimisation is still unimplemented; extinction
+regression currently uses airmasses from supplied site/time metadata.
+
 by Peter Thejll and Chris Flynn
 
 Astrometry directly from untrailed, wide-field star images, using the
@@ -56,14 +67,28 @@ the field.
 ./solve.sh /path/to/stars.jpg --output results/my-image --labels 40
 ```
 
-An existing output directory is replaced by default so the command can be
-rerun with the same name. Add `--no-overwrite` to preserve an existing output
-and fail instead.
+Existing output directories are protected by default. Use a new output name;
+`--overwrite` explicitly permits replacement. All stars remain available to
+matching and fitting, including large and saturated detections.
+
+The default `--epoch-mode fit` searches a stellar epoch without using the
+observation timestamp. To propagate to a supplied Julian year instead:
+
+```sh
+./solve.sh /path/to/stars.jpg --output results/my-image-2026 \
+  --epoch-mode fixed --epoch-year 2026.7 --offline
+```
+
+Use `--epoch-limits 1900 2100` to set the stellar search interval. A supplied
+epoch is labelled as supplied, and an unidentifiable stellar epoch is reported
+as unresolved with a clearly labelled provisional best-fit solution. Zero-motion
+or numerically flat profiles use an explicitly adopted J2000.0 solution. `--epoch-mode catalog`
+is the historical native-position replay, without proper-motion propagation.
 
 This queries SIMBAD for display names. Add `--offline` to retain catalogue
 identifiers without network access, or also supply `--names-cache names.json`.
 Supported input is a raster image readable by Pillow, converted to 8-bit RGB.
-This first release is tuned and demonstrated on the included fisheye image;
+The solver is tuned and demonstrated on the included fisheye image;
 success across arbitrary cameras and fields remains to be established.
 
 If detection succeeds but the run ends with
@@ -79,9 +104,9 @@ For the complete per-image analysis, use the standalone entrypoint:
 ./analyse.sh /path/to/stars.jpg --output results/my-image --offline
 ```
 
-It starts from the image, performs the Barghini astrometric and lens fit, measures
-RGB aperture photometry, fits empirical refraction, profiles the stellar
-proper-motion epoch, fits
+It starts from the image, jointly profiles stellar epoch with the Barghini
+astrometric fit, saves the final propagated coordinates and camera, then measures
+RGB aperture photometry, fits empirical refraction, and fits
 `green machine magnitude - catalogue magnitude = zero point + k * airmass`,
 and matches ephemeris planets to unused measured point sources. One matched
 bright source is retained as a lower-confidence planet candidate; two matches
@@ -97,7 +122,8 @@ and site for another image:
   --latitude 28.7606 --longitude -17.8850 --elevation-m 2326
 ```
 
-The time supplies the centre of a ±366-day planet search. The analyser classifies
+The time supplies the centre of a ±366-day planet search; it does not seed the
+stellar-epoch search. The scientific analysis reuses the saved astrometric epoch. The analyser classifies
 the stored channels as RGB or effectively monochrome from their pixel values.
 RGB images receive separate R, G and B photometry/extinction panels; effectively
 monochrome images receive one panel. The report distinguishes a single candidate,
@@ -123,7 +149,8 @@ To change labels on an existing solution without refitting:
 Each complete run produces:
 
 - `result.json`: fitted camera, convergence, residuals, processing history and checksums.
-- `star_coordinates.csv`: measured and predicted pixels, catalogue coordinates and IDs.
+- `star_coordinates.csv`: measured and predicted pixels, original and propagated
+  catalogue coordinates, measured sky coordinates, epochs, proper-motion availability and IDs.
 - `blob_candidates.csv`: broad/saturated sources, including unmatched objects.
 - `identified_40_stars.png`: the requested number of named stars (40 by default).
 - `astrometry_overlay.png`: measured cyan crosses and predicted orange circles at their true positions; unmatched detections are pink crosses.
@@ -133,7 +160,7 @@ Each complete run produces:
 - `science_summary.json`: stellar epoch, refraction, photometry/extinction and planet results.
 - `stellar_photometry.csv` and `extinction_fit.png`: aperture measurements and the fitted magnitude-difference relation; colour images receive separate R, G and B panels.
 - `report_sky_overlay.png`: readable representative star labels and distinct matched-planet symbols.
-- `stellar_epoch.json` and `stellar_epoch_profile.png`: proper-motion epoch profile and identifiability.
+- `stellar_epoch.json` and `stellar_epoch_profile.png`: all-star robust-cost epoch profile, conditional interval and adopted epoch.
 - `refraction_fit.json`: empirical tangent-series refraction fit and model-selection diagnostics.
 - `planet_epoch.json`, `planet_matches.csv` and `planet_candidates.png`: measured-source planet matches and conditional epoch, when present.
 - `dots/`, `bootstrap.json`, `display_names.json`, `labelled_stars.json`: measurement and naming audit.

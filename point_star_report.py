@@ -106,7 +106,7 @@ def report_sections(result, science=None, **legacy):
     science = science or {}
     fit = result['fit']
     p = result['camera']['parameters']
-    stellar = science.get('stellar_epoch') or {}
+    stellar = result.get('stellar_epoch') or science.get('stellar_epoch') or {}
     refraction = science.get('refraction') or {}
     photometry = science.get('photometry') or {}
     extinction = photometry.get('extinction') or {}
@@ -120,18 +120,25 @@ def report_sections(result, science=None, **legacy):
         f"The radial law u(r)=Vr+S[exp(Dr)-1] has V={p['v']:.6g} rad px⁻¹, "
         f"S={p['s']:.6g} rad and D={p['d']:.6g} px⁻¹."
     )
-    if stellar:
-        if stellar.get('status') == 'not_identifiable':
-            epoch_text = (
-                f"The stellar proper-motion profile reaches a search boundary at "
-                f"{_fmt(stellar.get('epoch_jyear'), 1)}. A stellar epoch is unresolved in this image. "
-                f"Its withheld RMS is {_fmt(stellar.get('withheld_rms_px'))} px."
-            )
-        else:
-            epoch_text = (
-                f"The conditional stellar epoch is {_fmt(stellar.get('epoch_jyear'), 1)} Julian year "
-                f"from catalogue proper motions, using {stellar.get('withheld_count', 0)} withheld stars."
-            )
+    if stellar.get('status') == 'not_identifiable':
+        epoch_text = (
+            f"The stellar epoch is unresolved. The saved solution uses the provisional adopted "
+            f"epoch J{_fmt(stellar.get('applied_epoch_jyear'), 1)}. "
+            "The profile minimum is not an established observation date."
+        )
+    elif stellar.get('status') == 'supplied_epoch':
+        epoch_text = (
+            f"Proper motions were applied at supplied epoch J{_fmt(stellar.get('applied_epoch_jyear'), 1)}; "
+            "this date was not inferred from the stars."
+        )
+    elif stellar.get('status') == 'conditional_epoch':
+        interval = stellar.get('conditional_interval_95_jyear', [None, None])
+        epoch_text = (
+            f"The conditional stellar epoch is J{_fmt(stellar.get('epoch_jyear'), 2)}, "
+            f"with approximate conditional 95% interval {_fmt(interval[0], 2)} to {_fmt(interval[1], 2)}. "
+            f"All {stellar.get('fitted_count', 0)} associations enter the fit. "
+            "This interval excludes catalogue and lens/atmospheric systematic errors."
+        )
     else:
         epoch_text = 'The stellar proper-motion epoch analysis has not been run.'
     astrometry = (
@@ -198,7 +205,7 @@ def report_sections(result, science=None, **legacy):
 def table_rows(result, science):
     fit = result['fit']
     p = result['camera']['parameters']
-    stellar = science.get('stellar_epoch') or {}
+    stellar = result.get('stellar_epoch') or science.get('stellar_epoch') or {}
     refraction = science.get('refraction') or {}
     photometry = science.get('photometry') or {}
     by_channel = photometry.get('extinction_by_channel') or {}
@@ -207,6 +214,8 @@ def table_rows(result, science):
     stellar_value = (
         f"{_fmt(stellar.get('epoch_jyear'), 1)} ({stellar.get('status', 'unknown').replace('_', ' ')})"
         if stellar else '--')
+    if stellar.get('status') == 'not_identifiable':
+        stellar_value = f"Unresolved; adopted J{_fmt(stellar.get('applied_epoch_jyear'), 1)}"
     planet_value = (
         f"{planets.get('derived_epoch_utc')} ({planets.get('match_count')} planet(s), "
         f"{planets.get('confidence', 'unknown')})"

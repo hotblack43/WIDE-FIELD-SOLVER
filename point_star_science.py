@@ -14,12 +14,11 @@ from PIL import Image
 from scipy.optimize import minimize_scalar
 from scipy.spatial import cKDTree
 
-from point_star_barghini import fit_camera, vectors
+from point_star_barghini import vectors
 from point_star_plotting import save_png
 from point_star_refraction import fit_atmospheric_refraction
 from point_star_report import _camera_from_result, observation_metadata
 
-MAS_TO_RAD = math.radians(1.0 / 3_600_000.0)
 PLANETS = ('mercury', 'venus', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune')
 
 
@@ -33,83 +32,13 @@ def _float(row, key, default=0.):
     return float(value) if value else float(default)
 
 
-def _catalogue_arrays(rows, catalogue_path):
-    catalogue = {row['star_id']: row for row in _read(catalogue_path)}
-    selected = [catalogue[row['star_id']] for row in rows]
-    ra = np.array([_float(row, 'ra_deg') for row in selected])
-    dec = np.array([_float(row, 'dec_deg') for row in selected])
-    reference = np.array([_float(row, 'reference_epoch_jyear', 2000.) for row in selected])
-    pm_ra = np.array([_float(row, 'pm_ra_cosdec_mas_per_year') for row in selected])
-    pm_dec = np.array([_float(row, 'pm_dec_mas_per_year') for row in selected])
-    base = vectors(ra, dec)
-    ra_rad, dec_rad = np.deg2rad(ra), np.deg2rad(dec)
-    east = np.c_[-np.sin(ra_rad), np.cos(ra_rad), np.zeros(len(ra))]
-    north = np.c_[-np.cos(ra_rad)*np.sin(dec_rad),
-                  -np.sin(ra_rad)*np.sin(dec_rad), np.cos(dec_rad)]
-    return base, reference, pm_ra, pm_dec, east, north
-
-
-def propagated_catalogue(arrays, year):
-    base, reference, pm_ra, pm_dec, east, north = arrays
-    moved = base + (year-reference)[:, None]*MAS_TO_RAD*(
-        pm_ra[:, None]*east + pm_dec[:, None]*north)
-    return moved/np.linalg.norm(moved, axis=1)[:, None]
-
-
 def fit_stellar_epoch(solution, result, catalogue_path, year_limits=(1850., 2150.)):
-    """Profile a proper-motion epoch while refitting the camera on training stars."""
-    solution = Path(solution)
-    rows = _read(solution/'star_coordinates.csv')
-    xy = np.array([[_float(row, 'x_px'), _float(row, 'y_px')] for row in rows])
-    ids = np.array([int(row['detection_id']) for row in rows])
-    training = ids % 5 != 0
-    test = ~training
-    arrays = _catalogue_arrays(rows, catalogue_path)
-    base_camera = _camera_from_result(result)
-
-    def evaluate(year):
-        sky = propagated_catalogue(arrays, year)
-        camera, info = fit_camera(base_camera, xy[training], sky[training], max_nfev=120)
-        delta = camera.project(sky[test])-xy[test]
-        radius = np.linalg.norm(delta, axis=1)
-        return float(np.sqrt(np.mean(radius**2))), float(np.median(radius)), info
-
-    years = np.linspace(year_limits[0], year_limits[1], 31)
-    profile = []
-    for year in years:
-        rms, median, _ = evaluate(float(year))
-        profile.append(dict(year=float(year), withheld_rms_px=rms,
-                            withheld_median_px=median))
-    best_index = int(np.argmin([row['withheld_rms_px'] for row in profile]))
-    low = years[max(0, best_index-1)]
-    high = years[min(len(years)-1, best_index+1)]
-    if low == high:
-        best_year = float(years[best_index])
-    else:
-        optimum = minimize_scalar(lambda year: evaluate(year)[0], bounds=(low, high),
-                                  method='bounded', options={'xatol': .01})
-        best_year = float(optimum.x)
-    rms, median, info = evaluate(best_year)
-    boundary = best_index in (0, len(years)-1) or min(
-        best_year-year_limits[0], year_limits[1]-best_year) < 1.
-    improvement = profile[len(profile)//2]['withheld_rms_px']-rms
-    status = 'not_identifiable' if boundary or improvement < .01 else 'conditional_epoch'
-    output = dict(status=status, method='catalogue proper motions with camera refitted',
-                  epoch_jyear=best_year, search_limits_jyear=list(year_limits),
-                  boundary_limited=boundary, withheld_count=int(test.sum()),
-                  training_count=int(training.sum()), withheld_rms_px=rms,
-                  withheld_median_px=median, rms_improvement_px=float(improvement),
-                  profile=profile, limitation=(
-                      'Global precession is degenerate with camera orientation in one point image; '
-                      'only differential catalogue proper motions constrain this epoch.'))
-    (solution/'stellar_epoch.json').write_text(json.dumps(output, indent=2)+'\n')
-    fig, ax = plt.subplots(figsize=(7, 4))
-    ax.plot(years, [row['withheld_rms_px'] for row in profile], 'o-')
-    ax.axvline(best_year, color='tab:red', linestyle='--')
-    ax.set(xlabel='Trial epoch (Julian year)', ylabel='Withheld RMS [pixel]',
-           title=f'Stellar proper-motion epoch: {status}')
-    fig.tight_layout(); save_png(fig, solution/'stellar_epoch_profile.png', dpi=160); plt.close(fig)
-    return output
+    """Reuse the epoch that actually produced the saved camera and coordinates."""
+    if 'stellar_epoch' in result:
+        return result['stellar_epoch']
+    return dict(status='not_run', epoch_jyear=None, applied_epoch_jyear=None,
+                reason='Catalogue replay has no integrated epoch fit; run the v0.3 solver',
+                fitted_count=0, withheld_count=0, profile=[])
 
 
 def fit_refraction(solution, result, catalogue_path, stellar_epoch):
@@ -117,9 +46,9 @@ def fit_refraction(solution, result, catalogue_path, stellar_epoch):
     rows = _read(solution/'star_coordinates.csv')
     xy = np.array([[_float(row, 'x_px'), _float(row, 'y_px')] for row in rows])
     camera = _camera_from_result(result)
-    arrays = _catalogue_arrays(rows, catalogue_path)
-    year = stellar_epoch['epoch_jyear'] if stellar_epoch['status'] != 'not_identifiable' else 2000.
-    target = propagated_catalogue(arrays, year)
+    year = stellar_epoch.get('applied_epoch_jyear')
+    target = vectors([_float(row, 'propagated_ra_deg', _float(row, 'catalog_ra_deg')) for row in rows],
+                     [_float(row, 'propagated_dec_deg', _float(row, 'catalog_dec_deg')) for row in rows])
     apparent_camera = camera.to_sky(xy) @ camera.reference_rotation
     fitted = fit_atmospheric_refraction(apparent_camera, target, camera.reference_rotation)
     output = fitted.as_dict()
@@ -222,8 +151,8 @@ def measure_photometry(image_path, solution, result, refraction):
         location = EarthLocation.from_geodetic(metadata['longitude']*u.deg,
             metadata['latitude']*u.deg, metadata.get('elevation_m', 0.)*u.m)
         ordered = list(coordinates.values())
-        sky = SkyCoord([_float(row, 'catalog_ra_deg') for row in ordered]*u.deg,
-                       [_float(row, 'catalog_dec_deg') for row in ordered]*u.deg,
+        sky = SkyCoord([_float(row, 'propagated_ra_deg', _float(row, 'catalog_ra_deg')) for row in ordered]*u.deg,
+                       [_float(row, 'propagated_dec_deg', _float(row, 'catalog_dec_deg')) for row in ordered]*u.deg,
                        frame='icrs')
         horizontal = sky.transform_to(AltAz(obstime=Time(metadata['observation_time']),
             location=location, pressure=0*u.hPa))
