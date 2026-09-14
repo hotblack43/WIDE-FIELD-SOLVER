@@ -26,3 +26,12 @@ uv run --frozen python -m unittest discover -v
 
 Keep `uv.lock` committed. Document numerical changes and their reasons. Leave
 the historical comparison with solve-field factual and bounded by its tests.
+
+## Read the scientific goal first
+
+Read [GOAL.md](GOAL.md) before changes and check `docs/FEATURE_STATUS.md` when
+present. Blind solving is the primary contract: site/time metadata may be
+revealed only after the fitted results are fixed, for separate validation.
+Do not replace the photometric-zenith constraint with metadata-derived airmass
+or describe a metadata-centred planet lookup as blind epoch inference.
+Preserve implemented capabilities and add regression evidence for new ones.
