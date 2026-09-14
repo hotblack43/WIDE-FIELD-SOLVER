@@ -6,3 +6,6 @@ results/
 .DS_Store
 /THIS2/
 *.pdf
+*.png
+*.jpg
+*.jpeg
