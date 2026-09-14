@@ -37,6 +37,13 @@ class WideSolver2Tests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "supported"):
                     association_stages2(value)
 
+    def test_catalogue_indices_support_internal_bright_stages(self):
+        magnitudes = np.array([4.999, 5.0, 5.001, 7.5])
+        np.testing.assert_array_equal(
+            catalogue_indices2(magnitudes, 5.0),
+            np.array([0, 1]),
+        )
+
     def test_catalogue_indices_exclude_stars_beyond_selected_limit(self):
         magnitudes = np.array([7.499, 7.5, 7.501, 8.0, 8.5, 8.501])
         np.testing.assert_array_equal(

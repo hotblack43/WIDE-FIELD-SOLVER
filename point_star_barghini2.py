@@ -66,7 +66,7 @@ def association_stages2(limit):
 
 def catalogue_indices2(magnitudes, limit):
     """Indices of finite catalogue magnitudes no fainter than the candidate limit."""
-    limit = _validated_limit2(limit)
+    limit = float(limit)
     magnitudes = np.asarray(magnitudes, dtype=float)
     return np.flatnonzero(np.isfinite(magnitudes) & (magnitudes <= limit))
 
