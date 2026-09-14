@@ -1,17 +1,33 @@
 # WIDE-FIELD SOLVER
 
-**Version 0.3.0 — proper-motion astrometry and blind photometric zenith.** This version uses the
-existing local Tycho/Hipparcos catalogue. `solve.sh` and `analyse.sh` now fit a
-stellar epoch and save the corresponding Barghini camera and propagated
-coordinates. The `v0.1.0` tag and historical reference products remain preserved;
-`demo.sh` explicitly replays the native-catalogue baseline.
+**Version 0.4.0 — Gaia/Tycho catalogue comparison.** This isolated development
+version adds a local Gaia DR3 catalogue and a reproducible same-image experiment,
+including paired spatial resampling of the stellar epoch and camera fit.
+The default catalogue remains Tycho/Hipparcos pending evaluation. Version 0.3.0
+proper-motion astrometry and blind photometric zenith are preserved; `demo.sh`
+still explicitly replays the historical `v0.1.0` native-catalogue baseline.
 
-See [version 0.3 numerical changes and validation](docs/PROPER_MOTION_V03.md)
-and the [implemented-versus-planned feature inventory](docs/FEATURE_STATUS.md).
-The scientific contract is recorded in [GOAL.md](GOAL.md). The analyser now
-searches physical zenith by minimising photometric regression scatter without
-site/time metadata. This is a supporting constraint; the primary objective remains
-blind Barghini astrometry and a stellar epoch with honest uncertainty.
+The scientific contract is [GOAL.md](GOAL.md). See the
+[Gaia experiment](docs/GAIA_V04.md),
+[proper-motion numerical changes](docs/PROPER_MOTION_V03.md), and
+[implemented-versus-planned feature inventory](docs/FEATURE_STATUS.md).
+
+To use Gaia for a blind solve:
+
+```sh
+./solve.sh image.jpg --catalog data/stars_gaia_dr3_g75.csv \
+  --output results/gaia-solve --offline
+```
+
+To compare both catalogues on the same image with 32 paired spatial subsamples:
+
+```sh
+OPENBLAS_NUM_THREADS=1 uv run --frozen python scripts/compare_catalogues.py \
+  examples/milky_way/input.jpeg --output results/catalogue-comparison
+```
+
+Both full solves start from pixels. The subsamples are an explicit sensitivity
+experiment; the normal solver continues to use all eligible detected sources.
 
 by Peter Thejll and Chris Flynn
 
@@ -283,9 +299,9 @@ hotspots and the lossless PNG-encoding optimization.
   vignetting terms and repeated-image transparency constraints; the design
   considerations remain in
   [the research note](docs/PHOTOMETRY_ZENITH_EXTINCTION_NOTE.md).
-- **Bright stars plus Gaia DR3/DR4 instead of Tycho:** develop a Gaia-based
-  reference catalogue with an explicit bright-star supplement, cross-matching
-  and epoch propagation; evaluate DR4 when its data are available.
+- Extend the Gaia comparison across more images and catalogue quality/colour
+  selections; establish accuracy before changing the default catalogue.
+  Evaluate later Gaia releases when available.
 - Test more fisheye lenses, sky regions and exposure levels, with documented
   limits on where the solution is trustworthy.
 - Export a convenient pixel-to-sky interface and interoperable astrometric

@@ -62,7 +62,7 @@ class EpochIntegrationTests(unittest.TestCase):
             self.assertEqual(saved['stellar_epoch']['applied_epoch_jyear'], 2060.)
             self.assertEqual(saved['stellar_epoch']['fitted_count'], len(exported))
             self.assertEqual(saved['withheld_stars'], 0)
-            self.assertEqual(saved['solver_version'], '0.3.0')
+            self.assertEqual(saved['solver_version'], '0.4.0')
             camera = _camera_from_result(saved)
             propagated = vectors([float(r['propagated_ra_deg']) for r in exported],
                                  [float(r['propagated_dec_deg']) for r in exported])

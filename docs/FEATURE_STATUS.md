@@ -1,4 +1,4 @@
-# Point-source feature status, version 0.3.0
+# Point-source feature status, version 0.4.0
 
 This inventory distinguishes implemented behavior from recorded proposals. A new
 version must preserve implemented behavior or document an explicit change, and
@@ -11,13 +11,14 @@ must not describe a proposal as working merely because related products exist.
 | Proper-motion propagation in the final astrometric solution | Added in 0.3.0 | Shared catalogue propagation, synthetic recovery and exported-coordinate checks |
 | Stellar epoch fitted with all associations; final camera saved | Added in 0.3.0 | All-star robust profile; conditional or provisional date status |
 | RGB instrumental photometry | Implemented | Aperture fluxes and flags retained in stellar_photometry.csv |
-| Extinction as nuisance regression in blind zenith search | Added in 0.3.0 | Fixed membership; no site/time-derived airmass; G plot uses the exact fitted line |
+| Extinction as nuisance regression in blind zenith search | Added in 0.3.0 using robust regression | Fixed membership; no site/time-derived airmass; G plot uses the exact fitted line. The OLS reference specified in GOAL.md and its comparison remain unimplemented |
 | Zenith estimated by minimising photometric regression scatter | Added in 0.3.0; conditional component | Synthetic recovery and degeneracy tests; real example remains unresolved under the radial-response check |
 | Zenith fitted through astrometric refraction residuals | Implemented downstream diagnostic | Different objective from photometric zenith; does not establish that photometric proposal works |
 | Joint photometric zenith/extinction and astrometric epoch constraint | **Not implemented** | Not part of the 0.3.0 proper-motion bugfix; must be designed and tested explicitly |
 | Blind planetary epoch | **Not implemented** | Default metadata-centred lookup disabled; a separate blind positional search remains required |
 | Post-fit metadata comparison, including pole–zenith latitude | Added in 0.3.0 | Explicit `--compare-metadata`; no refit, uncertainty/status retained |
-| Gaia reference catalogue | **Not implemented** | Compatibility assessed; current data remain Tycho-2 plus Hipparcos |
+| Gaia reference catalogue | Added in 0.4.0 as an opt-in alternative | Native DR3 epochs/PM, 36,663 Gaia rows plus 78 labelled bright supplements; default remains Tycho/Hipparcos |
+| Independent same-image catalogue comparison and paired spatial resampling | Added in 0.4.0 | Different associations allowed; 32 explicit spatial deletion refits; conditional sensitivity, not independent validation |
 
 ## Photometric zenith proposal: provenance and implementation
 

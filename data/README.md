@@ -30,3 +30,42 @@ uv run --frozen python scripts/rebuild_catalogue.py \
 
 Review and test a new catalogue before adopting it. Preserve the frozen file
 for replaying `v0.1.0`; its SHA-256 is recorded in the example baseline.
+
+
+## Gaia DR3 alternative (version 0.4.0)
+
+`stars_gaia_dr3_g75.csv` has the same seven solver columns as the preserved
+Tycho/Hipparcos file. It contains 36,663 Gaia DR3 sources selected at G<=7.5,
+plus 78 missing very bright references from the local Tycho/Hipparcos catalogue
+(magnitude <=3). Gaia source IDs are exact strings prefixed `Gaia DR3`; supplements
+keep their TYC/HIP identifiers, magnitudes and native astrometry. Gaia rows use
+the native `ref_epoch` (J2016.0), ICRS RA/Dec, and pmra/pmdec in mas/year, with the
+cos(dec) factor already included in pmra. No frame rotation or rounded identifiers.
+
+The supplement is deduplicated within 3 arcseconds after both catalogues are
+propagated to J2016.0 using the same vector motion code as the solver. All returned
+Gaia sources are retained, including missing proper motions; no RUWE or duplicate
+flag cuts have been applied. A missing pair uses the solver's flagged stationary
+approximation. The combined catalogue has 36,068 complete motion pairs.
+
+`stars_gaia_dr3_g75.gaia-source.csv` retains the original archive astrometry,
+G/BP/RP photometry, marginal errors, RUWE and other fetched quality fields.
+The `.provenance.json` sidecar records the exact ADQL query, archive count,
+retrieval timestamp, supplement IDs and checksums. The seven-column fit still
+omits annual parallax, radial/perspective motion and catalogue covariance.
+
+Rebuild into a new path (network access required only for this step):
+
+```sh
+uv run --frozen python scripts/build_gaia_catalogue.py \
+  --output results/new-gaia-catalogue.csv
+```
+
+The public ESA TAP response is checked against a separate COUNT(*) query to
+reject truncated downloads. Existing catalogue and sidecar files are protected.
+The bundled CSV permits offline normal solves. Gaia G and Tycho VT are different
+passbands, so equal numerical limits do not select the same stellar population.
+Neither catalogue is an independent truth standard for the same-image comparison.
+
+References: [ESA Gaia DR3 contents](https://www.cosmos.esa.int/web/gaia/dr3),
+[Gaia DR3 source data model](https://gea.esac.esa.int/archive/documentation/GDR3/Gaia_archive/chap_datamodel/sec_dm_main_source_catalogue/ssec_dm_gaia_source.html).
