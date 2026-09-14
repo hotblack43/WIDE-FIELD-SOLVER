@@ -1,0 +1,54 @@
+#!/usr/bin/env python3
+"""Solve one all-sky image and write astrometry, atmosphere, photometry and epoch products."""
+from __future__ import annotations
+
+import argparse
+from pathlib import Path
+
+from point_star_barghini import run
+from point_star_report import write_report
+from point_star_science import analyse_existing
+
+
+ROOT = Path(__file__).resolve().parent
+
+
+def parser():
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument('image', type=Path, help='JPEG, PNG or TIFF all-sky image')
+    p.add_argument('--output', type=Path, required=True, help='Output directory (replaced if present)')
+    p.add_argument('--catalog', type=Path, default=ROOT/'data/stars_tycho2_mag75.csv')
+    p.add_argument('--labels', type=int, default=40)
+    p.add_argument('--names-cache', type=Path)
+    p.add_argument('--offline', action='store_true', help='Disable display-name network queries')
+    p.add_argument('--observation-time', help='Approximate UTC time; archive metadata is used when available')
+    p.add_argument('--latitude', type=float)
+    p.add_argument('--longitude', type=float)
+    p.add_argument('--elevation-m', type=float, default=0.)
+    return p
+
+
+def main():
+    p = parser()
+    args = p.parse_args()
+    if (args.latitude is None) != (args.longitude is None):
+        p.error('--latitude and --longitude must be supplied together')
+    result = run(args.image, args.output, args.catalog, label_count=args.labels,
+                 names_cache=args.names_cache, offline=args.offline,
+                 observation_time=args.observation_time, latitude=args.latitude,
+                 longitude=args.longitude, elevation_m=args.elevation_m)
+    science = analyse_existing(args.image.resolve(), args.output, result, args.catalog)
+    report = write_report(args.output, result, science=science)
+    result['report_pdf'] = report.name
+    (Path(args.output)/'result.json').write_text(__import__('json').dumps(result, indent=2)+'\n')
+    planets = science['planets']
+    print(f"Report: {report}")
+    print(f"Stellar epoch: {science['stellar_epoch']['status']}")
+    print(f"Refraction: {science['refraction']['status']}")
+    print(f"Extinction: {science['photometry']['extinction_status']}")
+    print(f"Planet epoch: {planets.get('derived_epoch_utc', planets['status'])} "
+          f"[{planets.get('confidence', 'none')}]")
+
+
+if __name__ == '__main__':
+    main()

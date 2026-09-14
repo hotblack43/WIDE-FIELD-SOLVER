@@ -1,13 +1,50 @@
 """Independent geometric checks for the untrailed Barghini calibration."""
+from pathlib import Path
+import tempfile
 import unittest
 
 import numpy as np
 from scipy.spatial.transform import Rotation
 
-from point_star_barghini import BarghiniCamera, fit_camera, select_labels
+from point_star_barghini import BarghiniCamera, fit_camera, prepare_output, select_labels
 
 
 class BarghiniPointTests(unittest.TestCase):
+    def test_existing_output_is_replaced_by_default(self):
+        with tempfile.TemporaryDirectory() as parent:
+            output = Path(parent)/'solution'
+            output.mkdir()
+            (output/'stale.txt').write_text('old result')
+
+            prepare_output(output)
+
+            self.assertTrue(output.is_dir())
+            self.assertFalse((output/'stale.txt').exists())
+
+    def test_no_overwrite_preserves_existing_output(self):
+        with tempfile.TemporaryDirectory() as parent:
+            output = Path(parent)/'solution'
+            output.mkdir()
+            stale = output/'stale.txt'
+            stale.write_text('old result')
+
+            with self.assertRaises(FileExistsError):
+                prepare_output(output, overwrite=False)
+
+            self.assertEqual(stale.read_text(), 'old result')
+
+    def test_repository_root_cannot_be_output(self):
+        repository = Path(__file__).resolve().parent
+
+        with self.assertRaises(ValueError):
+            prepare_output(repository)
+
+    def test_repository_ancestor_cannot_be_output(self):
+        repository_parent = Path(__file__).resolve().parent.parent
+
+        with self.assertRaises(ValueError):
+            prepare_output(repository_parent, overwrite=False)
+
     def test_labels_spread_out_and_exclude_poor_matches(self):
         rows = [dict(x_px=500., y_px=500., magnitude=-1., residual_px=.1,
                      source_class='compact', star_id='centre')]

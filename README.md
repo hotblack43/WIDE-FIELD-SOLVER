@@ -56,11 +56,48 @@ the field.
 ./solve.sh /path/to/stars.jpg --output results/my-image --labels 40
 ```
 
+An existing output directory is replaced by default so the command can be
+rerun with the same name. Add `--no-overwrite` to preserve an existing output
+and fail instead.
+
 This queries SIMBAD for display names. Add `--offline` to retain catalogue
 identifiers without network access, or also supply `--names-cache names.json`.
 Supported input is a raster image readable by Pillow, converted to 8-bit RGB.
 This first release is tuned and demonstrated on the included fisheye image;
 success across arbitrary cameras and fields remains to be established.
+
+For the complete per-image analysis, use the standalone entrypoint:
+
+```sh
+./analyse.sh /path/to/stars.jpg --output results/my-image --offline
+```
+
+It starts from the image, performs the Barghini astrometric and lens fit, measures
+RGB aperture photometry, fits empirical refraction, profiles the stellar
+proper-motion epoch, fits
+`green machine magnitude - catalogue magnitude = zero point + k * airmass`,
+and matches ephemeris planets to unused measured point sources. One matched
+bright source is retained as a lower-confidence planet candidate; two matches
+can support the epoch and three or more can provide strong evidence.
+
+For an OMRcam archive image, the analyser reads the camera-server time from the
+adjacent `manifest.jsonl` and uses the ORM site. Supply an approximate UTC time
+and site for another image:
+
+```sh
+./analyse.sh /path/to/stars.jpg --output results/my-image --offline \
+  --observation-time 2026-09-13T22:00:00 \
+  --latitude 28.7606 --longitude -17.8850 --elevation-m 2326
+```
+
+The time supplies the centre of a ±366-day planet search. The analyser classifies
+the stored channels as RGB or effectively monochrome from their pixel values.
+RGB images receive separate R, G and B photometry/extinction panels; effectively
+monochrome images receive one panel. The report distinguishes a single candidate,
+a supported result and a strong result, and records competing daily minima. `report_<camera>_<UTC>.pdf` has two A4 portrait pages. Page 1 contains two numbered figures,
+Table 1 and short interpretation text. Page 2 contains the fixed lens and refraction
+formulae without image-specific fitted values, for double-sided printing. A boundary-limited stellar epoch or an
+unsupported refraction term is reported as unresolved.
 
 For detection alone:
 
@@ -85,6 +122,13 @@ Each complete run produces:
 - `astrometry_overlay.png`: measured cyan crosses and predicted orange circles at their true positions; unmatched detections are pink crosses.
 - `astrometry_residuals.png`: residual vectors magnified ×20 and centre-to-edge residual statistics.
 - `radial_residuals.csv` / `.json`: counts, RMS, median, 90th percentile and signed radial offsets by image-centred annulus.
+- `report_<camera>_<UTC>.pdf`: two-page scientific report; results on page 1 and formulae on page 2.
+- `science_summary.json`: stellar epoch, refraction, photometry/extinction and planet results.
+- `stellar_photometry.csv` and `extinction_fit.png`: aperture measurements and the fitted magnitude-difference relation; colour images receive separate R, G and B panels.
+- `report_sky_overlay.png`: readable representative star labels and distinct matched-planet symbols.
+- `stellar_epoch.json` and `stellar_epoch_profile.png`: proper-motion epoch profile and identifiability.
+- `refraction_fit.json`: empirical tangent-series refraction fit and model-selection diagnostics.
+- `planet_epoch.json`, `planet_matches.csv` and `planet_candidates.png`: measured-source planet matches and conditional epoch, when present.
 - `dots/`, `bootstrap.json`, `display_names.json`, `labelled_stars.json`: measurement and naming audit.
 
 ## Does the fit deteriorate towards the edge?
@@ -142,10 +186,11 @@ See [method notes](docs/METHOD.md) and [catalogue provenance](data/README.md).
 
 The reported residuals describe fitted associations selected with a three-pixel
 matching gate. They are not independent accuracy estimates or a completeness
-measurement. The celestial reference direction Z does not establish a local
-zenith. Observation epoch, atmospheric refraction and terrestrial orientation
-are outside this release. Broad blobs remain unclassified objects; identifying
-planets requires further information.
+measurement. The celestial reference direction Z does not establish a local zenith.
+The complete analyser fits an empirical zenith/refraction model from the
+astrometric residuals and uses a supplied or archived site/time for airmass and
+planet ephemerides. Broad and saturated blobs remain measured candidates until
+a stellar or planetary position matches them.
 
 In our bounded [solve-field comparison](docs/COMPARISON.md), direct full-image
 attempts were unsolved. On a small crop, solve-field with our measured dots
@@ -183,16 +228,15 @@ selection, offline names and rejection of degraded regression results.
 
 ## Future extensions
 
-- **RGB photometry and horizon-constrained extinction:** see the
-  [deferred research note](docs/PHOTOMETRY_ZENITH_EXTINCTION_NOTE.md) for Peter's
-  proposed equal-airmass consistency test of the zenith, its inputs and caveats.
+- Extend the current single-passband extinction fit with catalogue colours,
+  vignetting terms and repeated-image transparency constraints; the design
+  considerations remain in
+  [the research note](docs/PHOTOMETRY_ZENITH_EXTINCTION_NOTE.md).
 - **Bright stars plus Gaia DR3/DR4 instead of Tycho:** develop a Gaia-based
   reference catalogue with an explicit bright-star supplement, cross-matching
   and epoch propagation; evaluate DR4 when its data are available.
 - Test more fisheye lenses, sky regions and exposure levels, with documented
   limits on where the solution is trustworthy.
-- Add optional observation time/location, refraction modelling and planetary
-  identification for suitable bright blobs.
 - Export a convenient pixel-to-sky interface and interoperable astrometric
   products for downstream analysis.
 
