@@ -1,0 +1,84 @@
+"""No metadata is allowed to determine the blind photometric airmasses."""
+import csv
+import json
+from pathlib import Path
+import tempfile
+import unittest
+from unittest.mock import patch
+
+import numpy as np
+from PIL import Image
+
+from point_star_barghini import BarghiniCamera
+from point_star_science import measure_photometry, fit_planet_epoch
+
+
+class BlindPhotometryTests(unittest.TestCase):
+    def test_photometry_does_not_read_site_or_time(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root/'warwick_20260101T000000Z.png'
+            image = np.full((400, 400, 3), 10, dtype=np.uint8)
+            camera = BarghiniCamera.initial((400, 400), 210, np.eye(3))
+            coordinates, detections = [], []
+            for i, (x, y) in enumerate(( (x,y) for x in range(60, 361, 60) for y in range(60, 361, 60))):
+                image[y-1:y+2, x-1:x+2] = 50+i
+                sky = camera.to_sky(np.array([[x, y]]))[0]
+                ra,dec=np.rad2deg(np.arctan2(sky[1],sky[0]))%360,np.rad2deg(np.arcsin(sky[2]))
+                coordinates.append(dict(detection_id=str(i),star_id=str(i),x_px=x,y_px=y,
+                                        magnitude=5.,catalog_ra_deg=ra,catalog_dec_deg=dec,residual_px=.1))
+                detections.append(dict(detection_id=str(i),saturated='False',source_class='compact',major_sigma_px=1.))
+            Image.fromarray(image).save(source)
+            for output in ('one','two'):
+                destination=root/output; (destination/'dots').mkdir(parents=True)
+                for path,rows in ((destination/'star_coordinates.csv',coordinates),
+                                  (destination/'dots/star_candidates.csv',detections)):
+                    with path.open('w') as handle:
+                        writer=csv.DictWriter(handle,fieldnames=list(rows[0]));writer.writeheader();writer.writerows(rows)
+            result=dict(source=str(source),camera=camera.serialise())
+            poisoned=dict(result,observation=dict(time_utc='not-a-date',latitude_deg=999,longitude_deg=-999))
+            (root/'manifest.jsonl').write_text(json.dumps(dict(filename=source.name,feed='warwick',captured_at='not-a-date'))+'\n')
+            with patch('point_star_science.observation_metadata',side_effect=AssertionError('Metadata used in blind fit')):
+                first=measure_photometry(source,root/'one',result,{})
+                second=measure_photometry(source,root/'two',poisoned,{})
+            self.assertEqual(first['photometric_zenith'],second['photometric_zenith'])
+            self.assertEqual(first['airmass_source'],'blind_photometric_zenith')
+            self.assertFalse(first['metadata_used'])
+            zenith = first['photometric_zenith']
+            green = first['extinction_by_channel']['G']
+            self.assertEqual(green['coefficient_mag_per_airmass'], zenith['extinction_mag_per_airmass'])
+            self.assertEqual(green['intercept_mag'], zenith['intercept_mag'])
+            self.assertEqual(green['fitted_count'], len(zenith['fitted_detection_ids']))
+            self.assertEqual(green['fit_role'], 'zenith_objective')
+            self.assertEqual((root/'one/stellar_photometry.csv').read_text(),(root/'two/stellar_photometry.csv').read_text())
+
+    def test_default_planet_path_cannot_use_a_metadata_search_centre(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch('point_star_science.observation_metadata',side_effect=AssertionError('Metadata used in blind search')):
+                result=fit_planet_epoch('unused',tmp,{'observation':{'time_utc':'2026-01-01'}},{})
+            self.assertEqual(result['status'],'not_run')
+            self.assertIn('blind',result['reason'].lower())
+
+    def test_blind_report_hides_metadata_until_explicit_reveal(self):
+        from point_star_report import observation_metadata
+        result=dict(blind=True, source='/unused/warwick_20260101T000000Z.png',
+                    observation=dict(time_utc='2026-01-01',latitude_deg=28.,longitude_deg=-17.))
+        self.assertEqual(observation_metadata(result),{})
+        revealed=observation_metadata(result,reveal=True)
+        self.assertEqual(revealed['latitude'],28.)
+        self.assertEqual(revealed['observation_time'],'2026-01-01')
+
+    def test_post_fit_latitude_comparison_does_not_change_the_fit(self):
+        from copy import deepcopy
+        from point_star_science import compare_metadata
+        result=dict(blind=True,source='/unused/photo.png',coordinate_epoch_jyear=2000.,
+                    stellar_epoch=dict(status='conditional_epoch',epoch_jyear=2000.),
+                    observation=dict(time_utc='2020-01-01',latitude_deg=30.,longitude_deg=0.))
+        science=dict(photometry=dict(photometric_zenith=dict(status='conditional_zenith',
+                    zenith_unit_vector=[np.sqrt(3)/2,0,.5])))
+        original=deepcopy(result)
+        comparison=compare_metadata(result,science)
+        self.assertAlmostEqual(comparison['derived_latitude_deg'],30.,delta=.001)
+        self.assertAlmostEqual(comparison['stellar_epoch_minus_metadata_years'],-20.,delta=.01)
+        self.assertEqual(result,original)
+        self.assertFalse(comparison['used_in_fit'])

@@ -1,6 +1,6 @@
 # WIDE-FIELD SOLVER
 
-**Version 0.3.0 — integrated proper-motion astrometry.** This version uses the
+**Version 0.3.0 — proper-motion astrometry and blind photometric zenith.** This version uses the
 existing local Tycho/Hipparcos catalogue. `solve.sh` and `analyse.sh` now fit a
 stellar epoch and save the corresponding Barghini camera and propagated
 coordinates. The `v0.1.0` tag and historical reference products remain preserved;
@@ -8,8 +8,10 @@ coordinates. The `v0.1.0` tag and historical reference products remain preserved
 
 See [version 0.3 numerical changes and validation](docs/PROPER_MOTION_V03.md)
 and the [implemented-versus-planned feature inventory](docs/FEATURE_STATUS.md).
-The proposed photometric zenith optimisation is still unimplemented; extinction
-regression currently uses airmasses from supplied site/time metadata.
+The scientific contract is recorded in [GOAL.md](GOAL.md). The analyser now
+searches physical zenith by minimising photometric regression scatter without
+site/time metadata. This is a supporting constraint; the primary objective remains
+blind Barghini astrometry and a stellar epoch with honest uncertainty.
 
 by Peter Thejll and Chris Flynn
 
@@ -104,33 +106,42 @@ For the complete per-image analysis, use the standalone entrypoint:
 ./analyse.sh /path/to/stars.jpg --output results/my-image --offline
 ```
 
-It starts from the image, jointly profiles stellar epoch with the Barghini
-astrometric fit, saves the final propagated coordinates and camera, then measures
-RGB aperture photometry, fits empirical refraction, and fits
-`green machine magnitude - catalogue magnitude = zero point + k * airmass`,
-and matches ephemeris planets to unused measured point sources. One matched
-bright source is retained as a lower-confidence planet candidate; two matches
-can support the epoch and three or more can provide strong evidence.
+It starts from the image, profiles stellar epoch while refitting the Barghini
+camera, and saves consistent propagated coordinates. It then measures RGB
+aperture photometry, searches physical zenith using the green-channel regression
+`machine magnitude - catalogue magnitude = zero point + k * airmass`, and fits an
+independent empirical astrometric-refraction diagnostic. Every trial zenith uses
+the same eligible photometric sources; zero point and extinction slope are
+nuisance parameters. A radial-response sensitivity fit checks one important
+vignetting ambiguity. These downstream diagnostics do not yet jointly constrain
+the saved astrometric epoch.
 
-For an OMRcam archive image, the analyser reads the camera-server time from the
-adjacent `manifest.jsonl` and uses the ORM site. Supply an approximate UTC time
-and site for another image:
+No observing site or time is used by the blind fits. Metadata stays hidden in the
+report unless `--compare-metadata` is supplied. For example:
 
 ```sh
-./analyse.sh /path/to/stars.jpg --output results/my-image --offline \
-  --observation-time 2026-09-13T22:00:00 \
+./analyse.sh /path/to/stars.jpg --output results/my-comparison --offline \
+  --compare-metadata --observation-time 2026-09-13T22:00:00 \
   --latitude 28.7606 --longitude -17.8850 --elevation-m 2326
 ```
 
-The time supplies the centre of a ±366-day planet search; it does not seed the
-stellar-epoch search. The scientific analysis reuses the saved astrometric epoch. The analyser classifies
-the stored channels as RGB or effectively monochrome from their pixel values.
-RGB images receive separate R, G and B photometry/extinction panels; effectively
-monochrome images receive one panel. The report distinguishes a single candidate,
-a supported result and a strong result, and records competing daily minima. `report_<camera>_<UTC>.pdf` has two A4 portrait pages. Page 1 contains two numbered figures,
-Table 1 and short interpretation text. Page 2 contains the fixed lens and refraction
-formulae without image-specific fitted values, for double-sided printing. A boundary-limited stellar epoch or an
-unsupported refraction term is reported as unresolved.
+Only after all fits finish does this option reveal supplied or archived metadata
+and write `metadata_comparison.json`. The comparison includes the epoch difference
+and latitude inferred from the physical zenith and the epoch's celestial pole;
+an unresolved zenith remains explicitly provisional. Metadata never tunes the fit.
+
+A blind planetary-epoch search is a separate, unfinished objective. The default
+analysis records it as `not_run`; the older metadata-centred lookup is disabled
+on this path. The stellar date is not a substitute for this separate planetary
+clock.
+
+The analyser classifies stored channels as RGB or effectively monochrome. RGB
+images receive R, G and B panels; G shows the actual zenith nuisance regression,
+while R and B are post-fit diagnostics. Effectively monochrome images receive
+one panel. `report_<camera>_<UTC>.pdf` has two A4 portrait pages: results on page 1
+and lens/refraction formulae on page 2. A hidden timestamp appears as `UTCunknown`.
+Boundary-limited or weak stellar epoch, zenith and refraction fits are reported
+as unresolved, even when a numerical best fit exists.
 
 For detection alone:
 
@@ -159,10 +170,12 @@ Each complete run produces:
 - `report_<camera>_<UTC>.pdf`: two-page scientific report; results on page 1 and formulae on page 2.
 - `science_summary.json`: stellar epoch, refraction, photometry/extinction and planet results.
 - `stellar_photometry.csv` and `extinction_fit.png`: aperture measurements and the fitted magnitude-difference relation; colour images receive separate R, G and B panels.
-- `report_sky_overlay.png`: readable representative star labels and distinct matched-planet symbols.
+- `photometric_zenith.json` and `photometric_zenith_profile.png`: trial-zenith regression objective, membership and sensitivity results.
+- `metadata_comparison.json`: optional post-fit comparison, only with `--compare-metadata`.
+- `report_sky_overlay.png`: readable representative star labels.
 - `stellar_epoch.json` and `stellar_epoch_profile.png`: all-star robust-cost epoch profile, conditional interval and adopted epoch.
 - `refraction_fit.json`: empirical tangent-series refraction fit and model-selection diagnostics.
-- `planet_epoch.json`, `planet_matches.csv` and `planet_candidates.png`: measured-source planet matches and conditional epoch, when present.
+- `planet_epoch.json`: explicit `not_run` status until blind planetary epoch search is implemented.
 - `dots/`, `bootstrap.json`, `display_names.json`, `labelled_stars.json`: measurement and naming audit.
 
 ## Does the fit deteriorate towards the edge?
@@ -221,10 +234,11 @@ See [method notes](docs/METHOD.md) and [catalogue provenance](data/README.md).
 The reported residuals describe fitted associations selected with a three-pixel
 matching gate. They are not independent accuracy estimates or a completeness
 measurement. The celestial reference direction Z does not establish a local zenith.
-The complete analyser fits an empirical zenith/refraction model from the
-astrometric residuals and uses a supplied or archived site/time for airmass and
-planet ephemerides. Broad and saturated blobs remain measured candidates until
-a stellar or planetary position matches them.
+The complete analyser independently fits empirical astrometric refraction and
+photometric zenith from the image. Neither uses site/time metadata. Their coupling
+to each other and to the stellar-epoch objective remains unfinished. Broad and
+saturated blobs remain available to astrometric association and fitting, even
+when their photometry is unusable.
 
 In our bounded [solve-field comparison](docs/COMPARISON.md), direct full-image
 attempts were unsolved. On a small crop, solve-field with our measured dots

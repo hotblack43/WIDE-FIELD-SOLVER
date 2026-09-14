@@ -1,8 +1,9 @@
 # Version 0.3.0: proper motion in the saved point-source solution
 
 This development version is isolated on `feature/proper-motion-v0.3`. Version
-0.1.0, the original checkout, the catalogue CSV, example image and historical
-reference products remain unchanged. The separate magnitude-depth experiment
+0.1.0, the original checkout runtime, the catalogue CSV, example image and historical
+reference products remain unchanged. GOAL.md and its AGENTS.md link also record
+the scientific contract in the original checkout. The separate magnitude-depth experiment
 has a v2 branch; version 0.3.0 identifies this proper-motion work.
 
 ## Running it
@@ -89,9 +90,10 @@ is shifted cosmetically.
 The regression test reloads the saved camera, independently regenerates the
 propagated sky using Astropy, and reproduces the exported pixels and residuals.
 Science analysis consumes this solution, including its propagated positions for
-refraction targets and airmass. It does not rerun the old split-sample epoch fit.
-Atmospheric and planetary analyses remain conditional downstream diagnostics;
-this change does not claim they remove the systematic errors of the stellar clock.
+refraction targets. Blind photometric airmasses use measured rays from the saved camera. It does not rerun the old split-sample epoch fit.
+Atmospheric analyses remain conditional downstream diagnostics; they do not
+remove the systematic errors of the stellar clock. The metadata-centred planetary
+helper is disabled by default; blind planetary epoch inference remains unfinished.
 
 ## Validation
 
@@ -109,3 +111,40 @@ and unresolved modes and minima just inside search boundaries, and verify saved
 coordinate consistency and output protection. The full unit suite and fresh
 historical demo are required before committing this version. Gaia remains future
 work; neither Gaia data nor new runtime dependencies have been introduced.
+
+
+## Blind photometric zenith and metadata boundary
+
+The supporting method in GOAL.md is now integrated into `analyse.sh`. Fixed
+preselection retains unsaturated compact sources with positive photometric flux,
+finite G/catalogue magnitudes and residual <=1.5 px, then fixes a 75-degree cap
+about their geometric mean ray. This is a search frame, not an assumed zenith.
+All detections remain available to astrometric fitting and all photometry rows
+are saved with explicit membership flags.
+
+For each trial physical zenith, the module calculates Kasten–Young airmasses and
+profiles a nonnegative extinction slope plus zero point using soft-L1 residuals
+with fixed 0.1-mag scale. Nine geometric starts search two direction parameters,
+with all selected sources constrained above 10 degrees. The G regression plot
+uses these exact fitted coefficients and membership; R/B plots are explicitly
+post-fit diagnostics. The cost map subtracts the numerical best objective.
+
+A second fit adds a radial-squared photometric term to assess sensitivity to
+lens response. Conditional status requires sufficient airmass range, positive
+extinction evidence, angular information and minima clear of altitude/search
+boundaries in both fits. Consistent SVD rank checks prevent degenerate coverage
+from producing spurious zero uncertainties. These are diagnostic criteria, not
+calibrated coverage guarantees; arbitrary colour, cloud and flat-field biases
+remain unmodelled. No trial may improve its objective by dropping stars.
+
+The example uses 2432 photometric sources. Its primary numerical minimum has
+k=0.1301 mag/airmass; the radial-response sensitivity minimum reaches the 10-degree
+altitude boundary. Consequently the saved zenith is provisional (`not_identifiable`)
+and is not a validated physical zenith or site latitude. Stellar astrometry is
+unchanged by this downstream addition. Joint coupling remains future work.
+
+The blind report hides metadata by default. Explicit `--compare-metadata` reveals
+it only after the fits finish, then compares stellar epoch and pole–zenith latitude
+without changing any fitted parameter. Tests poison site/time metadata and verify
+identical photometric results. The default planet path cannot read a metadata
+search centre and reports the separate blind planetary objective as unfinished.

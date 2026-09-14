@@ -21,8 +21,10 @@ OMR_SITE = dict(latitude=28.7606, longitude=-17.8850, elevation_m=2326.,
                 site_source='ORM reference location inferred from OMRcam feed')
 
 
-def observation_metadata(result):
-    """Recover saved solver arguments or OMRcam archive provenance."""
+def observation_metadata(result, *, reveal=False):
+    """Recover metadata only for controls or explicitly revealed post-fit validation."""
+    if result.get('blind') and not (reveal or result.get('metadata_revealed')):
+        return {}
     saved = result.get('observation') or {}
     metadata = {}
     if saved.get('time_utc'):
@@ -147,6 +149,7 @@ def report_sections(result, science=None, **legacy):
         + epoch_text
     )
 
+    photometric_zenith = photometry.get('photometric_zenith') or {}
     if refraction:
         status = refraction.get('status', 'unknown').replace('_', ' ')
         atmosphere = (
@@ -159,6 +162,9 @@ def report_sections(result, science=None, **legacy):
         )
     else:
         atmosphere = 'The empirical refraction fit has not been run.'
+    if photometric_zenith:
+        atmosphere += (f" Blind photometric zenith: {photometric_zenith.get('status', 'unknown').replace('_', ' ')}. "
+                       'Extinction is a constraint; unresolved zenith gives provisional airmasses.')
     if extinction_by_channel:
         channel_values = ', '.join(
             f"{channel}: {_fmt(values.get('coefficient_mag_per_airmass'))}±"
@@ -198,7 +204,7 @@ def report_sections(result, science=None, **legacy):
     elif planets.get('status') == 'no_planet_match':
         planet_text = 'No ephemeris planet matched an unused measured point source within the stated search gate.'
     else:
-        planet_text = 'The planet search was unavailable because it lacked unused sources or an epoch search centre.'
+        planet_text = planets.get('reason', 'A blind planetary epoch has not been established.')
     return dict(lens=lens, astrometry=astrometry, atmosphere=atmosphere, planets=planet_text)
 
 
@@ -471,8 +477,8 @@ def write_report(output, result, *, science=None, **unused):
 
     source = Path(result.get('source', 'image')).name
     metadata = observation_metadata(result)
-    provenance = metadata.get('observation_time', 'observation time unavailable')
-    fig.suptitle(f'Wide-field image solution: {source}\nObservation time: {provenance}',
+    provenance = metadata.get('observation_time', 'hidden during blind solving' if result.get('blind') else 'unavailable')
+    fig.suptitle(f'Wide-field image solution: {source}\nMetadata time (not inferred): {provenance}',
                  fontsize=11.5, weight='bold')
     path = output/report_filename(result)
     metadata_pdf = {

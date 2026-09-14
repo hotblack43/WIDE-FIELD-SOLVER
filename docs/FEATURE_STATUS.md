@@ -11,13 +11,15 @@ must not describe a proposal as working merely because related products exist.
 | Proper-motion propagation in the final astrometric solution | Added in 0.3.0 | Shared catalogue propagation, synthetic recovery and exported-coordinate checks |
 | Stellar epoch fitted with all associations; final camera saved | Added in 0.3.0 | All-star robust profile; conditional or provisional date status |
 | RGB instrumental photometry | Implemented | Aperture fluxes and flags retained in stellar_photometry.csv |
-| Extinction regression using site/time-derived airmass | Implemented downstream | Requires supplied/recovered metadata; not a constraint on the stellar epoch objective |
-| Zenith estimated by minimising photometric regression scatter | **Not implemented** | Exact proposal recorded 13 September in PHOTOMETRY_ZENITH_EXTINCTION_NOTE.md |
+| Extinction as nuisance regression in blind zenith search | Added in 0.3.0 | Fixed membership; no site/time-derived airmass; G plot uses the exact fitted line |
+| Zenith estimated by minimising photometric regression scatter | Added in 0.3.0; conditional component | Synthetic recovery and degeneracy tests; real example remains unresolved under the radial-response check |
 | Zenith fitted through astrometric refraction residuals | Implemented downstream diagnostic | Different objective from photometric zenith; does not establish that photometric proposal works |
 | Joint photometric zenith/extinction and astrometric epoch constraint | **Not implemented** | Not part of the 0.3.0 proper-motion bugfix; must be designed and tested explicitly |
+| Blind planetary epoch | **Not implemented** | Default metadata-centred lookup disabled; a separate blind positional search remains required |
+| Post-fit metadata comparison, including pole–zenith latitude | Added in 0.3.0 | Explicit `--compare-metadata`; no refit, uncertainty/status retained |
 | Gaia reference catalogue | **Not implemented** | Compatibility assessed; current data remain Tycho-2 plus Hipparcos |
 
-## Photometric zenith proposal: provenance and missing step
+## Photometric zenith proposal: provenance and implementation
 
 Commit 8247c33 (13 September 2026, 13:16 CEST) records Peter's proposed outer loop:
 for each candidate physical zenith, calculate airmasses; regress instrumental
@@ -32,11 +34,19 @@ It obtains altitudes from site/time metadata and regresses dimming on those
 fixed airmasses. There is no outer photometric zenith search. The v2 catalogue-
 depth branch does not add one either. No deletion of such a working loop was
 found in the available point-source repository history; versions or work outside
-that history have not been established. Version 0.3.0 does not remove the proposal
-or claim to implement it.
+that history have not been established. The new version 0.3.0 implementation now supplies the missing outer loop in
+`point_star_zenith.py`, called by `measure_photometry`. It preserves all measurement
+rows while fixing the eligible photometric sample before the search.
 
-Before calling this method implemented, test recovery of synthetic zenith with
-unknown regression slope/zero point; use the same usable stars across candidate
-zeniths; demonstrate unresolved behavior for insufficient extinction/coverage;
-and test sensitivity to vignetting, colours and clouds. If this constraint later
-changes the astrometric fit, it must propagate into the saved camera and coordinates.
+Synthetic tests recover a known zenith with unknown zero point and extinction,
+and reject weak extinction, insufficient coverage, coincident/nearly collinear
+rays, a search-boundary solution and vignetting-only data. Metadata-independence
+tests alter or poison the date/site and assert identical photometric products.
+The preserved example fits 2432 photometric sources but remains unresolved because
+the radial-response sensitivity solution reaches the altitude boundary. General
+colour, cloud and lens-response biases still require scientific validation.
+
+This is an integrated downstream photometric constraint, not a joint photometric/
+refraction/epoch solution. If its future coupling changes astrometry, that change
+must propagate into the saved Barghini camera and coordinates. See `GOAL.md` for
+the durable scientific requirements.

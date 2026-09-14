@@ -349,7 +349,7 @@ def run(image_path, output, catalog_path, *, label_count=40, names_cache=None, o
           'validation or a completeness measurement. No date, terrestrial orientation, '
           'proper-motion epoch or atmospheric-refraction solution is claimed.',
         elapsed_seconds=time.monotonic()-started)
-    result.update(solver_version=SOLVER_VERSION, epoch_mode=epoch_mode,
+    result.update(solver_version=SOLVER_VERSION, epoch_mode=epoch_mode, blind=epoch_mode != 'fixed',
                   coordinate_frame='ICRS')
     if stellar_epoch is not None:
         result['stellar_epoch'] = stellar_epoch
@@ -410,7 +410,7 @@ def run(image_path, output, catalog_path, *, label_count=40, names_cache=None, o
     result['code_sha256'] = {name:hashlib.sha256((Path(__file__).parent/name).read_bytes()).hexdigest()
         for name in ['point_star_detection.py', 'point_star_barghini.py', 'barghini_model.py',
                      'point_star_names.py', 'point_star_diagnostics.py', 'point_star_report.py',
-                     'point_star_epoch.py']}
+                     'point_star_epoch.py', 'point_star_zenith.py', 'point_star_science.py']}
     if observation_time is not None:
         result['observation'] = dict(time_utc=observation_time, latitude_deg=latitude,
             longitude_deg=longitude, elevation_m=elevation_m, pressure_hpa=pressure_hpa,
