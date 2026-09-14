@@ -23,6 +23,7 @@ from scipy.spatial import cKDTree
 from barghini_model import (
     BarghiniParameters, detector_to_horizontal, horizontal_to_detector, radial_du_dr)
 from point_star_detection import write_products
+from point_star_plotting import save_png
 
 
 def vectors(ra, dec):
@@ -213,7 +214,7 @@ def annotate_stars(image_path, records, output, count=40, *, names_cache=None, o
     ax.set_xlim(-.5, rgb.shape[1]-.5); ax.set_ylim(rgb.shape[0]-.5, -.5)
     ax.set_title(f'Barghini point-star solution — {len(selected)} identified stars')
     ax.axis('off')
-    fig.tight_layout(); fig.savefig(output/f'identified_{len(selected)}_stars.png', dpi=160); plt.close(fig)
+    fig.tight_layout(); save_png(fig, output/f'identified_{len(selected)}_stars.png', dpi=160); plt.close(fig)
     (output/'labelled_stars.json').write_text(json.dumps(dict(
         selection='bright compact catalogue matches; residual < 1 pixel; farthest-point spatial coverage',
         stars=selected), ensure_ascii=False, indent=2)+'\n')

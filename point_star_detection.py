@@ -14,6 +14,8 @@ import numpy as np
 from PIL import Image
 from scipy.ndimage import gaussian_filter, label, maximum_filter
 
+from point_star_plotting import save_png
+
 
 def detect_stars(image, detection_sigma=6., background_sigma=10.):
     pixels = np.asarray(image, dtype=float)
@@ -171,7 +173,7 @@ def write_products(image_path, output, detection_sigma=6., background_sigma=10.)
     ax.set_xlim(-.5, rgb.shape[1]-.5)
     ax.set_ylim(rgb.shape[0]-.5, -.5)
     fig.tight_layout()
-    fig.savefig(output/'dots_overlay.png', dpi=180)
+    save_png(fig, output/'dots_overlay.png', dpi=180)
     plt.close(fig)
     # Sample the complete brightness distribution, not just the most obvious stars.
     if stars:
@@ -189,7 +191,7 @@ def write_products(image_path, output, detection_sigma=6., background_sigma=10.)
             ax.set_title(f"#{s['detection_id']} {s['source_class']}" + (' SAT' if s['saturated'] else ''), fontsize=6)
         fig.suptitle('Candidate cutouts spanning the brightness ranking')
         fig.tight_layout()
-        fig.savefig(output/'candidate_cutouts.png', dpi=140)
+        save_png(fig, output/'candidate_cutouts.png', dpi=140)
         plt.close(fig)
     np.savez_compressed(output/'background_diagnostics.npz',
                         background=audit['background'].astype('float32'),

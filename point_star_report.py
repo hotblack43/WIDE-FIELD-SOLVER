@@ -13,6 +13,8 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 import numpy as np
 
+from point_star_plotting import save_png
+
 
 OMR_FEEDS = {'murdoc', 'gtc1', 'gtc2', 'liverpool', 'magic', 'warwick'}
 OMR_SITE = dict(latitude=28.7606, longitude=-17.8850, elevation_m=2326.,
@@ -297,7 +299,7 @@ def write_report_sky_overlay(output, result, science, maximum_labels=24):
     ax.axis('off')
     fig.tight_layout(pad=.05)
     target = output/'report_sky_overlay.png'
-    fig.savefig(target, dpi=190, bbox_inches='tight', pad_inches=.02)
+    save_png(fig, target, dpi=190, bbox_inches='tight', pad_inches=.02)
     plt.close(fig)
     return target
 

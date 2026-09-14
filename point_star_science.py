@@ -15,6 +15,7 @@ from scipy.optimize import minimize_scalar
 from scipy.spatial import cKDTree
 
 from point_star_barghini import fit_camera, vectors
+from point_star_plotting import save_png
 from point_star_refraction import fit_atmospheric_refraction
 from point_star_report import _camera_from_result, observation_metadata
 
@@ -107,7 +108,7 @@ def fit_stellar_epoch(solution, result, catalogue_path, year_limits=(1850., 2150
     ax.axvline(best_year, color='tab:red', linestyle='--')
     ax.set(xlabel='Trial epoch (Julian year)', ylabel='Withheld RMS [pixel]',
            title=f'Stellar proper-motion epoch: {status}')
-    fig.tight_layout(); fig.savefig(solution/'stellar_epoch_profile.png', dpi=160); plt.close(fig)
+    fig.tight_layout(); save_png(fig, solution/'stellar_epoch_profile.png', dpi=160); plt.close(fig)
     return output
 
 
@@ -310,7 +311,7 @@ def measure_photometry(image_path, solution, result, refraction):
             ax.grid(alpha=.2)
         fig.suptitle('Atmospheric-extinction fits by stored image channel', fontsize=10)
         fig.tight_layout()
-        fig.savefig(solution/'extinction_fit.png', dpi=180)
+        save_png(fig, solution/'extinction_fit.png', dpi=180)
         plt.close(fig)
 
     with (solution/'stellar_photometry.csv').open('w', newline='') as handle:
@@ -468,7 +469,7 @@ def fit_planet_epoch(image_path, solution, result, stellar_epoch, search_days=36
         ax.annotate(f"{match['planet']} #{match['detection_id']}",(match['measured_x_px'],match['measured_y_px']),
                     xytext=(8,8),textcoords='offset points',color='cyan')
     ax.set_title(f"Planet matches: {confidence}; derived epoch {epoch.utc.isot} UTC")
-    ax.set_xlim(-.5,rgb.shape[1]-.5);ax.set_ylim(rgb.shape[0]-.5,-.5);fig.tight_layout();fig.savefig(solution/'planet_candidates.png',dpi=160);plt.close(fig)
+    ax.set_xlim(-.5,rgb.shape[1]-.5);ax.set_ylim(rgb.shape[0]-.5,-.5);fig.tight_layout();save_png(fig, solution/'planet_candidates.png',dpi=160);plt.close(fig)
     return output
 
 

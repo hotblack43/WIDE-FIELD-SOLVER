@@ -11,6 +11,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from PIL import Image
 
+from point_star_plotting import save_png
+
 
 def radial_statistics(measured, predicted, shape, bin_width=200.):
     measured, predicted = np.asarray(measured, dtype=float), np.asarray(predicted, dtype=float)
@@ -78,7 +80,7 @@ def write_diagnostics(image_path, measured, predicted, output, *, unmatched=None
     report = radial_statistics(measured, predicted, rgb.shape[:2])
     report['unmatched_detections_shown'] = len(unmatched) if unmatched is not None else 0
     fig = create_overlay(rgb, measured, predicted, unmatched=unmatched)
-    fig.savefig(output/'astrometry_overlay.png', dpi=220)
+    save_png(fig, output/'astrometry_overlay.png', dpi=220)
     plt.close(fig)
     centre = np.asarray(report['centre_xy_px'])
     radius = np.linalg.norm(measured-centre, axis=1)
@@ -122,7 +124,7 @@ def write_diagnostics(image_path, measured, predicted, output, *, unmatched=None
     ax.grid(alpha=.2)
     ax.legend(loc='upper left', bbox_to_anchor=(0, .91), fontsize=9)
     fig.supxlabel('Fitted associations only; no additional clipping. Empty regions and unmatched detections are untested.', fontsize=10)
-    fig.savefig(output/'astrometry_residuals.png', dpi=180)
+    save_png(fig, output/'astrometry_residuals.png', dpi=180)
     plt.close(fig)
     (output/'radial_residuals.json').write_text(json.dumps(report, indent=2, allow_nan=False)+'\n')
     with (output/'radial_residuals.csv').open('w', newline='') as handle:

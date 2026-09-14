@@ -226,6 +226,9 @@ The tests cover subpixel centroids, saturated blobs, streak rejection, forward
 and inverse geometry, recovery of a synthetic distorted field, spatial label
 selection, offline names and rejection of degraded regression results.
 
+See the [performance profile](docs/PERFORMANCE.md) for measured runtime
+hotspots and the lossless PNG-encoding optimization.
+
 ## Future extensions
 
 - Extend the current single-passband extinction fit with catalogue colours,
