@@ -1,6 +1,7 @@
 """One-page scientific PDF for a completed point-source Barghini analysis."""
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 import re
@@ -209,6 +210,20 @@ def report_sections(result, science=None, **legacy):
     return dict(lens=lens, astrometry=astrometry, atmosphere=atmosphere, planets=planet_text)
 
 
+def catalogue_label(result):
+    """Identify the fitted catalogue from its saved content checksum."""
+    checksum = result.get('catalogue_sha256')
+    if not checksum:
+        return 'Unrecorded catalogue'
+    references = [('stars_gaia_dr3_g75.csv', 'Gaia DR3 + bright Tycho-2/Hipparcos supplement'),
+                  ('stars_tycho2_mag75.csv', 'Tycho-2 + bright Hipparcos supplement')]
+    for filename, label in references:
+        path = Path(__file__).parent/'data'/filename
+        if path.is_file() and hashlib.sha256(path.read_bytes()).hexdigest() == checksum:
+            return label
+    return 'Unrecognized catalogue (see saved catalogue checksum)'
+
+
 def table_rows(result, science):
     fit = result['fit']
     p = result['camera']['parameters']
@@ -240,6 +255,7 @@ def table_rows(result, science):
         extinction_value = '--'
     image_kind = (photometry.get('image_colour') or {}).get('classification', '--')
     return [
+        ('Catalogue', catalogue_label(result)),
         ('Astrometry', f"{fit['count']}/{result['detection_count']} associations/detections; "
                        f"RMS {_fmt(fit['rms_px'])} px"),
         ('Lens', f"O=({_fmt(p['x_o'],1)},{_fmt(p['y_o'],1)}) px; "
