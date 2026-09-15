@@ -1,4 +1,10 @@
-Use `./go4.sh /full/path/to/image.jpg` for the latest v4 (currently 0.4.1).
+Latest v4: `./go4.sh /full/path/to/image.jpg` now selects **0.4.2**.
+It attempts a blind planetary date search across 1850–2150 and reports competing
+dates/identities. The first run builds a local reference ephemeris cache (about
+three minutes); later runs reuse it. Use `go_v0.4.2.sh` to pin this release.
+`go.sh` and earlier versioned launchers retain their established behavior.
+
+Use `./go4.sh /full/path/to/image.jpg` for the latest v4 (currently 0.4.2).
 The original root `go.sh` remains pinned to v0.4.0.
 
 Version 0.4.1: use `./go_v0.4.1.sh /full/path/to/image.jpg`.
@@ -6,7 +12,7 @@ The preserved `go.sh` belongs to v0.4.0; use it from the original root checkout.
 Gaia magnitude 7.5, horizon-inclusive extinction fitting, explicit saturation
 flags, and a red X for the conditional/provisional extinction zenith are enabled.
 Saturated stars remain eligible for astrometry but are excluded from photometry.
-The blind planet search remains unfinished; reports state when it was not run.
+The blind planet search is now attempted; ambiguous results retain all positional date/identity candidates.
 
 # WIDE-FIELD SOLVER
 

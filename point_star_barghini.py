@@ -27,7 +27,7 @@ from point_star_detection import write_products
 from point_star_plotting import save_png
 
 
-SOLVER_VERSION = '0.4.1'
+SOLVER_VERSION = '0.4.2'
 
 
 def vectors(ra, dec):

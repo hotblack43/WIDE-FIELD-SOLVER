@@ -93,10 +93,12 @@ class BlindPhotometryTests(unittest.TestCase):
 
     def test_default_planet_path_cannot_use_a_metadata_search_centre(self):
         with tempfile.TemporaryDirectory() as tmp:
-            with patch('point_star_science.observation_metadata',side_effect=AssertionError('Metadata used in blind search')):
-                result=fit_planet_epoch('unused',tmp,{'observation':{'time_utc':'2026-01-01'}},{})
-            self.assertEqual(result['status'],'not_run')
-            self.assertIn('blind',result['reason'].lower())
+            expected = {'status': 'planet_epoch_ambiguous', 'metadata_used': False}
+            with patch('point_star_science.observation_metadata', side_effect=AssertionError('Metadata used')), \
+                 patch('point_star_planets.fit_blind_planet_epoch', return_value=expected) as search:
+                result = fit_planet_epoch('unused', tmp, {'observation': {'time_utc': 'poison'}}, {'epoch_jyear': 2100})
+            self.assertEqual(result, expected)
+            self.assertEqual(len(search.call_args.args), 3)
 
     def test_blind_report_hides_metadata_until_explicit_reveal(self):
         from point_star_report import observation_metadata

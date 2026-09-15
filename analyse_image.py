@@ -61,7 +61,7 @@ def main():
     print(f"Stellar epoch: {science['stellar_epoch']['status']}")
     print(f"Refraction: {science['refraction']['status']}")
     print(f"Extinction: {science['photometry']['extinction_status']}")
-    print(f"Planet epoch: {planets.get('derived_epoch_utc', planets['status'])} "
+    print(f"Planet epoch: {planets.get('derived_epoch_utc') or planets.get('best_candidate_epoch_tdb') or planets['status']} "
           f"[{planets.get('confidence', 'none')}]")
 
 

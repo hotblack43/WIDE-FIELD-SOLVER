@@ -317,12 +317,10 @@ def planet_confidence(match_count, random_expectation, bright_single=True):
 
 
 def fit_planet_epoch(image_path, solution, result, stellar_epoch, search_days=366, gate_px=3., *, allow_metadata=False):
-    """Legacy metadata-assisted diagnostic; excluded from the blind default."""
+    """Blind planetary search by default; legacy control requires explicit opt-in."""
     if not allow_metadata:
-        output = dict(status='not_run', matches=[], metadata_used=False,
-                      reason='Blind planetary epoch search is a separate unfinished objective; metadata-seeded lookup disabled')
-        (Path(solution)/'planet_epoch.json').write_text(json.dumps(output, indent=2)+'\n')
-        return output
+        from point_star_planets import fit_blind_planet_epoch
+        return fit_blind_planet_epoch(image_path, solution, result)
     from astropy import units as u
     from astropy.coordinates import AltAz, EarthLocation
     from astropy.time import Time

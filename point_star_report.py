@@ -192,18 +192,29 @@ def report_sections(result, science=None, **legacy):
     if matches:
         descriptions = [
             f"{row['planet']} at source #{row['detection_id']} "
-            f"({_fmt(row['separation_px'], 2)} px; unused-source brightness rank "
+            f"({_fmt(row['separation_px'], 2)} px; source brightness rank "
             f"{row.get('unused_brightness_rank', '--')})"
             for row in matches
         ]
-        planet_text = (
-            f"{'; '.join(descriptions)}. The planet-derived epoch is "
-            f"{planets.get('derived_epoch_utc', '--')} with {planets.get('confidence', 'unknown')} "
-            f"confidence and conditional local σ={_fmt(planets.get('conditional_time_sigma_minutes'), 1)} min. "
-            f"There are {planets.get('competing_daily_minima', 0)} competing daily minima in the search interval."
-        )
+        if planets.get('status') in ('planet_epoch_ambiguous', 'conditional_planet_epoch'):
+            planet_text = (
+                f"Blind positional candidates: {'; '.join(descriptions)}. "
+                + (f"Alternative identities: {', '.join(sorted({name for values in planets.get('source_identity_alternatives', {}).values() for name in values}))}. "
+                   if planets.get('source_identity_alternatives') else '') +
+                f"Best candidate: {planets.get('best_candidate_epoch_tdb', '--')}. "
+                f"{planets.get('candidate_count', 0)} date/identity solutions retained. "
+                f"Status: {planets['status'].replace('_', ' ')}. "
+                "Local precision does not resolve alternative dates or model errors. "
+                "See planet_candidates.csv and planet_source_candidates.csv.")
+        else:
+            planet_text = (
+                f"{'; '.join(descriptions)}. The planet-derived epoch is "
+                f"{planets.get('derived_epoch_utc', '--')} with {planets.get('confidence', 'unknown')} "
+                f"confidence and conditional local σ={_fmt(planets.get('conditional_time_sigma_minutes'), 1)} min. "
+                f"There are {planets.get('competing_daily_minima', 0)} competing daily minima in the search interval."
+            )
     elif planets.get('status') == 'no_planet_match':
-        planet_text = 'No ephemeris planet matched an unused measured point source within the stated search gate.'
+        planet_text = 'No competitive planet match survived the measured-source and catalogue checks.'
     else:
         planet_text = planets.get('reason', 'A blind planetary epoch has not been established.')
     return dict(lens=lens, astrometry=astrometry, atmosphere=atmosphere, planets=planet_text)
@@ -230,6 +241,9 @@ def table_rows(result, science):
         ('No matched planet' if planets.get('status') == 'no_planet_match' else
          'Not run — blind planet search unavailable' if planets.get('status') == 'not_run' else
          planets.get('status', 'Not run').replace('_', ' ')))
+    if planets.get('status') in ('planet_epoch_ambiguous', 'conditional_planet_epoch'):
+        label = 'Ambiguous' if planets['status'] == 'planet_epoch_ambiguous' else 'Conditional candidate'
+        planet_value = f"{label}; {planets.get('candidate_count', 0)} date/identity solutions; {planets.get('match_count', 0)} planet(s) in best candidate"
     if by_channel:
         extinction_value = '; '.join(
             f"k{channel}={_fmt(values.get('coefficient_mag_per_airmass'))} ± "
@@ -339,7 +353,8 @@ def write_report_sky_overlay(output, result, science, maximum_labels=24):
     for row in planets:
         x, y = float(row['measured_x_px']), float(row['measured_y_px'])
         ax.plot(x, y, marker='*', ms=15, mfc='#ff3bd5', mec='white', mew=.8)
-        ax.annotate(row['planet'], (x, y), xytext=(10, 9), textcoords='offset points',
+        ax.annotate('/'.join((science.get('planets') or {}).get('source_identity_alternatives', {}).get(str(row['detection_id']), [row['planet']])) + ('?' if (science.get('planets') or {}).get('status') in
+                    ('planet_epoch_ambiguous', 'conditional_planet_epoch') else ''), (x, y), xytext=(10, 9), textcoords='offset points',
                     fontsize=9, weight='bold', color='white',
                     bbox=dict(boxstyle='round,pad=.2', fc='#a00078', ec='white', alpha=.9),
                     arrowprops=dict(arrowstyle='-', color='white', lw=.7))
@@ -350,7 +365,8 @@ def write_report_sky_overlay(output, result, science, maximum_labels=24):
     if planets:
         handles.append(Line2D([], [], marker='*', linestyle='none', markersize=11,
                               markerfacecolor='#ff3bd5', markeredgecolor='white',
-                              label='matched planet'))
+                              label='planet candidate' if (science.get('planets') or {}).get('status') in
+                              ('planet_epoch_ambiguous', 'conditional_planet_epoch') else 'matched planet'))
     zenith_marker = _draw_photometric_zenith(
         ax, result, science, native_image=source.is_file())
     if zenith_marker is not None:
@@ -540,6 +556,29 @@ def write_report(output, result, *, science=None, **unused):
     with PdfPages(path, metadata=metadata_pdf) as pdf:
         pdf.savefig(fig)
         pdf.savefig(reverse)
+        epochs_plot = output/'planet_epoch_candidates.png'
+        if epochs_plot.is_file():
+            appendix = plt.figure(figsize=(8.27, 11.69))
+            appendix.suptitle('Blind planetary epoch candidates', fontsize=14, weight='bold')
+            axis = appendix.add_axes([.07, .50, .86, .42])
+            _show_image(axis, epochs_plot, 'Candidate dates and positional residuals')
+            planets = science.get('planets') or {}
+            rows = []
+            for rank, candidate in enumerate(planets.get('candidates', [])[:16], 1):
+                bodies = '/'.join(sorted({m['planet'] for m in candidate['matches']}))
+                rows.append([rank, candidate['epoch_tdb'].replace(' TDB', ''), bodies,
+                             _fmt(candidate['rms_px'], 3)])
+            axis = appendix.add_axes([.07, .10, .86, .34]); axis.axis('off')
+            axis.set_title('First 16 candidates by positional ranking; all dates are printed and saved', fontsize=8)
+            if rows:
+                table = axis.table(cellText=rows, colLabels=['Rank', 'Candidate date (TDB)', 'Planet(s)', 'RMS px'],
+                                   colWidths=[.08, .49, .28, .15], cellLoc='left', loc='upper center', bbox=(0, 0, 1, 1))
+                table.auto_set_font_size(False); table.set_fontsize(7)
+            appendix.text(.07, .045, 'All candidates: planet_epoch_candidates.txt and planet_candidates.csv.\n'
+                          'One planet can admit several dates and identities; local precision does not resolve these alternatives.',
+                          fontsize=8)
+            pdf.savefig(appendix)
+            plt.close(appendix)
     plt.close(fig)
     plt.close(reverse)
     return path

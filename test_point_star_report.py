@@ -100,6 +100,21 @@ class ReportTests(unittest.TestCase):
         self.assertIn('Jupiter', with_planet['planets'])
         self.assertIn('single_planet_candidate', with_planet['planets'])
 
+    def test_ambiguous_blind_planets_are_not_reported_as_a_determined_epoch(self):
+        from point_star_report import table_rows
+        science = {'planets': {'status': 'planet_epoch_ambiguous', 'matches': [
+            {'planet': 'Saturn', 'detection_id': 7, 'separation_px': .4, 'unused_brightness_rank': 1}],
+            'match_count': 1, 'candidate_count': 12, 'derived_epoch_utc': None,
+            'best_candidate_epoch_tdb': '2000-01-01T00:00:00 TDB',
+            'conditional_time_sigma_minutes': 120.}}
+        text = report_sections(self.sample_result(), science)['planets']
+        self.assertIn('candidate', text.lower())
+        self.assertIn('12', text)
+        self.assertNotIn('epoch is None', text)
+        row = dict(table_rows(self.sample_result(), science))['Planet epoch']
+        self.assertIn('Ambiguous', row)
+        self.assertNotIn('None', row)
+
     def test_collector_manifest_supplies_epoch_and_orm_site(self):
         with tempfile.TemporaryDirectory() as directory:
             feed = Path(directory)/'liverpool'
