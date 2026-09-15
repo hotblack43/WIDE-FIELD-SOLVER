@@ -52,6 +52,45 @@ class BlindPhotometryTests(unittest.TestCase):
             self.assertEqual(green['fit_role'], 'zenith_objective')
             self.assertEqual((root/'one/stellar_photometry.csv').read_text(),(root/'two/stellar_photometry.csv').read_text())
 
+    def test_unsaturated_identified_sources_enter_fixed_sample_with_explicit_flags(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root/'dots').mkdir()
+            image = np.full((400, 400, 3), 10, dtype=np.uint8)
+            camera = BarghiniCamera.initial((400, 400), 130, np.eye(3))
+            coordinates, detections = [], []
+            for i, (x, y) in enumerate([(25, 200), (375, 200), (200, 25), (200, 375), (200, 200)]):
+                if i != 4:
+                    image[y-1:y+2, x-1:x+2] = 90
+                coordinates.append(dict(detection_id=str(i), star_id=str(i), x_px=x, y_px=y,
+                                        magnitude=5., residual_px=3.))
+                detections.append(dict(detection_id=str(i), saturated='True' if i == 0 else 'False',
+                                       source_class='broad', major_sigma_px=1.))
+            Image.fromarray(image).save(root/'source.png')
+            for path, rows in ((root/'star_coordinates.csv', coordinates),
+                               (root/'dots/star_candidates.csv', detections)):
+                with path.open('w') as handle:
+                    writer = csv.DictWriter(handle, fieldnames=list(rows[0]))
+                    writer.writeheader(); writer.writerows(rows)
+            unresolved = dict(status='not_identifiable', zenith_unit_vector=None,
+                              reason='Too few sources for this fixture', fitted_count=3)
+            with patch('point_star_zenith.fit_photometric_zenith', return_value=unresolved) as fit:
+                answer = measure_photometry(root/'source.png', root, {'camera': camera.serialise()}, {})
+            self.assertEqual(len(fit.call_args.args[0]), 3)
+            self.assertEqual(answer['photometric_zenith']['fitted_detection_ids'], ['1', '2', '3'])
+            with (root/'stellar_photometry.csv').open() as handle:
+                rows = list(csv.DictReader(handle))
+            self.assertEqual(len(rows), 5)
+            self.assertEqual(rows[0]['saturated'], 'True')
+            self.assertEqual(rows[0]['photometric_zenith_exclusion_reason'], 'saturated')
+            self.assertEqual(rows[0]['photometry_usable'], 'False')
+            self.assertEqual(rows[0]['G_used_for_extinction'], 'False')
+            self.assertTrue(np.isnan(float(rows[0]['G_mag'])))
+            self.assertEqual(rows[1]['photometry_usable'], 'True')
+            with (root/'star_coordinates.csv').open() as handle:
+                self.assertEqual(len(list(csv.DictReader(handle))), 5)
+            self.assertEqual(rows[4]['photometric_zenith_exclusion_reason'], 'nonpositive_or_nonfinite_G_flux')
+
     def test_default_planet_path_cannot_use_a_metadata_search_centre(self):
         with tempfile.TemporaryDirectory() as tmp:
             with patch('point_star_science.observation_metadata',side_effect=AssertionError('Metadata used in blind search')):

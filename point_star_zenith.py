@@ -10,8 +10,9 @@ from scipy.optimize import minimize
 def airmass(altitude_deg):
     altitude = np.asarray(altitude_deg, dtype=float)
     answer = np.full(altitude.shape, np.nan)
-    valid = altitude > 0.
-    z = 90.-altitude[valid]
+    # Allow only sub-microdegree roundoff from the constrained horizon fit.
+    valid = (altitude >= -1e-7) & (altitude <= 90.)
+    z = 90.-np.maximum(altitude[valid], 0.)
     answer[valid] = 1./(np.cos(np.deg2rad(z))+.50572*(96.07995-z)**-1.6364)
     return answer
 
@@ -28,7 +29,7 @@ def fit_photometric_zenith(rays, dimming, radial_squared, *, loss_scale_mag=.1):
     record = dict(status='not_identifiable', zenith_unit_vector=None,
                   fitted_count=nstars, withheld_count=0, metadata_used=False,
                   method='blind trial zenith; robust magnitude-difference versus airmass regression',
-                  loss_scale_mag=loss_scale_mag, candidate_profile=[],
+                  loss_scale_mag=loss_scale_mag, minimum_allowed_altitude_deg=0., candidate_profile=[],
                   limitation='Conditional on a uniform atmosphere and catalogue/image photometry. '
                     'Colours, clouds, JPEG response and lens response may bias the zenith. '
                     'A fitted extinction slope alone does not establish a physical zenith.')
@@ -51,7 +52,7 @@ def fit_photometric_zenith(rays, dimming, radial_squared, *, loss_scale_mag=.1):
     east = np.cross(axis, centre); east /= np.linalg.norm(east)
     north = np.cross(centre, east)
     basis = np.column_stack([east, north])
-    minimum_sine = np.sin(np.deg2rad(10.))
+    minimum_sine = 0.  # Include the horizon; never drop low-altitude stars.
 
     def zenith(parameters):
         vector = centre + basis@np.asarray(parameters)
@@ -92,7 +93,7 @@ def fit_photometric_zenith(rays, dimming, radial_squared, *, loss_scale_mag=.1):
         for seed in seeds:
             opt = minimize(objective, seed, method='SLSQP', bounds=[(-2., 2.)]*2,
                            constraints=constraints, options={'maxiter': 200, 'ftol': 1e-10})
-            if opt.success and np.min(rays@zenith(opt.x)) >= minimum_sine-1e-7:
+            if opt.success and np.min(rays@zenith(opt.x)) >= minimum_sine-1e-9:
                 solutions.append(opt)
         if not solutions:
             return None
@@ -136,7 +137,7 @@ def fit_photometric_zenith(rays, dimming, radial_squared, *, loss_scale_mag=.1):
     primary = optimise(False)
     sensitivity = optimise(True)
     if primary is None or sensitivity is None:
-        record['reason'] = 'No converged zenith keeps the fixed photometric sample above 10 degrees'
+        record['reason'] = 'No converged zenith keeps the fixed photometric sample at or above the horizon'
         return record
     selected = primary
     angle = float(np.rad2deg(np.arccos(np.clip(np.dot(primary['zenith_unit_vector'], sensitivity['zenith_unit_vector']), -1, 1))))
@@ -150,8 +151,8 @@ def fit_photometric_zenith(rays, dimming, radial_squared, *, loss_scale_mag=.1):
             reasons.append(f'{label} fit has insufficient airmass range')
         if fit['search_boundary_limited']:
             reasons.append(f'{label} minimum is limited by the angular search boundary')
-        if fit['minimum_altitude_deg'] < 10.1:
-            reasons.append(f'{label} minimum is limited by the altitude boundary')
+        if fit['minimum_altitude_deg'] < .01:
+            reasons.append(f'{label} minimum is limited by the horizon boundary')
     if angle > max(3., 3*np.hypot(primary['conditional_sigma_deg'] or 180., sensitivity['conditional_sigma_deg'] or 180.)):
         reasons.append('Zenith changes under the radial-response sensitivity fit')
     record.update(selected, status='not_identifiable' if reasons else 'conditional_zenith',

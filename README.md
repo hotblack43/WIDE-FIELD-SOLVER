@@ -1,7 +1,13 @@
+Version 0.4.1: use `./go_v0.4.1.sh /full/path/to/image.jpg` (or `./go.sh`).
+Gaia magnitude 7.5, horizon-inclusive extinction fitting, explicit saturation
+flags, and a red X for the conditional/provisional extinction zenith are enabled.
+Saturated stars remain eligible for astrometry but are excluded from photometry.
+The blind planet search remains unfinished; reports state when it was not run.
+
 # WIDE-FIELD SOLVER
 
-**Version 0.4.0 — Gaia/Tycho catalogue comparison.** This isolated development
-version adds a local Gaia DR3 catalogue and a reproducible same-image experiment,
+**Version 0.4.1 — horizon photometry and zenith display.** This development
+version preserves a local Gaia DR3 catalogue and a reproducible same-image experiment,
 including paired spatial resampling of the stellar epoch and camera fit.
 The default catalogue remains Tycho/Hipparcos pending evaluation. Version 0.3.0
 proper-motion astrometry and blind photometric zenith are preserved; `demo.sh`
@@ -41,21 +47,22 @@ sources are available for fitting; no stars are withheld.
 
 ![Forty identified stars across the Milky Way fisheye image](examples/milky_way/reference/identified_40_stars.png)
 
-## One-command Gaia analysis (0.4.0)
+## One-command Gaia analysis (0.4.1)
 
 ```sh
-./go_v0.4.0.sh /full/path/to/image.jpg
+./go_v0.4.1.sh /full/path/to/image.jpg
 ```
 
-`./go.sh` is an alias. The launcher verifies solver version 0.4.0, selects the
+`./go.sh` is an alias. The launcher verifies solver version 0.4.1, selects the
 Gaia catalogue and fits stellar epoch blindly. Ordinary star names come from a
 local display-only cache, with missing aliases queried from SIMBAD after fitting. From the preserved
-root checkout it uses `.worktrees/gaia-v0.4`; in the Gaia checkout it runs locally.
+root checkout it uses `.worktrees/zenith-v0.4.1`; in this checkout it runs locally.
 Each invocation creates a unique folder under `results/runs/` beside the launcher,
 with the image name, version and run timestamp. The folder contains `run.log` and
 an `analysis/` directory holding all generated images, tables and the PDF report.
 The output locations are printed; repeated runs preserve earlier results.
-Use `--version` or `--help` to inspect the launcher.
+Use `--version` or `--help` to inspect the launcher. The root checkout retains
+`go_v0.4.0.sh`, which delegates to the preserved `.worktrees/gaia-v0.4` runtime.
 
 ## Try the preserved example
 

@@ -4,6 +4,9 @@ import re
 import tempfile
 from pathlib import Path
 import unittest
+from unittest.mock import patch
+
+import numpy as np
 
 import matplotlib
 matplotlib.use('Agg')
@@ -29,6 +32,54 @@ class ReportTests(unittest.TestCase):
                 'monotonic_on_detector': True,
             },
         }
+
+    def test_zenith_overlay_projects_saved_candidate_and_labels_provisional(self):
+        from PIL import Image
+        from point_star_barghini import BarghiniCamera
+        from point_star_report import write_report_sky_overlay
+        camera = BarghiniCamera.initial((100, 120), 60., np.eye(3))
+        expected = np.array([[47., 39.]])
+        vector = camera.to_sky(expected)[0].tolist()
+        for status in ('conditional_zenith', 'not_identifiable'):
+            with self.subTest(status=status), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                Image.new('RGB', (120, 100)).save(root/'source.png')
+                result = {'source': str(root/'source.png'), 'camera': camera.serialise()}
+                science = {'photometry': {'photometric_zenith': {
+                    'status': status, 'zenith_unit_vector': vector}}}
+                with patch('point_star_report.save_png') as save:
+                    write_report_sky_overlay(root, result, science)
+                axis = save.call_args.args[0].axes[0]
+                markers = [line for line in axis.lines if line.get_marker() == 'x']
+                self.assertEqual(len(markers), 1)
+                np.testing.assert_allclose(markers[0].get_xydata(), expected, atol=1e-7)
+                self.assertEqual(markers[0].get_color(), 'red')
+                labels = ' '.join(item.get_text() for item in axis.get_legend().get_texts())
+                self.assertIn('Extinction zenith', labels)
+                self.assertEqual('provisional' in labels, status == 'not_identifiable')
+
+    def test_absent_zenith_is_explicit_and_does_not_draw_a_position(self):
+        from PIL import Image
+        from point_star_report import write_report_sky_overlay
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            Image.new('RGB', (120, 100)).save(root/'source.png')
+            science = {'photometry': {'photometric_zenith': {
+                'status': 'not_identifiable', 'zenith_unit_vector': None}}}
+            with patch('point_star_report.save_png') as save:
+                write_report_sky_overlay(root, {'source': str(root/'source.png')}, science)
+            axis = save.call_args.args[0].axes[0]
+            self.assertFalse(any(line.get_marker() == 'x' for line in axis.lines))
+            self.assertIn('Extinction zenith: no candidate',
+                          ' '.join(item.get_text() for item in axis.texts))
+
+    def test_planet_table_distinguishes_not_run_from_no_match(self):
+        from point_star_report import table_rows
+        for status, expected in [('not_run', 'Not run'),
+                                 ('no_planet_match', 'No matched planet')]:
+            rows = dict(table_rows(self.sample_result(), {'planets': {
+                'status': status, 'matches': []}}))
+            self.assertIn(expected, rows['Planet epoch'])
 
     def test_epoch_is_only_reported_when_planets_are_measured(self):
         no_planets = report_sections(

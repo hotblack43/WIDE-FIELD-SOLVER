@@ -1,4 +1,4 @@
-# Point-source feature status, version 0.4.0
+# Point-source feature status, version 0.4.1
 
 This inventory distinguishes implemented behavior from recorded proposals. A new
 version must preserve implemented behavior or document an explicit change, and
@@ -45,7 +45,7 @@ Synthetic tests recover a known zenith with unknown zero point and extinction,
 and reject weak extinction, insufficient coverage, coincident/nearly collinear
 rays, a search-boundary solution and vignetting-only data. Metadata-independence
 tests alter or poison the date/site and assert identical photometric products.
-The preserved example fits 2432 photometric sources but remains unresolved because
+The historical v0.3.0 example fit used 2432 photometric sources but remains unresolved because
 the radial-response sensitivity solution reaches the altitude boundary. General
 colour, cloud and lens-response biases still require scientific validation.
 
@@ -65,3 +65,42 @@ Photometric zenith and atmospheric refraction remain downstream. Their joint
 coupling is unfinished; it must not be described as covered by the epoch bugfix.
 The separate v2 magnitude-depth experiment is not merged. Use magnitude 7.5 until
 Peter requests a change, as recorded in GOAL.md.
+
+## Extinction zenith on the sky report
+
+The report sky overlay projects the saved photometric zenith vector through the
+saved Barghini camera and marks it with a red X. Conditional and provisional
+candidates are explicitly distinguished; absent or off-image candidates get a
+text notice rather than an invented or clamped position. This is the extinction
+regression candidate, not the lens reference Z or refraction diagnostic zenith.
+No astrometry, photometry, selection thresholds or numerical results change.
+The PDF planet row distinguishes an unattempted search from a completed search
+with no match. The metadata-assisted routine remains available in code; the
+blind replacement remains unfinished, so the normal launcher skips that search.
+
+## v0.4.1 horizon and saturation correction
+
+The photometric sample now includes every identified unsaturated source with
+positive finite G flux and a finite catalogue magnitude. The former compact-only,
+1.5-pixel residual and 75-degree geometric cuts are removed. Saturated sources
+remain eligible for astrometry and in exported rows; photometric magnitudes are
+unavailable and their exclusion reason is `saturated`. Raw aperture fluxes are
+retained only as diagnostics. Other exclusions have explicit per-row reasons.
+
+Trial zeniths must keep this fixed sample at or above the horizon (0 degrees),
+replacing the former 10-degree boundary. The existing finite airmass expression
+includes zero altitude; only sub-microdegree numerical roundoff is tolerated.
+The fit still reports a horizon-boundary candidate as provisional and never
+silently drops low stars to obtain a solution. Robust regression is unchanged;
+OLS comparison and a blind planetary epoch search remain unfinished.
+
+Synthetic checks cover near-horizon recovery, horizon airmass, saturation in
+astrometric exports, photometric exclusions and exact red-X projection. The
+previous v0.4.0 runtime and launcher remain available in their original worktree.
+
+The same Warwick image rerun is recorded in `ZENITH_V041_RESULTS.json`: all 415
+astrometric matches (including 182 saturated sources), camera parameters and
+exported coordinates are unchanged. All 233 unsaturated matches enter the new
+photometric sample, versus 214 previously. The candidate is conditional with
+angular sigma 1.92 degrees and minimum fitted altitude 8.42 degrees; this is not
+an independent physical-zenith validation. Previous outputs were preserved.

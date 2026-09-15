@@ -20,6 +20,30 @@ def photometric_field(extinction=.23, noise=.015, vignette=0.):
 
 
 class ZenithTests(unittest.TestCase):
+    def test_airmass_includes_the_horizon_without_clipping_low_stars(self):
+        from point_star_zenith import airmass
+        from point_star_science import _airmass_kasten_young
+        for function in (airmass, _airmass_kasten_young):
+            values = function([0., 1., 5., 10., 90., -1.])
+            self.assertTrue(np.isfinite(values[:5]).all())
+            self.assertTrue(np.all(np.diff(values[:5]) < 0))
+            self.assertTrue(np.isnan(values[-1]))
+
+    def test_recovers_zenith_with_stars_below_ten_degrees(self):
+        from point_star_zenith import airmass, fit_photometric_zenith
+        rng = np.random.default_rng(710)
+        altitude = np.r_[np.full(24, .5), rng.uniform(1, 85, 216)]
+        azimuth = np.r_[np.linspace(0, 2*np.pi, 24, endpoint=False), rng.uniform(0, 2*np.pi, 216)]
+        z = np.deg2rad(90-altitude)
+        rays = np.c_[np.sin(z)*np.cos(azimuth), np.sin(z)*np.sin(azimuth), np.cos(z)]
+        dimming = -9.4 + .23*airmass(altitude) + rng.normal(0, .001, len(z))
+        result = fit_photometric_zenith(rays, dimming, z*z)
+        self.assertIsNotNone(result['zenith_unit_vector'])
+        self.assertLess(np.rad2deg(np.arccos(np.clip(result['zenith_unit_vector'][2], -1, 1))), .1)
+        self.assertEqual(result['fitted_count'], len(z))
+        self.assertLess(result['minimum_altitude_deg'], 1.)
+        self.assertAlmostEqual(result['extinction_mag_per_airmass'], .23, delta=.01)
+
     def test_recovers_tilted_zenith_and_unknown_regression(self):
         from point_star_zenith import fit_photometric_zenith
         rays, dimming, radial, truth = photometric_field()

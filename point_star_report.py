@@ -226,7 +226,10 @@ def table_rows(result, science):
     planet_value = (
         f"{planets.get('derived_epoch_utc')} ({planets.get('match_count')} planet(s), "
         f"{planets.get('confidence', 'unknown')})"
-        if planets.get('matches') else 'No matched planet')
+        if planets.get('matches') else
+        ('No matched planet' if planets.get('status') == 'no_planet_match' else
+         'Not run — blind planet search unavailable' if planets.get('status') == 'not_run' else
+         planets.get('status', 'Not run').replace('_', ' ')))
     if by_channel:
         extinction_value = '; '.join(
             f"k{channel}={_fmt(values.get('coefficient_mag_per_airmass'))} ± "
@@ -250,7 +253,7 @@ def table_rows(result, science):
                        f"B={_fmt(refraction.get('refraction_b_arcsec'),3)} arcsec; "
                        f"ΔBIC={_fmt(refraction.get('delta_bic'),1)}"),
         ('Photometry', f"{image_kind.replace('_', ' ')}; "
-                       f"{photometry.get('usable_unsaturated_compact_stars', '--')} usable stars"),
+                       f"{photometry.get('usable_photometric_stars', photometry.get('usable_unsaturated_compact_stars', '--'))} usable stars"),
         ('Extinction', extinction_value),
         ('Planet epoch', planet_value),
     ]
@@ -265,8 +268,45 @@ def _show_image(ax, path, title):
 
 
 
+def _draw_photometric_zenith(ax, result, science, *, native_image):
+    """Project only the saved extinction candidate through the fitted camera."""
+    zenith = (science.get('photometry') or {}).get('photometric_zenith') or {}
+    if not zenith:
+        return None
+    vector = zenith.get('zenith_unit_vector')
+    note = 'Extinction zenith: no candidate'
+    if vector is not None:
+        # A rendered fallback overlay has margins/scaling, not detector pixels.
+        # Never project a detector coordinate onto that different image frame.
+        if not native_image:
+            note = 'Extinction zenith: original image unavailable'
+        else:
+            vector = np.asarray(vector, dtype=float)
+            if vector.shape == (3,) and np.all(np.isfinite(vector)) and np.linalg.norm(vector) > 0:
+                camera = _camera_from_result(result)
+                x, y = camera.project([vector / np.linalg.norm(vector)])[0]
+                height, width = camera.shape
+                if np.isfinite(x) and np.isfinite(y) and -.5 <= x < width-.5 and -.5 <= y < height-.5:
+                    provisional = zenith.get('status') != 'conditional_zenith' or zenith.get('provisional', False)
+                    label = 'Extinction zenith — ' + ('provisional' if provisional else 'conditional')
+                    marker, = ax.plot(x, y, marker='x', color='red', ms=13, mew=2.5,
+                                      linestyle='none', label=label, zorder=6)
+                    ax.annotate('Zenith' + (' (provisional)' if provisional else ' (conditional)'),
+                                (x, y), xytext=(9 if x < .7*width else -9, 12),
+                                textcoords='offset points',
+                                ha='left' if x < .7*width else 'right', color='white', fontsize=8,
+                                bbox=dict(boxstyle='round,pad=.2', fc='black', ec='red', alpha=.8))
+                    return marker
+                note = 'Extinction zenith: candidate outside image'
+            else:
+                note = 'Extinction zenith: invalid candidate'
+    ax.text(.02, .98, note, transform=ax.transAxes, va='top', color='white', fontsize=8,
+            bbox=dict(boxstyle='round,pad=.2', fc='black', ec='red', alpha=.8))
+    return None
+
+
 def write_report_sky_overlay(output, result, science, maximum_labels=24):
-    """Draw a readable labelled-star image with distinct planet symbols."""
+    """Draw stars, matched planets and the saved photometric zenith candidate."""
     output = Path(output)
     source = Path(result.get('source', ''))
     fallback = output/'astrometry_overlay.png'
@@ -311,6 +351,10 @@ def write_report_sky_overlay(output, result, science, maximum_labels=24):
         handles.append(Line2D([], [], marker='*', linestyle='none', markersize=11,
                               markerfacecolor='#ff3bd5', markeredgecolor='white',
                               label='matched planet'))
+    zenith_marker = _draw_photometric_zenith(
+        ax, result, science, native_image=source.is_file())
+    if zenith_marker is not None:
+        handles.append(zenith_marker)
     legend = ax.legend(handles=handles, loc='lower left', fontsize=7,
                        facecolor='black', edgecolor='white', framealpha=.72)
     for item in legend.get_texts():
@@ -439,7 +483,7 @@ def write_report(output, result, *, science=None, **unused):
                            hspace=.24)
     ax1 = fig.add_subplot(grid[0])
     _show_image(ax1, sky_overlay,
-                'Figure 1. Identified stars (yellow circles) and matched planets (magenta stars)')
+                'Figure 1. Stars (yellow), planets (magenta); extinction zenith (red X, status in legend)')
     ax2 = fig.add_subplot(grid[1])
     second = output/'extinction_fit.png'
     if second.is_file():

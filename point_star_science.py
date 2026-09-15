@@ -86,13 +86,8 @@ def classify_image_colour(image_path):
 
 
 def _airmass_kasten_young(altitude_deg):
-    altitude = np.asarray(altitude_deg, dtype=float)
-    zenith_distance = 90.-altitude
-    answer = np.full(altitude.shape, np.nan)
-    valid = altitude > 0.
-    z = zenith_distance[valid]
-    answer[valid] = 1./(np.cos(np.deg2rad(z))+.50572*(96.07995-z)**-1.6364)
-    return answer
+    from point_star_zenith import airmass
+    return airmass(altitude_deg)
 
 
 def _robust_line(x, y):
@@ -157,7 +152,9 @@ def measure_photometry(image_path, solution, result, refraction):
         annulus = (radius >= inner) & (radius <= outer)
         fluxes = cut[aperture].sum(axis=0)-np.median(cut[annulus], axis=0)*aperture.sum()
         mags = np.full(3, np.nan)
-        positive = fluxes > 0
+        positive = (fluxes > 0) & np.isfinite(fluxes)
+        if str(detection['saturated']).lower() == 'true':
+            positive[:] = False  # Raw flux retained for diagnostics, no saturated magnitudes.
         mags[positive] = -2.5*np.log10(fluxes[positive])
         catalogue_magnitude = _float(coordinate, 'magnitude')
         altitude = float('nan')
@@ -175,32 +172,34 @@ def measure_photometry(image_path, solution, result, refraction):
 
     from point_star_zenith import fit_photometric_zenith, write_zenith_products
     # Membership is fixed before zenith optimisation; all measurement rows survive.
-    usable = [r for r in records if r['saturated'] == 'False'
-              and r['source_class'] == 'compact' and np.isfinite(r['G_mag'])
-              and _float(coordinates[r['detection_id']], 'residual_px') <= 1.5]
+    usable = []
     for r in records:
-        r['used_for_photometric_zenith'] = False
+        if str(r['saturated']).lower() == 'true':
+            reason = 'saturated'
+        elif not np.isfinite(r['G_mag']):
+            reason = 'nonpositive_or_nonfinite_G_flux'
+        elif not np.isfinite(r['catalogue_magnitude']):
+            reason = 'nonfinite_catalogue_magnitude'
+        else:
+            reason = ''
+        r['photometry_usable'] = not bool(reason)
+        r['photometric_zenith_exclusion_reason'] = reason
+        r['used_for_photometric_zenith'] = not bool(reason)
+        if not reason:
+            usable.append(r)
     if usable:
         pixels = np.array([[_float(coordinates[r['detection_id']], 'x_px'),
                             _float(coordinates[r['detection_id']], 'y_px')] for r in usable])
         rays = camera.to_sky(pixels)
-        centre = rays.mean(axis=0); centre /= np.linalg.norm(centre)
-        # A fixed geometric cap leaves validity margin for trial zeniths. This
-        # direction is a search frame, never treated as a physical zenith.
-        cap = rays@centre >= np.cos(np.deg2rad(75.))
-        fit_rows = [r for r, keep in zip(usable, cap) if keep]
         radial = np.sum((pixels-np.array([camera.physical.x_o, camera.physical.y_o]))**2, axis=1)/camera.scale**2
-        zenith = fit_photometric_zenith(rays[cap],
-                    [r['G_minus_catalogue_mag'] for r in fit_rows], radial[cap])
-        for r in fit_rows:
-            r['used_for_photometric_zenith'] = True
-        zenith['excluded_by_fixed_geometric_cap'] = int((~cap).sum())
+        zenith = fit_photometric_zenith(rays,
+                    [r['G_minus_catalogue_mag'] for r in usable], radial)
     else:
         zenith = fit_photometric_zenith(np.empty((0, 3)), np.array([]), np.array([]))
-        zenith['excluded_by_fixed_geometric_cap'] = 0
     zenith.update(coordinate_frame='ICRS', objective_channel='G',
-                  membership='unsaturated compact positive-flux sources, residual <=1.5 px; fixed 75-degree geometric cap',
-                  fitted_detection_ids=[r['detection_id'] for r in records if r['used_for_photometric_zenith']])
+                  excluded_by_fixed_geometric_cap=0,
+                  membership='all identified unsaturated positive-flux sources with finite catalogue magnitude; no angular, morphology or residual cut',
+                  fitted_detection_ids=[r['detection_id'] for r in usable])
     write_zenith_products(solution, zenith)
     vector = zenith.get('zenith_unit_vector')
     if vector is not None:
@@ -209,7 +208,8 @@ def measure_photometry(image_path, solution, result, refraction):
             ray = camera.to_sky(np.array([[_float(coordinate, 'x_px'), _float(coordinate, 'y_px')]]))[0]
             r['altitude_deg'] = float(np.rad2deg(np.arcsin(np.clip(ray@vector, -1, 1))))
             r['airmass'] = float(_airmass_kasten_young([r['altitude_deg']])[0])
-    fields.append('used_for_photometric_zenith')
+    fields.extend(['used_for_photometric_zenith', 'photometry_usable',
+                   'photometric_zenith_exclusion_reason'])
     base_usable = [r for r in usable if r['used_for_photometric_zenith'] and np.isfinite(r['airmass'])]
 
     channels = list('RGB') if colour['classification'] == 'rgb' else ['G']
@@ -282,7 +282,10 @@ def measure_photometry(image_path, solution, result, refraction):
     representative = extinction_by_channel.get('G') or next(
         iter(extinction_by_channel.values()), None)
     summary = dict(status='instrumental_photometry_measured', measured_stars=len(records),
-                   usable_unsaturated_compact_stars=len(base_usable), calibrated=False,
+                   usable_photometric_stars=len(usable),
+                   usable_unsaturated_compact_stars=sum(r['source_class'] == 'compact' for r in usable),
+                   saturated_stars_excluded=sum(str(r['saturated']).lower() == 'true' for r in records),
+                   calibrated=False,
                    image_colour=colour, channels_fitted=channels,
                    extinction=representative,
                    extinction_by_channel=extinction_by_channel,
