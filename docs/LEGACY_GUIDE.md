@@ -192,4 +192,3 @@ selection, offline names and rejection of degraded regression results.
 
 See the [performance profile](PERFORMANCE.md) for measured runtime
 hotspots and the lossless PNG-encoding optimization.
-
