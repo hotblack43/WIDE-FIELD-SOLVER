@@ -1,3 +1,9 @@
+Current launcher: `./go_v0.4.1.sh /full/path/to/image.jpg` or `./go.sh`.
+It delegates to `.worktrees/zenith-v0.4.1`. The preserved `go_v0.4.0.sh` still
+runs v0.4.0. New runs use Gaia magnitude 7.5, include unsaturated identified stars
+down to the horizon in extinction fitting, and mark the fitted zenith with a red X.
+Saturated stars remain eligible for astrometry and are flagged out of photometry.
+
 # WIDE-FIELD SOLVER
 
 by Peter Thejll and Chris Flynn
@@ -12,16 +18,16 @@ sources are available for fitting; no stars are withheld.
 
 ![Forty identified stars across the Milky Way fisheye image](examples/milky_way/reference/identified_40_stars.png)
 
-## One-command Gaia analysis (0.4.0)
+## One-command Gaia analysis (0.4.1)
 
 ```sh
-./go_v0.4.0.sh /full/path/to/image.jpg
+./go_v0.4.1.sh /full/path/to/image.jpg
 ```
 
-`./go.sh` is an alias. The launcher verifies solver version 0.4.0, selects the
+`./go.sh` is an alias. The launcher verifies solver version 0.4.1, selects the
 Gaia catalogue and fits stellar epoch blindly. Ordinary star names come from a
 local display-only cache, with missing aliases queried from SIMBAD after fitting. From the preserved
-root checkout it uses `.worktrees/gaia-v0.4`; in the Gaia checkout it runs locally.
+root checkout it uses `.worktrees/zenith-v0.4.1`; in the v0.4.1 checkout it runs locally.
 Each invocation creates a unique folder under `results/runs/` beside the launcher,
 with the image name, version and run timestamp. The folder contains `run.log` and
 an `analysis/` directory holding all generated images, tables and the PDF report.

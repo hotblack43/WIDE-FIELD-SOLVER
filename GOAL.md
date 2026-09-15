@@ -104,8 +104,15 @@ and data remain local to this independent point-source repository.
 
 All detected stars remain eligible for association and astrometric fitting;
 there is no default withheld-star split. Keep large/saturated detections even
-when their photometry is unusable. Retain measurement rows and explicit quality
-flags; compare photometric zenith candidates on consistent membership.
+when their photometry is unusable. Saturation must not disqualify a source from
+astrometric association or fitting. Flag saturated sources explicitly and exclude
+their magnitudes from photometry and subsequent extinction/zenith regression;
+raw fluxes may remain as flagged diagnostics. Use all identified unsaturated
+sources with finite catalogue magnitude and positive usable flux for the fixed
+photometric sample, including stars down to the horizon. Do not impose a 10-degree
+altitude cutoff, an angular cap, or a separate morphology/residual cut on this
+sample. Retain every measurement row and its exclusion reason; never change
+sample membership as trial zenith varies.
 
 Distinguish recorded proposals, prototypes, tested components, integrated paths
 and validated scientific results. A plot or helper function is not evidence
