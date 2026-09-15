@@ -12,7 +12,7 @@
     "GOAL.md": "3d6e8b77bc6d7da9abdb902673eabd801d21def26ab6293bb416a735b9fa9915",
     "NOTICE.md": "5ae750e282eaa70c5752d2249575ba286ff8a430c177b5ce0dd1daadc7c06983",
     "analyse.sh": "26b3fd13c31100b3492d73f1663d3fcd6602c8e49a562911aa4755a27f3e1cac",
-    "analyse_image.py": "4090b1ae5d05c102f120a1f95282e29043aee2d9485348afa03cf4fc9a4a1fcb",
+    "analyse_image.py": "e889c055d88c1a46aa0c0c17b20d361a331bf844ea6dd43a6ad464ed77e0632c",
     "barghini_model.py": "fd591084b407034907f03c3f9cca05126037fc06691c374c3cda3fc884d085af",
     "data/README.md": "94bde5e185ae89d0c65a996c93f43f8d24983bf4714e4c93e11bf36b79eb6b75",
     "data/display_names.json": "0f9510a2e1ca1b34eb47b65da5d1aeea5ba4fcc894947cab8b2cd4f43152b504",
@@ -23,7 +23,7 @@
     "demo.sh": "6d3d897e95032eef782aee49446a8c426cf8b26899ae662e2d60ce1f8932c96f",
     "docs/BOOTSTRAP_FAILURES.md": "e2fe3b1137b767704ef9e5f7e14e865b38fd67f8ebd4b2e6d75625fea19c4249",
     "docs/COMPARISON.md": "012ca16042299ce6c0710ea487266590511c2f3af34726a2f1cdefc7da5dfbba",
-    "docs/FEATURE_STATUS.md": "cc6f793569366b0c1e1d05f71a0c6a55b510b3b1a4ab436c3e810190e20abf17",
+    "docs/FEATURE_STATUS.md": "2067474457ef53624d99b3c90b6de62ce57bf45b3168dc7ed9992e3360cd27f9",
     "docs/GAIA_V04.md": "4791518373e51e2dd698b34c007bc6c3cc305df704b02ebaf00f21c09c6f54c9",
     "docs/GAIA_V04_RESULTS.json": "34cfabd191ad0d3f3209c4c0879b21fbf9cffe8aee247d6e881ff419ce4c8bed",
     "docs/METHOD.md": "8dc32eaff902c9e170cc1e23fae3126924e6b21ea22f89db4d3c130eddb128cd",
@@ -99,7 +99,12 @@
   },
   "packaging_sha256": {
     "run.sh": "d08ec5d193faaebf7fceda65657fd302c4c652f74de9b1db77fa70444d9fe39c",
-    "README.md": "4031093419dcf1c74fdd0e391785540f6bea1b3141fa764caf66f0ac8bb8fa8f"
+    "README.md": "4031093419dcf1c74fdd0e391785540f6bea1b3141fa764caf66f0ac8bb8fa8f",
+    "point_star_fits.py": "5a069ee4f12a7d8b2d0ac000e09d9c8e4186eb119ecc23de449d8bac5f702d5a",
+    "view_fits.sh": "b9cd5aa92b0ad599dbab4f859beba0a0c0e9b713c13bf93d9a71d0a941593e15",
+    "test_point_star_fits.py": "bb8656be8141d59bdd1d0da723b220c6f4b5df1b9192b70715302ba43d0a15dd",
+    "test_point_star_fits_ds9.py": "af3a079792f62bf68da5db8279fc2e4e05dee9d74af5c93d263152523a5d2d91",
+    "docs/FITS_EXPORT.md": "e0368d5adbb3c861707de06a196bff496ec2bb58134db5ebca3fcde7095d0604"
   },
   "packaging_changes": [
     "Hollow magenta planet markers and matching legend preserve visible measured source centres.",
@@ -107,5 +112,6 @@
     "The separate planet-candidate image also uses hollow stars.",
     "Post-fit predictions for other planets at the unchanged best candidate epoch, with separate thin hollow markers and regression evidence.",
     "If the original image is missing, retain the rendered astrometry fallback without adding detector-coordinate markers to a different frame."
-  ]
+  ],
+  "fits_export_upgrade": "Validated ZPN, original pixels, embedded native/styled regions, explicit DS9 viewer; legacy unchanged"
 }

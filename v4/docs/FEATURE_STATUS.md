@@ -230,3 +230,14 @@ mark expected, unmatched positions. Predictions are recorded separately as
 epoch inference. Ambiguous epochs and provisional zenith limitations still apply.
 Synthetic checks verify the common epoch, visibility, unchanged fit records and
 faithful, distinct symbols in both plots. Gaia PDFs are named `report.pdf`.
+
+## ZPN FITS export and embedded DS9 overlays
+
+The v4 analyser now exports the fixed camera as a validated ZPN WCS in
+`solution.fits`, preserving decoded monochrome/RGB pixels. A native REGION
+table and embedded UTF-8 region text retain basic geometry and full styled
+annotations. `view_fits.sh` loads the embedded text into DS9 with show/hide
+controls; native FITS-region import alone does not preserve labels or styles.
+The export must pass a 0.05-pixel maximum additional error check over the whole
+detector. It does not refit astrometry, use validation metadata or change planet
+ranking. See [FITS_EXPORT.md](FITS_EXPORT.md) for layout, limitations and tests.

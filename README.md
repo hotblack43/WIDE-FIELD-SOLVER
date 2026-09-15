@@ -76,6 +76,9 @@ Other useful products include:
 - `result.json`: fitted camera, residuals and provenance.
 - `star_coordinates.csv`: measured positions, model predictions and catalogue identities.
 - `stellar_photometry.csv`: instrumental fluxes, magnitudes and quality flags.
+- In `go4.sh` results, `solution.fits`: image, ZPN coordinates and embedded overlays.
+  Open with `./v4/view_fits.sh /path/to/solution.fits`; use DS9 **Region → Show**
+  to toggle overlays. See [FITS export and DS9](v4/docs/FITS_EXPORT.md).
 - In `go4.sh` results, `planet_epoch.json` and `planet_candidates.csv`: the best planetary fit and retained alternatives.
 
 ## 4. Read the result
