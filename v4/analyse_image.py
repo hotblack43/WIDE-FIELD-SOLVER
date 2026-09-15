@@ -7,6 +7,7 @@ from pathlib import Path
 
 from point_star_barghini import SOLVER_VERSION, run
 from point_star_report import write_report
+from point_star_fits import write_fits
 from point_star_science import analyse_existing, compare_metadata
 
 
@@ -49,6 +50,7 @@ def main():
                  overwrite=args.overwrite, epoch_mode=args.epoch_mode,
                  epoch_year=args.epoch_year, epoch_limits=args.epoch_limits)
     science = analyse_existing(args.image.resolve(), args.output, result, args.catalog)
+    result['fits_export'] = write_fits(args.image.resolve(), args.output, result, science)
     if args.compare_metadata:
         comparison = compare_metadata(result, science)
         (Path(args.output)/'metadata_comparison.json').write_text(__import__('json').dumps(comparison, indent=2)+'\n')
@@ -58,6 +60,11 @@ def main():
     (Path(args.output)/'result.json').write_text(__import__('json').dumps(result, indent=2)+'\n')
     planets = science['planets']
     print(f"Report: {report}")
+    exported = result['fits_export']
+    if exported['status'] == 'exported':
+        print(f"FITS with overlays: {args.output / exported['file']}")
+    else:
+        print(f"FITS export unavailable: {exported['reason']}")
     print(f"Stellar epoch: {science['stellar_epoch']['status']}")
     print(f"Refraction: {science['refraction']['status']}")
     print(f"Extinction: {science['photometry']['extinction_status']}")
