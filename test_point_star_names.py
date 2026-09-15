@@ -30,6 +30,14 @@ class StarNameTests(unittest.TestCase):
     def test_preserves_numbered_bayer_component(self):
         self.assertEqual(choose_display_name('* alf02 Cap|* 6 Cap', 'HD 192947'), 'α² Cap')
 
+    def test_prefers_hr_then_hd_over_tycho(self):
+        self.assertEqual(
+            choose_display_name('TYC 1234-567-1|HD 39801|HR 2061', 'TYC 1234-567-1'),
+            'HR 2061')
+        self.assertEqual(
+            choose_display_name('TYC 1234-567-1|HD 39801', 'TYC 1234-567-1'),
+            'HD 39801')
+
     def test_flamsteed_and_catalogue_fallback(self):
         self.assertEqual(choose_display_name('HD 217014|* 51 Peg', 'TYC 1717-2193-1'), '51 Peg')
         self.assertEqual(choose_display_name('Gaia DR3 123|HD 12345', 'TYC 1-2-1'), 'HD 12345')

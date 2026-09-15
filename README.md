@@ -2,207 +2,150 @@
 
 by Peter Thejll and Chris Flynn
 
-Astrometry directly from untrailed, wide-field star images, using the
-Barghini O/Z fish-eye model. Find dots, identify a small star pattern, then
-fit the lens across the image.
+Find stars in a wide-field image, identify them against a catalogue, fit the
+Barghini fish-eye lens model, and produce an annotated scientific report.
+This guide covers **both `go.sh` and `go4.sh`**.
 
-The included Milky Way example yields **3,653 catalogue associations at
-0.398-pixel RMS**, with 40 spatially distributed star labels. All detected
-sources are available for fitting; no stars are withheld.
+## 1. Choose a version
 
-![Forty identified stars across the Milky Way fisheye image](examples/milky_way/reference/identified_40_stars.png)
+| | `go.sh` — legacy | `go4.sh` — upgraded |
+|---|---|---|
+| Use it for | Reproducing the established Tycho workflow | New analyses with the Gaia solver and later improvements |
+| Stellar catalogue | Tycho-2/Hipparcos | Gaia DR3 with a bright-star supplement |
+| Planet analysis | Historical metadata-assisted diagnostics | Blind search for a common date and planet identifications |
+| Recent improvements | Preserved historical behaviour | Proper-motion/epoch fitting, photometric zenith, planet visibility checks, bootstrap recovery and revised reports |
+| Repeated runs | Replace the same image's previous output | Create a separate folder for every run |
 
-## Try the preserved example
+Both versions are included. You do not need to switch branches or edit code to
+choose between them. Both accept monochrome and RGB images.
 
-Requires Git and [uv](https://docs.astral.sh/uv/getting-started/installation/).
-Python 3.12 and the exact dependency versions are recorded in the repository.
-Linux is the tested platform; the shell entrypoints also require Bash.
+## 2. Install
+
+You need Git, Bash and [uv](https://docs.astral.sh/uv/getting-started/installation/).
+Linux is the tested platform. `uv` manages Python 3.12 and the pinned dependencies.
+
+The default `main` branch contains both commands:
 
 ```sh
-git clone git@github.com:hotblack43/WIDE-FIELD-SOLVER.git
+git clone https://github.com/hotblack43/WIDE-FIELD-SOLVER.git
 cd WIDE-FIELD-SOLVER
 uv sync --frozen
-./demo.sh
+uv sync --project v4 --frozen
 ```
 
-Open `results/demo/identified_40_stars.png`. The demo starts from the included
-JPEG and runs detection, blind identification, and the complete Barghini fit
-anew. It then checks the numerical result against the preserved baseline.
-The cached ordinary names are used only when drawing labels. No saved camera,
-star associations, date, location or sky-position hint seeds the solution.
+The first setup needs internet access to download dependencies. The stellar
+catalogues are included. During analysis, ordinary star names may be looked up
+online after fitting; those names never seed the astrometric solution.
 
-Installation downloads dependencies, including tetra3's bundled pattern
-database. The installed demo runs offline. Allow a few minutes on a typical
-machine. Outputs are never overwritten: for another run use
-`./demo.sh --output results/demo-2`.
+If you already have this checkout with both commands, run the two `uv sync`
+commands from its root directory.
 
-| Included example, 1569 × 1444 pixels | Verified baseline |
-|---|---:|
-| Measured sources | 3,688 |
-| Catalogue associations | 3,653 |
-| Fitted residual RMS / median | 0.398 / 0.249 px |
-| Broad blobs / saturated sources | 82 / 930 (overlapping categories) |
-| Unmatched measurements | 35 |
-| Distributed star labels | 40 |
+## 3. Run your image
 
-Names favour Bayer designations such as α Ori and α² Cap, followed by common
-names, Flamsteed designations or catalogue identifiers. Selection favours
-bright, compact matches below one pixel residual and spreads labels across
-the field.
+Run **one** of these commands from the repository root. Quote paths containing spaces.
 
-## Solve another image
+**Legacy Tycho-2:**
 
 ```sh
-./solve.sh /path/to/stars.jpg --output results/my-image --labels 40
+./go.sh "/full/path/to/image.jpg"
 ```
 
-This queries SIMBAD for display names. Add `--offline` to retain catalogue
-identifiers without network access, or also supply `--names-cache names.json`.
-Supported input is a raster image readable by Pillow, converted to 8-bit RGB.
-This first release is tuned and demonstrated on the included fisheye image;
-success across arbitrary cameras and fields remains to be established.
-
-For detection alone:
+**Upgraded Gaia:**
 
 ```sh
-uv run --frozen python point_star_detection.py /path/to/stars.jpg --output results/dots
+./go4.sh "/full/path/to/image.jpg"
 ```
 
-To change labels on an existing solution without refitting:
+Each command prints the PDF report location when finished. The Gaia launcher
+also prints its run folder and log location at startup. A complete run can take
+several minutes, especially when bootstrap or planetary searches need more work.
+
+### Where are the results?
+
+| Command | Output folder | What happens on the next run? |
+|---|---|---|
+| `go.sh` | `results/IMAGE_STEM/` | The folder is replaced |
+| `go4.sh` | `results/runs/IMAGE-v0.4.3-TIMESTAMP-UNIQUE/analysis/` | A new folder is created; the run log is alongside `analysis/` |
+
+`IMAGE_STEM` means the input filename without its extension.
+For `go4.sh`, open **`report.pdf`** in the printed output folder; its parent run
+folder identifies the input image. Legacy `go.sh` retains its `report_*.pdf` name.
+
+Other useful products include:
+
+- `result.json`: fitted camera, residuals and provenance.
+- `star_coordinates.csv`: measured positions, model predictions and catalogue identities.
+- `stellar_photometry.csv`: instrumental fluxes, magnitudes and quality flags.
+- In `go4.sh` results, `planet_epoch.json` and `planet_candidates.csv`: the best planetary fit and retained alternatives.
+
+## 4. Read the result
+
+A successful plate solution does not guarantee that the observation date or
+physical zenith has been determined. Read the reported status and uncertainty.
+For `go4.sh`, thick hollow stars label the planets in the number-one candidate
+fit. Thinner hollow stars labelled “predicted” show the other planets expected
+in view at that same candidate epoch; they are not measured identifications.
+Other date/identity alternatives remain in the numerical records.
+
+`go4.sh` fits from the image and reference catalogues. Observing time and site
+are reserved for a separately requested comparison after the blind fits.
+The legacy analyser's metadata-assisted diagnostics retain their historical
+behaviour. Instrumental image photometry is not automatically calibrated
+astronomical photometry.
+
+See [v4 capabilities and limitations](v4/docs/FEATURE_STATUS.md) for the current
+scientific status.
+
+## Try the included example
 
 ```sh
-./solve.sh examples/milky_way/input.jpeg --annotations-from results/demo \
-  --output results/relabelled --labels 20 --offline \
-  --names-cache examples/milky_way/reference/display_names.json
+./demo.sh --output results/example-check
 ```
 
-Each complete run produces:
+This checks the preserved Tycho baseline from fresh image pixels. It produces
+**3,653 catalogue associations at 0.398-pixel RMS**, with 40 named stars.
+Use a new output folder if you want to retain an earlier example run.
 
-- `result.json`: fitted camera, convergence, residuals, processing history and checksums.
-- `star_coordinates.csv`: measured and predicted pixels, catalogue coordinates and IDs.
-- `blob_candidates.csv`: broad/saturated sources, including unmatched objects.
-- `identified_40_stars.png`: the requested number of named stars (40 by default).
-- `astrometry_overlay.png`: measured cyan crosses and predicted orange circles at their true positions; unmatched detections are pink crosses.
-- `astrometry_residuals.png`: residual vectors magnified ×20 and centre-to-edge residual statistics.
-- `radial_residuals.csv` / `.json`: counts, RMS, median, 90th percentile and signed radial offsets by image-centred annulus.
-- `dots/`, `bootstrap.json`, `display_names.json`, `labelled_stars.json`: measurement and naming audit.
-
-## Does the fit deteriorate towards the edge?
-
-The [two-symbol overlay](examples/milky_way/diagnostics/astrometry_overlay.png)
-plots both coordinates independently for all 3,653 fitted associations, without
-magnifying their separation. Open the full-resolution image and zoom in.
-The plotting code applies no astrometric correction or cosmetic shift. Any
-future correction must come through the Barghini model and its exported
-coordinates; remaining discrepancies stay visible in the overlay.
-
-![Full-field residual vectors and centre-to-edge residual statistics](examples/milky_way/diagnostics/astrometry_residuals.png)
-
-The radial bands give:
-
-| Distance from image centre | Fitted stars | RMS | 90th percentile |
-|---|---:|---:|---:|
-| 0–200 px | 405 | 0.536 px | 0.806 px |
-| 200–400 px | 1,179 | 0.379 px | 0.562 px |
-| 400–600 px | 1,548 | 0.343 px | 0.492 px |
-| 600–800 px | 521 | 0.461 px | 0.711 px |
-
-There is a modest outer-band rise, with no progressive edge blow-up in these
-matched stars. Small systematic structure remains visible in the magnified
-vectors; for example, the inner band has a mean outward radial offset of
-0.329 px. The outermost matched source is at radius 734.75 px, so the last
-populated band is only partially sampled. The hatched part of the plot has
-no matched sources and is untested. All fitted pairs are included, with no
-extra residual clipping. These remain fit residuals after catalogue matching;
-unmatched detections have no evaluated star-pair residual.
-
-A field identification and a good distortion correction are separate aspects
-of astrometry. Astrometry.net fits
-[polynomial distortion terms](https://astrometry.net/doc/readme.html);
-an insufficient or poorly constrained distortion model can plausibly explain
-good central alignment with increasing edge errors. Diagnosing an old solve
-would require its WCS and measured positions. This image's comparison does
-not establish that every astrometry.net configuration has such a problem.
-
-Regenerate diagnostics from an existing solve, without refitting:
+To run the same historical regression through the upgraded implementation:
 
 ```sh
-uv run --frozen python point_star_diagnostics.py examples/milky_way/input.jpeg \
-  --solution results/demo --output results/diagnostic-check
+./v4/demo.sh --output results/example-check-v4
 ```
 
-## Method and scope
+Both demo commands deliberately use the historical Tycho catalogue for comparison;
+use `go4.sh` for the normal Gaia analysis.
 
-The detector measures intensity centroids with local background subtraction,
-growing its window to accommodate large saturated blobs. tetra3 supplies an
-initial blind star-pattern identification from a small patch. The global fit
-uses the [Barghini et al. (2019)](https://doi.org/10.1051/0004-6361/201935580)
-O/Z equations (5), (6), and (11), with progressive matching and a robust fit.
-See [method notes](docs/METHOD.md) and [catalogue provenance](data/README.md).
+![Preserved Milky Way example with 40 named stars](examples/milky_way/reference/identified_40_stars.png)
 
-The reported residuals describe fitted associations selected with a three-pixel
-matching gate. They are not independent accuracy estimates or a completeness
-measurement. The celestial reference direction Z does not establish a local
-zenith. Observation epoch, atmospheric refraction and terrestrial orientation
-are outside this release. Broad blobs remain unclassified objects; identifying
-planets requires further information.
+## More options and help
 
-In our bounded [solve-field comparison](docs/COMPARISON.md), direct full-image
-attempts were unsolved. On a small crop, solve-field with our measured dots
-and third-order SIP achieved comparable local precision. The demonstrated
-benefit here is the full-field lens solution.
-
-## Keeping this result safe
-
-This project contains its own code, catalogue, example and dependency lock.
-It has no runtime dependency on the trail-processing repository. The
-**`v0.1.0` tag** preserves the first verified standalone release; future work
-can proceed on `main` while that release remains recoverable:
+The one-command launchers above select the intended catalogue for you. Advanced
+options belong to the corresponding analyser:
 
 ```sh
-git switch --detach v0.1.0
-uv sync --frozen
-./demo.sh --output results/baseline-replay
+./analyse.sh --help       # legacy Tycho workflow
+./v4/analyse.sh --help    # upgraded workflow
 ```
 
-The checked-in `examples/milky_way/reference/` holds the original annotated
-image and association tables. `baseline.json` records both exact observations
-and explicit cross-platform acceptance bounds. CI runs the synthetic/unit
-checks and a fresh pixel-to-sky demo on pushes and pull requests.
-It also reloads the saved camera, reproduces the exported coordinates and
-residuals, and checks catalogue identities against the reference table.
+For an advanced Gaia run, select its catalogue explicitly:
 
 ```sh
-uv run --frozen python -m unittest discover -v
-./demo.sh --output results/regression-1
+./v4/analyse.sh "/full/path/to/image.jpg" \
+  --catalog v4/data/stars_gaia_dr3_g75.csv \
+  --epoch-mode fit --output results/custom-gaia-run --offline
 ```
 
-The tests cover subpixel centroids, saturated blobs, streak rejection, forward
-and inverse geometry, recovery of a synthetic distorted field, spatial label
-selection, offline names and rejection of degraded regression results.
+`--offline` disables online display-name queries. It does not change the
+astrometric catalogue. The direct v4 analyser defaults to Tycho when `--catalog`
+is omitted; the `go4.sh` launcher always supplies Gaia.
 
-## Future extensions
+- [Legacy commands, report details and residual diagnostics](docs/LEGACY_GUIDE.md)
+- [Bootstrap failure diagnosis and recovery in v4](v4/docs/BOOTSTRAP_FAILURES.md)
+- [Scientific goals](GOAL.md) and [v4 feature status](v4/docs/FEATURE_STATUS.md)
+- [Historical solve-field comparison](docs/COMPARISON.md)
+- [Tycho catalogue provenance](data/README.md) and [Gaia catalogue provenance](v4/data/README.md)
+- [Preservation and developer instructions](docs/CONSOLIDATION.md)
+- [Attribution and redistribution notice](NOTICE.md)
 
-- **RGB photometry and horizon-constrained extinction:** see the
-  [deferred research note](docs/PHOTOMETRY_ZENITH_EXTINCTION_NOTE.md) for Peter's
-  proposed equal-airmass consistency test of the zenith, its inputs and caveats.
-- **Bright stars plus Gaia DR3/DR4 instead of Tycho:** develop a Gaia-based
-  reference catalogue with an explicit bright-star supplement, cross-matching
-  and epoch propagation; evaluate DR4 when its data are available.
-- Test more fisheye lenses, sky regions and exposure levels, with documented
-  limits on where the solution is trustworthy.
-- Add optional observation time/location, refraction modelling and planetary
-  identification for suitable bright blobs.
-- Export a convenient pixel-to-sky interface and interoperable astrometric
-  products for downstream analysis.
-
-These are development directions; the tagged baseline retains the catalogue
-and method that produced the demonstrated result.
-
-## Provenance
-
-Preserved from Peter Thejll's point-star experiments on 13 September 2026.
-This is a private research repository. The supplied photograph's original
-photographer and redistribution terms are undocumented; see [NOTICE](NOTICE.md)
-before any public release. Third-party catalogue and software sources are
-identified there.
+The original `v0.1.0` tag and historical reference products are preserved.
+Changes to the Gaia implementation are kept separate from the legacy Tycho code.

@@ -12,6 +12,7 @@ import hashlib
 import json
 import math
 from pathlib import Path
+import shutil
 import time
 
 import numpy as np
@@ -22,6 +23,7 @@ from scipy.spatial import cKDTree
 from barghini_model import (
     BarghiniParameters, detector_to_horizontal, horizontal_to_detector, radial_du_dr)
 from point_star_detection import write_products
+from point_star_plotting import save_png
 
 
 def vectors(ra, dec):
@@ -212,19 +214,39 @@ def annotate_stars(image_path, records, output, count=40, *, names_cache=None, o
     ax.set_xlim(-.5, rgb.shape[1]-.5); ax.set_ylim(rgb.shape[0]-.5, -.5)
     ax.set_title(f'Barghini point-star solution — {len(selected)} identified stars')
     ax.axis('off')
-    fig.tight_layout(); fig.savefig(output/f'identified_{len(selected)}_stars.png', dpi=160); plt.close(fig)
+    fig.tight_layout(); save_png(fig, output/f'identified_{len(selected)}_stars.png', dpi=160); plt.close(fig)
     (output/'labelled_stars.json').write_text(json.dumps(dict(
         selection='bright compact catalogue matches; residual < 1 pixel; farthest-point spatial coverage',
         stars=selected), ensure_ascii=False, indent=2)+'\n')
 
 
-def run(image_path, output, catalog_path, *, label_count=40, names_cache=None, offline=False):
+def prepare_output(output, *, overwrite=True):
+    output = Path(output).expanduser()
+    resolved = output.resolve()
+    repository = Path(__file__).resolve().parent
+    working_directory = Path.cwd().resolve()
+    protected = {repository, *repository.parents,
+                 working_directory, *working_directory.parents}
+    if resolved in protected:
+        raise ValueError(f'Refusing to use protected directory as output: {output}')
+    if output.exists() or output.is_symlink():
+        if not overwrite:
+            raise FileExistsError(f'Refusing to overwrite output: {output}')
+        if output.is_symlink() or output.is_file():
+            output.unlink()
+        else:
+            shutil.rmtree(output)
+    output.mkdir(parents=True)
+    return output
+
+
+def run(image_path, output, catalog_path, *, label_count=40, names_cache=None, offline=False,
+        overwrite=True, observation_time=None, latitude=None, longitude=None,
+        elevation_m=0., pressure_hpa=None, temperature_c=10., relative_humidity=.5,
+        extinction_mag_per_airmass=None):
     started = time.monotonic()
     image_path = Path(image_path).expanduser().resolve()
-    output = Path(output)
-    if output.exists():
-        raise FileExistsError(f'Refusing to overwrite output: {output}')
-    output.mkdir(parents=True)
+    output = prepare_output(output, overwrite=overwrite)
     detection = write_products(image_path, output/'dots')
     with (output/'dots/star_candidates.csv').open() as handle:
         rows = list(csv.DictReader(handle))
@@ -319,13 +341,26 @@ def run(image_path, output, catalog_path, *, label_count=40, names_cache=None, o
     result['broad_or_saturated_without_star_match'] = sum(not r['catalogue_star_id'] for r in blobs)
     result['code_sha256'] = {name:hashlib.sha256((Path(__file__).parent/name).read_bytes()).hexdigest()
         for name in ['point_star_detection.py', 'point_star_barghini.py', 'barghini_model.py',
-                     'point_star_names.py', 'point_star_diagnostics.py']}
+                     'point_star_names.py', 'point_star_diagnostics.py', 'point_star_report.py']}
+    if observation_time is not None:
+        result['observation'] = dict(time_utc=observation_time, latitude_deg=latitude,
+            longitude_deg=longitude, elevation_m=elevation_m, pressure_hpa=pressure_hpa,
+            temperature_c=temperature_c, relative_humidity=relative_humidity,
+            extinction_mag_per_airmass=extinction_mag_per_airmass)
     (output/'result.json').write_text(json.dumps(result, indent=2)+'\n')
     annotate_stars(image_path, matched_records, output, label_count,
                    names_cache=names_cache, offline=offline)
     from point_star_diagnostics import write_diagnostics
     write_diagnostics(image_path, xy[train[train_i]], camera.project(sky[train_j]), output,
                       unmatched=xy[np.setdiff1d(train, train[train_i])])
+    from point_star_report import write_report
+    report = write_report(output, result, observation_time=observation_time,
+                          latitude=latitude, longitude=longitude, elevation_m=elevation_m,
+                          pressure_hpa=pressure_hpa, temperature_c=temperature_c,
+                          relative_humidity=relative_humidity,
+                          extinction_mag_per_airmass=extinction_mag_per_airmass)
+    result['report_pdf'] = report.name
+    (output/'result.json').write_text(json.dumps(result, indent=2)+'\n')
     print(json.dumps({k:result[k] for k in ('status', 'fit', 'unmatched_dots', 'withheld_stars')}, indent=2))
     return result
 
@@ -342,9 +377,36 @@ def main():
                         help='Number of spatially distributed star labels (default: 40)')
     parser.add_argument('--names-cache', type=Path, help='Display-only name cache JSON')
     parser.add_argument('--offline', action='store_true', help='Disable SIMBAD name queries')
+    parser.add_argument('--no-overwrite', action='store_true',
+                        help='Refuse to replace an existing output directory')
+    parser.add_argument('--observation-time',
+                        help='UTC observation time for planets/refraction, for example 2026-09-13T22:00:00')
+    parser.add_argument('--latitude', type=float, help='Observing-site latitude in degrees')
+    parser.add_argument('--longitude', type=float, help='Observing-site longitude in degrees east')
+    parser.add_argument('--elevation-m', type=float, default=0., help='Site elevation in metres')
+    parser.add_argument('--pressure-hpa', type=float,
+                        help='Atmospheric pressure; default estimates it from elevation')
+    parser.add_argument('--temperature-c', type=float, default=10.,
+                        help='Air temperature for refraction (default: 10 C)')
+    parser.add_argument('--relative-humidity', type=float, default=.5,
+                        help='Relative humidity from 0 to 1 (default: 0.5)')
+    parser.add_argument('--extinction-mag-per-airmass', type=float,
+                        help='Assumed extinction coefficient for the report')
     args = parser.parse_args()
     if args.labels < 1:
         parser.error('--labels must be positive')
+    if (args.latitude is None) != (args.longitude is None):
+        parser.error('--latitude and --longitude must be supplied together')
+    if args.latitude is not None and not -90 <= args.latitude <= 90:
+        parser.error('--latitude must be between -90 and 90 degrees')
+    if args.longitude is not None and not -180 <= args.longitude <= 180:
+        parser.error('--longitude must be between -180 and 180 degrees')
+    if args.pressure_hpa is not None and args.pressure_hpa <= 0:
+        parser.error('--pressure-hpa must be positive')
+    if not 0 <= args.relative_humidity <= 1:
+        parser.error('--relative-humidity must be between 0 and 1')
+    if args.extinction_mag_per_airmass is not None and args.extinction_mag_per_airmass < 0:
+        parser.error('--extinction-mag-per-airmass cannot be negative')
     if args.annotations_from:
         result = json.loads((args.annotations_from/'result.json').read_text())
         source = args.image.expanduser().resolve()
@@ -352,12 +414,17 @@ def main():
             parser.error('The image does not match this astrometric solution')
         with (args.annotations_from/'star_coordinates.csv').open() as handle:
             records = list(csv.DictReader(handle))
-        args.output.mkdir(parents=True, exist_ok=False)
-        annotate_stars(source, records, args.output, args.labels,
+        output = prepare_output(args.output, overwrite=not args.no_overwrite)
+        annotate_stars(source, records, output, args.labels,
                        names_cache=args.names_cache, offline=args.offline)
         return
     result = run(args.image, args.output, args.catalog, label_count=args.labels,
-                 names_cache=args.names_cache, offline=args.offline)
+                 names_cache=args.names_cache, offline=args.offline,
+                 overwrite=not args.no_overwrite, observation_time=args.observation_time,
+                 latitude=args.latitude, longitude=args.longitude, elevation_m=args.elevation_m,
+                 pressure_hpa=args.pressure_hpa, temperature_c=args.temperature_c,
+                 relative_humidity=args.relative_humidity,
+                 extinction_mag_per_airmass=args.extinction_mag_per_airmass)
     raise SystemExit(0 if result['status'] == 'point_star_fit_converged' else 1)
 
 

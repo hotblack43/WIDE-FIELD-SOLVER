@@ -4,3 +4,9 @@ __pycache__/
 .pytest_cache/
 results/
 .DS_Store
+/THIS2/
+/.worktrees/
+*.pdf
+*.png
+*.jpg
+*.jpeg
