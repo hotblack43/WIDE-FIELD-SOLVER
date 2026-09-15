@@ -67,6 +67,7 @@ class EpochIntegrationTests(unittest.TestCase):
             self.assertEqual(saturated[0]['detection_id'], '0')
             self.assertIn('fit', saturated[0]['usage'])
             self.assertEqual(saved['solver_version'], '0.5.0')
+            self.assertIn('point_star_footprint.py', saved['code_sha256'])
             camera = _camera_from_result(saved)
             propagated = vectors([float(r['propagated_ra_deg']) for r in exported],
                                  [float(r['propagated_dec_deg']) for r in exported])

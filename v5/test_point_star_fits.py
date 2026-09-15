@@ -153,6 +153,25 @@ class FitsExportTests(unittest.TestCase):
         self.assertLess(np.linalg.norm(wcs.all_world2pix(np.c_[ra,dec],0)-xy,axis=1).max(),.05)
         self.assertEqual(json.dumps(camera.serialise(),sort_keys=True),before)
 
+    def test_nonfinite_intermediate_zpn_trial_does_not_block_later_valid_order(self):
+        camera = BarghiniCamera(
+            (925, 925),
+            np.array([
+                [-0.47680083379748056, 0.3402823293262998, -0.8104744914174015],
+                [0.8788155082017073, 0.16507522929188856, -0.44769796874500756],
+                [-0.01855444513324982, -0.9257203168465615, -0.37775339514463546],
+            ]),
+            np.array([0.000050593241300934104, 0.7166585334594529,
+                      0.7078672406123203, 0.7060688498578288,
+                      0.7058174984673419, 0.7090900783228151,
+                      0.007102067074746285, 5.0]),
+        )
+        _, record = self.api.validated_header(camera)
+        attempts = {row['order']: row for row in record['attempts']}
+        self.assertEqual(record['order'], 13)
+        self.assertIsNone(attempts[7]['maximum_error_px'])
+        self.assertLess(record['maximum_error_px'], self.api.LIMIT_PX)
+
     def test_missing_image_does_not_export_a_rendered_overlay(self):
         record=self.api.write_fits(self.out/'missing.png',self.out,self.result,self.science)
         self.assertEqual(record['status'],'unavailable')

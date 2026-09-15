@@ -10,6 +10,20 @@ from scipy.optimize import linear_sum_assignment, minimize_scalar, brentq
 from scipy.spatial import cKDTree
 
 
+def _load_sky_footprint(solution):
+    """Load an optional detection-domain mask; legacy analyses have none."""
+    path = Path(solution)/'dots/sky_footprint.npz'
+    if not path.is_file():
+        return None
+    with np.load(path) as saved:
+        if 'valid_mask' not in saved:
+            raise ValueError('Saved sky-footprint file has no valid_mask')
+        mask = np.asarray(saved['valid_mask'], dtype=bool)
+    if mask.ndim != 2:
+        raise ValueError('Saved sky-footprint mask is not two-dimensional')
+    return mask
+
+
 def _date_text(jd):
     from astropy.time import Time
     return Time(jd, format='jd', scale='tdb').isot + ' TDB'
@@ -450,7 +464,8 @@ def fit_blind_planet_epoch(image_path, solution, result, *, epoch_limits=(1850.,
     answer['ephemeris'] = provenance
     from point_star_planet_nondetections import check_candidate_absences, write_evidence
     answer = check_candidate_absences(image_path, answer, _camera_from_result(result),
-                                     detections, list(used.values()), planet_vectors)
+                                     detections, list(used.values()), planet_vectors,
+                                     valid_mask=_load_sky_footprint(output))
     write_evidence(output, answer)
     answer['predicted_planets'] = predict_other_planets(
         _camera_from_result(result), answer, planet_vectors)

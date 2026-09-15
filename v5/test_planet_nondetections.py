@@ -82,6 +82,20 @@ class NonDetectionTests(unittest.TestCase):
         self.assertNotEqual(self.checker().assess('jupiter',[1,1],-2.)['status'],'missing_bright_planet')
         self.assertNotEqual(self.checker(stars=self.stars[:2]).assess('jupiter',[160,120],-2.)['status'],'missing_bright_planet')
 
+    def test_saved_sky_footprint_makes_frame_pixels_inconclusive(self):
+        import tempfile
+        from pathlib import Path
+        from point_star_planets import _load_sky_footprint
+        with tempfile.TemporaryDirectory() as folder:
+            dots = Path(folder)/'dots'
+            dots.mkdir()
+            mask = np.ones(self.pixels.shape, dtype=bool)
+            mask[110:131, 150:171] = False
+            np.savez_compressed(dots/'sky_footprint.npz', valid_mask=mask)
+            loaded = _load_sky_footprint(folder)
+            row = self.checker(valid_mask=loaded).assess('jupiter', [160,120], -2.)
+        self.assertEqual(row['status'], 'inconclusive_mask_or_edge')
+
     def test_each_candidate_uses_its_own_epoch_and_regenerates_visible_predictions(self):
         import tempfile, json, copy
         from pathlib import Path

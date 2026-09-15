@@ -87,9 +87,19 @@ def validated_header(camera):
         header = fits.Header.fromstring(wcs.to_header(relax=True).tostring())
         exported = WCS(header)
         world = exported.all_pix2world(xy, 0)
+        if not np.isfinite(world).all():
+            attempts.append({'order': order, 'maximum_error_px': None,
+                             'reason': 'nonfinite pixel-to-world validation result'})
+            continue
+        truth_pixels = exported.all_world2pix(truth, 0)
+        roundtrip_pixels = exported.all_world2pix(world, 0)
+        if not (np.isfinite(truth_pixels).all() and np.isfinite(roundtrip_pixels).all()):
+            attempts.append({'order': order, 'maximum_error_px': None,
+                             'reason': 'nonfinite world-to-pixel validation result'})
+            continue
         errors = np.r_[np.linalg.norm(camera.project(vectors(world[:, 0], world[:, 1]))-xy, axis=1),
-                       np.linalg.norm(exported.all_world2pix(truth, 0)-xy, axis=1),
-                       np.linalg.norm(exported.all_world2pix(world, 0)-xy, axis=1),
+                       np.linalg.norm(truth_pixels-xy, axis=1),
+                       np.linalg.norm(roundtrip_pixels-xy, axis=1),
                        np.abs(poly(check_u)/scale-check_r)]
         maximum = float(np.max(errors)) if np.isfinite(errors).all() else None
         attempts.append({'order': order, 'maximum_error_px': maximum})

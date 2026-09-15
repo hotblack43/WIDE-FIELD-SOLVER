@@ -428,7 +428,8 @@ def run(image_path, output, catalog_path, *, label_count=40, names_cache=None, o
     result['broad_or_saturated_objects'] = len(blobs)
     result['broad_or_saturated_without_star_match'] = sum(not r['catalogue_star_id'] for r in blobs)
     result['code_sha256'] = {name:hashlib.sha256((Path(__file__).parent/name).read_bytes()).hexdigest()
-        for name in ['point_star_detection.py', 'point_star_barghini.py', 'barghini_model.py',
+        for name in ['point_star_detection.py', 'point_star_footprint.py',
+                     'point_star_barghini.py', 'barghini_model.py',
                      'point_star_names.py', 'point_star_diagnostics.py', 'point_star_report.py',
                      'point_star_epoch.py', 'point_star_zenith.py', 'point_star_science.py',
                      'point_star_time_bounds.py']}

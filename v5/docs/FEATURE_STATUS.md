@@ -10,6 +10,7 @@ must not describe a proposal as working merely because related products exist.
 | Lossless PNG output speedup | Preserved | Compression level 1; decoded pixels unchanged; report PDFs retain native PNG resolution |
 | Ordinary plot names | Enabled by the versioned go launcher | Local display-only aliases, then SIMBAD after fitting; unresolved numeric labels omitted, source markers retained |
 | Point-source detection, including large/saturated sources | Preserved | Historical demo and detection tests |
+| Image-only sky-footprint masking | Integrated in v0.5.0 development | Conservative connected illuminated field; dark exterior frame excluded before association; no OCR or semantic masking inside the field; ambiguous images use the full detector |
 | Blind pattern bootstrap and Barghini lens fit | Preserved | Fresh pixels and bundled pattern database; no saved associations |
 | Proper-motion propagation in the final astrometric solution | Added in 0.3.0 | Shared catalogue propagation, synthetic recovery and exported-coordinate checks |
 | Stellar epoch fitted with all associations; final camera saved | Added in 0.3.0 | All-star robust profile; conditional or provisional date status |
@@ -242,3 +243,32 @@ controls; native FITS-region import alone does not preserve labels or styles.
 The export must pass a 0.05-pixel maximum additional error check over the whole
 detector. It does not refit astrometry, use validation metadata or change planet
 ranking. See [FITS_EXPORT.md](FITS_EXPORT.md) for layout, limitations and tests.
+
+## v0.5.0 development: framed fisheye support
+
+The detector now infers a conservative Boolean sky footprint from image pixels
+before assigning detection identifiers. A dominant illuminated circular,
+elliptical, cropped or mildly irregular field can be separated from a darker
+frame; ambiguous images retain the complete detector. This is not OCR and does
+not attempt to recognise text or obstructions inside the stellar field. The
+original pixels are never replaced or set to NaN. `sky_footprint.npz`,
+`sky_footprint.png`, the detection JSON and rejected-candidate table retain the
+decision and its evidence. Broad and saturated sources inside the footprint
+remain eligible for association. Outside pixels are masked, not treated as
+negative evidence, when checking for missing bright planets.
+
+The motivating Espenak image previously admitted five broad copyright-line
+detections near y=910 as accidental Gaia associations. The image-only footprint
+accepts 67.5911% of the detector and rejects 31 frame detections. A fresh blind
+run retains 1,137 associations with 0.561218-pixel RMS, compared with 1,144 and
+0.577054 pixels before masking. Its fixed 1,079-star photometric sample now
+supports a conditional zenith (0.555-degree conditional uncertainty, minimum
+altitude 4.389 degrees) and an extinction fit. This does not validate the zenith
+against hidden metadata or establish a unique planetary epoch.
+
+The same investigation exposed an independent FITS validation control-flow
+defect: an intermediate order-7 ZPN approximation returned non-finite corner
+coordinates and reached the Barghini numerical inverse before it could be
+rejected. Non-finite trial transforms are now recorded and skipped. The unchanged
+camera validates at order 13 with 0.012976-pixel maximum added export error,
+below the existing 0.05-pixel threshold; no astrometry is refitted.

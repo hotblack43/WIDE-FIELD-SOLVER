@@ -1,12 +1,31 @@
 """Point-source recovery tests with independently specified image positions."""
 import unittest
+import csv
+import json
+import tempfile
+from pathlib import Path
 
 import numpy as np
+from PIL import Image
 
-from point_star_detection import detect_stars
+from point_star_detection import detect_stars, write_products
 
 
 class PointStarDetectionTests(unittest.TestCase):
+    @staticmethod
+    def framed_sources():
+        rng = np.random.default_rng(20260915)
+        yy, xx = np.mgrid[:180, :220]
+        field = ((xx-110)/82)**2+((yy-86)/72)**2 <= 1
+        image = np.full((180, 220), 2.)
+        image[field] = 24+rng.normal(0, .35, field.sum())
+        image += 100*np.exp(-((xx-90.3)**2+(yy-70.7)**2)/(2*1.2**2))
+        image += 500*np.exp(-((xx-135.2)**2+(yy-105.4)**2)/(2*5.5**2))
+        # Point-like graphics in the black frame, including a short baseline.
+        for x in (35, 48, 61, 74, 87):
+            image += 120*np.exp(-((xx-x)**2+(yy-166)**2)/(2*1.1**2))
+        return np.clip(image, 0, 255)
+
     def test_subpixel_centres_on_changing_background(self):
         rng = np.random.default_rng(17)
         yy, xx = np.mgrid[:180, :220]
@@ -50,6 +69,36 @@ class PointStarDetectionTests(unittest.TestCase):
     def test_flat_image_has_no_detections(self):
         stars, _ = detect_stars(np.full((100, 120), 30.))
         self.assertEqual(stars, [])
+
+    def test_frame_sources_are_audited_before_detection_ids_are_assigned(self):
+        stars, audit = detect_stars(self.framed_sources())
+        xy = np.array([[s['x_px'], s['y_px']] for s in stars])
+        self.assertTrue(np.any(np.linalg.norm(xy-[90.3, 70.7], axis=1) < .3))
+        broad = [s for s in stars if s['source_class'] == 'broad_blob']
+        self.assertTrue(any(s['saturated'] for s in broad))
+        self.assertFalse(np.any(xy[:, 1] > 155))
+        outside = [r for r in audit['rejected'] if r['reason'] == 'outside_sky_footprint']
+        self.assertGreaterEqual(len(outside), 5)
+        self.assertEqual([s['detection_id'] for s in stars], list(range(1, len(stars)+1)))
+
+    def test_write_products_saves_mask_and_matching_audit_counts(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            image = root/'input.png'
+            Image.fromarray(self.framed_sources().astype('uint8')).save(image)
+            summary = write_products(image, root/'dots')
+            with np.load(root/'dots/sky_footprint.npz') as saved:
+                mask = saved['valid_mask']
+            with (root/'dots/rejected_candidates.csv').open() as handle:
+                rejected = list(csv.DictReader(handle))
+            disk_summary = json.loads((root/'dots/detection.json').read_text())
+            self.assertEqual(mask.dtype, np.bool_)
+            self.assertEqual(mask.shape, (180, 220))
+            self.assertTrue((root/'dots/sky_footprint.png').is_file())
+            self.assertEqual(summary['frame_sources_rejected'],
+                             sum(r['reason'] == 'outside_sky_footprint' for r in rejected))
+            self.assertEqual(disk_summary['footprint_status'], 'framed_footprint')
+            self.assertIsNotNone(disk_summary['sky_footprint']['threshold_adu'])
 
 
 if __name__ == '__main__':

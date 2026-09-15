@@ -16,6 +16,23 @@ measure centroids and shapes. Growing windows retain broad and saturated
 objects; duplicate peaks on saturation plateaux are suppressed. Finite windows,
 blends, edges and shape cuts limit completeness.
 
+Before those measured candidates are numbered or exposed to catalogue
+association, `point_star_footprint.py` looks for a dominant illuminated image
+field separated from a darker exterior frame. It uses only finite image
+luminance, scale-aware smoothing and connected components. Enclosed dark
+structure is filled in the mask so the Milky Way, clouds and dark sky patches do
+not become holes. When the contrast or geometry is ambiguous, the full detector
+remains valid. This is an image-support boundary, not a morphology or quality
+cut: compact, broad and saturated sources inside it remain eligible.
+
+The Boolean footprint is saved in `dots/sky_footprint.npz` and displayed in
+`dots/sky_footprint.png`. Frame detections are retained in the rejection audit as
+`outside_sky_footprint`; they do not reach bootstrap or fitting. No NaN pixels,
+OCR, metadata, catalogue coordinates or fitted zenith enter this step. Text or
+graphics inside the accepted field are unsupported. The original decoded image
+is unchanged in reports and FITS export. Planet non-detection evidence reuses the
+mask, treating its exterior as unobserved rather than empty sky.
+
 The bootstrap scans a small set of central patches at several sizes. tetra3's
 bundled database identifies a pattern using only the new measured centroids.
 For the preserved example, the accepted patch is 260 × 260 pixels at x=458,

@@ -14,10 +14,22 @@ import numpy as np
 from PIL import Image
 from scipy.ndimage import gaussian_filter, label, maximum_filter
 
+from point_star_footprint import infer_sky_footprint
 from point_star_plotting import save_png
 
 
-def detect_stars(image, detection_sigma=6., background_sigma=10.):
+def detect_stars(image, detection_sigma=6., background_sigma=10., *, valid_mask=None):
+    source_pixels = np.asarray(image)
+    if valid_mask is None:
+        valid_mask, footprint = infer_sky_footprint(source_pixels)
+    else:
+        valid_mask = np.asarray(valid_mask, dtype=bool)
+        if valid_mask.shape != source_pixels.shape[:2]:
+            raise ValueError('Sky-footprint mask shape differs from image')
+        footprint = dict(status='supplied_mask', method='caller_supplied_boolean_mask',
+                         valid_pixel_fraction=float(valid_mask.mean()),
+                         reason='Caller supplied the image-domain validity mask',
+                         metadata_used=False, ocr_used=False)
     pixels = np.asarray(image, dtype=float)
     saturated_pixels = pixels >= 250
     if pixels.ndim == 3 and pixels.shape[2] >= 3:
@@ -110,12 +122,23 @@ def detect_stars(image, detection_sigma=6., background_sigma=10.):
                                  reason='duplicate_peak_in_blob'))
         else:
             unique.append(candidate)
-    stars = unique
+    stars = []
+    outside = []
+    for candidate in unique:
+        x = int(np.clip(round(candidate['x_px']), 0, valid_mask.shape[1]-1))
+        y = int(np.clip(round(candidate['y_px']), 0, valid_mask.shape[0]-1))
+        if valid_mask[y, x]:
+            stars.append(candidate)
+        else:
+            outside.append(dict(x_px=candidate['x_px'], y_px=candidate['y_px'],
+                                reason='outside_sky_footprint'))
+    rejected.extend(outside)
     for i, star in enumerate(stars, 1):
         star['detection_id'] = i
     return stars, dict(background=background, signal=signal, noise=noise,
                       global_noise=global_noise, rejected=rejected,
-                      local_maxima_count=len(xx))
+                      local_maxima_count=len(xx), valid_mask=valid_mask,
+                      footprint=footprint, frame_sources_rejected=len(outside))
 
 
 def write_products(image_path, output, detection_sigma=6., background_sigma=10.):
@@ -150,14 +173,27 @@ def write_products(image_path, output, detection_sigma=6., background_sigma=10.)
         local_maxima=audit['local_maxima_count'], rejected=len(audit['rejected']),
         detection_sigma=detection_sigma, background_sigma_px=background_sigma,
         global_noise_adu=audit['global_noise'], source_resized=False,
+        footprint_status=audit['footprint']['status'],
+        footprint_method=audit['footprint']['method'],
+        sky_footprint=audit['footprint'],
+        valid_sky_pixel_fraction=audit['footprint']['valid_pixel_fraction'],
+        frame_sources_rejected=audit['frame_sources_rejected'],
+        footprint_reason=audit['footprint']['reason'],
+        ocr_used=False,
         metadata_used=False, coordinate_convention='integer pixel centres; x right, y down',
         astrometry_attempted=False,
-        limitation='Measured candidates, not verified stars or planets; foreground lights can survive. '
+        limitation='Detection is restricted to an image-only sky footprint; no OCR or semantic '
+                   'obstruction recognition is attempted, and text inside the field is unsupported. '
+                   'Measured candidates are not verified stars or planets; foreground lights can survive. '
                    'Close blends, strongly distorted stars and faint stars may be omitted. '
                    'Flux is a thresholded JPEG intensity diagnostic, not calibrated photometry.')
     (output/'detection.json').write_text(json.dumps(summary, indent=2)+'\n')
     fig, ax = plt.subplots(figsize=(12, 11))
     ax.imshow(rgb)
+    valid_mask = audit['valid_mask']
+    if not valid_mask.all():
+        ax.contour(valid_mask.astype(float), levels=[.5], colors=['#ffeb3b'],
+                   linewidths=.8)
     if stars:
         xy = np.array([[s['x_px'], s['y_px']] for s in stars])
         for source_class, color in [('compact', 'cyan'), ('broad_blob', 'orange')]:
@@ -174,6 +210,22 @@ def write_products(image_path, output, detection_sigma=6., background_sigma=10.)
     ax.set_ylim(rgb.shape[0]-.5, -.5)
     fig.tight_layout()
     save_png(fig, output/'dots_overlay.png', dpi=180)
+    plt.close(fig)
+    np.savez_compressed(output/'sky_footprint.npz', valid_mask=valid_mask.astype(bool))
+    fig, ax = plt.subplots(figsize=(12, 11))
+    ax.imshow(rgb)
+    if not valid_mask.all():
+        shade = np.zeros((*valid_mask.shape, 4), dtype=float)
+        shade[~valid_mask] = [1., 0., 0., .42]
+        ax.imshow(shade)
+        ax.contour(valid_mask.astype(float), levels=[.5], colors=['#ffeb3b'],
+                   linewidths=1.)
+    ax.set(xlim=(-.5, rgb.shape[1]-.5), ylim=(rgb.shape[0]-.5, -.5),
+           title=('Accepted sky footprint; red pixels are excluded'
+                  if not valid_mask.all() else 'Accepted sky footprint: complete image'))
+    ax.axis('off')
+    fig.tight_layout()
+    save_png(fig, output/'sky_footprint.png', dpi=160)
     plt.close(fig)
     # Sample the complete brightness distribution, not just the most obvious stars.
     if stars:
