@@ -85,6 +85,16 @@ blind search and its ambiguities have been implemented and tested.
 - Known-epoch runs are explicit non-blind controls, never substitutes for the
   blind default or evidence that it succeeded.
 
+## Current catalogue depth and labels
+
+Use magnitude limit 7.5 until Peter requests otherwise (Gaia G or Tycho VT,
+with the passband difference explicit). Defer deeper magnitude experiments.
+Use ordinary star names/designations for plot labels, rather than long Gaia
+source IDs. Retain catalogue IDs in numerical records. Name caches and external
+alias lookups are display-only and must never seed or change an astrometric fit.
+If no ordinary alias is available, retain the source marker without inventing a
+name or printing its long numeric identifier on the image.
+
 ## Preserve working behavior and honest status
 
 Keep the historical v0.1.0 tag, example input, frozen catalogue and reference

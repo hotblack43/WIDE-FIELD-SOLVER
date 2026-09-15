@@ -45,3 +45,18 @@ uv run --frozen python -m unittest discover -v
 For function-level investigation, invoke `point_star_barghini.run` under
 `cProfile`; profiling `scripts/run_demo.py` alone only measures time waiting for
 its solver subprocess.
+
+
+## Report image resolution correction (15 September 2026)
+
+The PNG speedup remains present and lossless. A separate PDF assembly issue
+resampled those PNGs at Matplotlib's default 100 dpi: the inspected Warwick
+report embedded a 1512x1394 sky overlay as 536x494 pixels, and a 2700x1260
+residual plot as 301x140 pixels. Report panels now use native-resolution PDF
+image embedding (`interpolation='none'`). Embedding retains the full PNG array
+and makes no astrometric correction. Ordinary-name labels are a separate display
+change; fitted coordinates and numerical results remain unchanged. This preserves detail instead of manufacturing
+extra resolution, with a larger PDF as the expected trade-off.
+
+A regression test reads the PDF image dictionaries and checks that each embedded
+image has the dimensions of its source PNG. The two-page report layout remains.

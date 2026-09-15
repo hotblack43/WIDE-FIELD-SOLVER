@@ -6,6 +6,8 @@ must not describe a proposal as working merely because related products exist.
 
 | Capability | Implemented status | Evidence / limitation |
 |---|---|---|
+| Lossless PNG output speedup | Preserved | Compression level 1; decoded pixels unchanged; report PDFs retain native PNG resolution |
+| Ordinary plot names | Enabled by the versioned go launcher | Local display-only aliases, then SIMBAD after fitting; unresolved numeric labels omitted, source markers retained |
 | Point-source detection, including large/saturated sources | Preserved | Historical demo and detection tests |
 | Blind pattern bootstrap and Barghini lens fit | Preserved | Fresh pixels and bundled pattern database; no saved associations |
 | Proper-motion propagation in the final astrometric solution | Added in 0.3.0 | Shared catalogue propagation, synthetic recovery and exported-coordinate checks |
@@ -17,7 +19,7 @@ must not describe a proposal as working merely because related products exist.
 | Joint photometric zenith/extinction and astrometric epoch constraint | **Not implemented** | Not part of the 0.3.0 proper-motion bugfix; must be designed and tested explicitly |
 | Blind planetary epoch | **Not implemented** | Default metadata-centred lookup disabled; a separate blind positional search remains required |
 | Post-fit metadata comparison, including pole–zenith latitude | Added in 0.3.0 | Explicit `--compare-metadata`; no refit, uncertainty/status retained |
-| Gaia reference catalogue | Added in 0.4.0 as an opt-in alternative | Native DR3 epochs/PM, 36,663 Gaia rows plus 78 labelled bright supplements; default remains Tycho/Hipparcos |
+| Gaia reference catalogue | Added in 0.4.0 as an opt-in alternative | Native DR3 epochs/PM, 36,663 Gaia rows plus 78 labelled bright supplements; `go_v0.4.0.sh` explicitly selects Gaia; bare solve/analyse CLI defaults remain Tycho/Hipparcos |
 | Independent same-image catalogue comparison and paired spatial resampling | Added in 0.4.0 | Different associations allowed; 32 explicit spatial deletion refits; conditional sensitivity, not independent validation |
 
 ## Photometric zenith proposal: provenance and implementation
@@ -51,3 +53,15 @@ This is an integrated downstream photometric constraint, not a joint photometric
 refraction/epoch solution. If its future coupling changes astrometry, that change
 must propagate into the saved Barghini camera and coordinates. See `GOAL.md` for
 the durable scientific requirements.
+
+
+## September 15 implementation audit
+
+The v0.4 branch includes commits 66bbbc4 (lossless PNG speedup), 0833bee
+(proper-motion/epoch loop and saved-camera fix), c2f0afc (blind photometric zenith)
+and 94ca721 (Gaia comparison). Epoch trials propagate coordinates and refit the
+camera; an outer loop reassociates until stable, then saves that fitted camera.
+Photometric zenith and atmospheric refraction remain downstream. Their joint
+coupling is unfinished; it must not be described as covered by the epoch bugfix.
+The separate v2 magnitude-depth experiment is not merged. Use magnitude 7.5 until
+Peter requests a change, as recorded in GOAL.md.

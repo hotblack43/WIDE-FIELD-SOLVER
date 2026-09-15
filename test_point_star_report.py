@@ -78,6 +78,20 @@ class ReportTests(unittest.TestCase):
         self.assertNotIn('0.225', text)
         self.assertNotIn('2026-09-14', text)
 
+    def test_pdf_preserves_embedded_png_resolution(self):
+        from PIL import Image
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name in ('astrometry_overlay.png', 'astrometry_residuals.png'):
+                Image.new('RGB', (1280, 900), 'navy').save(root/name)
+            report = write_report(root, self.sample_result())
+            dimensions = {tuple(map(int, pair)) for pair in re.findall(
+                rb'/Width\s+(\d+)\s+/Height\s+(\d+)', report.read_bytes())}
+            for name in ('report_sky_overlay.png', 'astrometry_residuals.png'):
+                with Image.open(root/name) as source:
+                    self.assertIn(source.size, dimensions,
+                                  f'{name} was downsampled when embedded in the PDF')
+
     def test_write_report_creates_two_page_pdf(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

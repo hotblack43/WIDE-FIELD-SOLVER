@@ -14,6 +14,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 import numpy as np
 
 from point_star_plotting import save_png
+from point_star_names import plot_label
 
 
 OMR_FEEDS = {'murdoc', 'gtc1', 'gtc2', 'liverpool', 'magic', 'warwick'}
@@ -256,7 +257,9 @@ def table_rows(result, science):
 
 
 def _show_image(ax, path, title):
-    ax.imshow(mpimg.imread(path))
+    # PDF supports native image embedding; default interpolation downsamples
+    # to the figure's 100 dpi and destroys detail in existing high-res PNGs.
+    ax.imshow(mpimg.imread(path), interpolation='none')
     ax.set_title(title, fontsize=9, pad=3)
     ax.axis('off')
 
@@ -280,11 +283,14 @@ def write_report_sky_overlay(output, result, science, maximum_labels=24):
     for index, row in enumerate(labelled):
         x, y = float(row['x_px']), float(row['y_px'])
         ax.plot(x, y, 'o', ms=6.5, mfc='none', mec='#ffe45e', mew=.9)
+        label = plot_label(row)
+        if label is None:
+            continue
         right = x < .76*width
         above = y > .14*height
         dx = 7 if right else -7
         dy = -7 if above else 8
-        ax.annotate(row.get('display_name') or row['star_id'], (x, y),
+        ax.annotate(label, (x, y),
                     xytext=(dx, dy), textcoords='offset points',
                     ha='left' if right else 'right',
                     va='top' if above else 'bottom',

@@ -69,3 +69,17 @@ Neither catalogue is an independent truth standard for the same-image comparison
 
 References: [ESA Gaia DR3 contents](https://www.cosmos.esa.int/web/gaia/dr3),
 [Gaia DR3 source data model](https://gea.esac.esa.int/archive/documentation/GDR3/Gaia_archive/chap_datamodel/sec_dm_main_source_catalogue/ssec_dm_gaia_source.html).
+
+
+## Ordinary display names
+
+`display_names.json` is a display-only SIMBAD alias cache: it combines the
+preserved example's aliases with successful lookups for the inspected Warwick
+image. Gaia IDs appearing in a cached alias list resolve to the same ordinary
+name. Exact cached keys take precedence; ambiguous alias matches are not used.
+
+Names are resolved only after the astrometric fit. The versioned go launcher
+uses this local cache and queries SIMBAD for missing names; direct `--offline`
+runs use available cached aliases. Unresolved stars retain their plotted marker
+without a long Gaia numeric label. All source IDs remain in numerical records.
+No alias, cached coordinate or lookup result seeds or adjusts astrometry.

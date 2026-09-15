@@ -196,7 +196,7 @@ def annotate_stars(image_path, records, output, count=40, *, names_cache=None, o
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
     rgb = np.asarray(Image.open(image_path).convert('RGB'))
-    from point_star_names import resolve_names
+    from point_star_names import plot_label, resolve_names
     selected = [dict(r) for r in select_labels(records, count)]
     names = resolve_names([r['star_id'] for r in selected],
                           cache_path=names_cache, offline=offline)
@@ -209,8 +209,11 @@ def annotate_stars(image_path, records, output, count=40, *, names_cache=None, o
     for r in selected:
         x, y = float(r['x_px']), float(r['y_px'])
         ax.plot(x, y, 'o', ms=8, mfc='none', mec='#ffe66d', mew=1.)
+        label = plot_label(r)
+        if label is None:
+            continue
         right = x < .82*rgb.shape[1]
-        ax.annotate(r['display_name'], (x, y), xytext=(10 if right else -10, -13 if y < 70 else 10),
+        ax.annotate(label, (x, y), xytext=(10 if right else -10, -13 if y < 70 else 10),
                     textcoords='offset points', ha='left' if right else 'right',
                     fontsize=9, color='#ffe66d',
                     bbox=dict(boxstyle='round,pad=.2', fc='black', ec='none', alpha=.6),
