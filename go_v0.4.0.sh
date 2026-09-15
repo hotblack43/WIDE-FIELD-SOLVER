@@ -57,7 +57,7 @@ echo "Images and reports: $output"
 echo "Log: $run_dir/run.log"
 
 if ! OPENBLAS_NUM_THREADS=1 "$solver/analyse.sh" "$image" \
-        --catalog "$catalogue" --epoch-mode fit --offline --output "$output" \
+        --catalog "$catalogue" --epoch-mode fit --output "$output" \
         2>&1 | tee "$run_dir/run.log"; then
     echo "Analysis failed. Its output and log are preserved at $run_dir" >&2
     exit 1

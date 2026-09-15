@@ -19,7 +19,8 @@ sources are available for fitting; no stars are withheld.
 ```
 
 `./go.sh` is an alias. The launcher verifies solver version 0.4.0, selects the
-Gaia catalogue, fits stellar epoch blindly and runs offline. From the preserved
+Gaia catalogue and fits stellar epoch blindly. Ordinary star names come from a
+local display-only cache, with missing aliases queried from SIMBAD after fitting. From the preserved
 root checkout it uses `.worktrees/gaia-v0.4`; in the Gaia checkout it runs locally.
 Each invocation creates a unique folder under `results/runs/` beside the launcher,
 with the image name, version and run timestamp. The folder contains `run.log` and
