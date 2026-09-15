@@ -1,11 +1,3 @@
-Latest v4: `./go4.sh /full/path/to/image.jpg` selects **0.4.3**.
-Planet matches require nonnegative measured and predicted altitude relative to
-the image-derived zenith. Both blind epoch searches stop at the recorded current
-run time. Epoch lists, plots and the three-page report remain enabled.
-Use `go_v0.4.3.sh` to pin this version. `go.sh` and earlier versioned launchers
-retain their established behavior. Both launchers select Gaia DR3 at G ≤ 7.5;
-the PDF explicitly identifies the catalogue used, including its bright-star supplement.
-
 # WIDE-FIELD SOLVER
 
 by Peter Thejll and Chris Flynn
@@ -20,21 +12,37 @@ sources are available for fitting; no stars are withheld.
 
 ![Forty identified stars across the Milky Way fisheye image](examples/milky_way/reference/identified_40_stars.png)
 
-## One-command Gaia analysis (0.4.1)
+## Two separate solver versions
+
+| Command | Catalogue | Implementation |
+|---|---|---|
+| `./go.sh IMAGE` | Tycho-2/Hipparcos | Preserved root standalone-report workflow |
+| `./go4.sh IMAGE` | Gaia DR3 plus bright-star supplement | Upgraded v0.4.3 in `v4/` |
 
 ```sh
-./go_v0.4.1.sh /full/path/to/image.jpg
+./go.sh /full/path/to/image.jpg
+./go4.sh /full/path/to/image.jpg
 ```
 
-The versioned launcher verifies solver version 0.4.1, selects the
-Gaia catalogue and fits stellar epoch blindly. Ordinary star names come from a
-local display-only cache, with missing aliases queried from SIMBAD after fitting. From the preserved
-root checkout it uses `.worktrees/zenith-v0.4.1`; in the v0.4.1 checkout it runs locally.
-Each invocation creates a unique folder under `results/runs/` beside the launcher,
-with the image name, version and run timestamp. The folder contains `run.log` and
-an `analysis/` directory holding all generated images, tables and the PDF report.
-The output locations are printed; repeated runs preserve earlier results.
-Use `--version` or `--help` to inspect the launcher.
+`go.sh` has been restored to Tycho; it does not call a Gaia launcher. Its Python
+modules, catalogue, dependency lockfile and historical example remain unchanged
+from the pre-Gaia workflow. It writes the legacy report under `results/IMAGE_STEM/`
+and retains that workflow's existing overwrite and metadata-diagnostic behaviour.
+
+`go4.sh` includes the upgraded Barghini solver, proper-motion handling, blind
+stellar and planetary epoch searches, photometric zenith, visibility checks,
+report improvements and bootstrap fallback. Each run gets a new logged directory
+under `results/runs/`. Read [v4 feature status](v4/docs/FEATURE_STATUS.md) for the
+scientific limitations; a candidate date is not necessarily a resolved epoch.
+
+Both commands work from this checkout without `.worktrees`. The v4 runtime,
+catalogues, dependency lockfile and tests are ordinary tracked files under `v4/`.
+Use `./go_v0.4.3.sh IMAGE` to select the packaged v0.4.3 explicitly. Earlier
+versioned launchers are historical development entrypoints that may need their
+named worktrees.
+
+See [preservation and future updates](docs/CONSOLIDATION.md). CI checks launcher
+routing and legacy file hashes and runs the full suites and demos for both versions.
 
 ## Try the preserved example
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Latest v4 launcher; the original go.sh keeps its established version.
+# Gaia v4 and its dependencies are committed under v4/.
 set -euo pipefail
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-exec "$repo/go_v0.4.3.sh" "$@"
+exec "$repo/v4/run.sh" "$@"

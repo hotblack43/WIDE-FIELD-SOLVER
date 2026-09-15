@@ -1,0 +1,599 @@
+"""One-page scientific PDF for a completed point-source Barghini analysis."""
+from __future__ import annotations
+
+import hashlib
+import json
+from pathlib import Path
+import re
+import textwrap
+
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.image as mpimg
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
+import numpy as np
+
+from point_star_plotting import save_png
+from point_star_names import plot_label
+
+
+OMR_FEEDS = {'murdoc', 'gtc1', 'gtc2', 'liverpool', 'magic', 'warwick'}
+OMR_SITE = dict(latitude=28.7606, longitude=-17.8850, elevation_m=2326.,
+                site_source='ORM reference location inferred from OMRcam feed')
+
+
+def observation_metadata(result, *, reveal=False):
+    """Recover metadata only for controls or explicitly revealed post-fit validation."""
+    if result.get('blind') and not (reveal or result.get('metadata_revealed')):
+        return {}
+    saved = result.get('observation') or {}
+    metadata = {}
+    if saved.get('time_utc'):
+        metadata.update(observation_time=saved['time_utc'],
+                        epoch_source='saved solver argument')
+    if saved.get('latitude_deg') is not None and saved.get('longitude_deg') is not None:
+        metadata.update(latitude=float(saved['latitude_deg']),
+                        longitude=float(saved['longitude_deg']),
+                        elevation_m=float(saved.get('elevation_m') or 0.),
+                        site_source='saved solver arguments')
+
+    source = Path(result.get('source', ''))
+    record = None
+    manifest = source.parent/'manifest.jsonl'
+    if source.name and manifest.is_file():
+        for line in manifest.read_text().splitlines():
+            try:
+                candidate = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if candidate.get('filename') == source.name:
+                record = candidate
+                break
+    feed = (record or {}).get('feed')
+    if feed is None and source.name:
+        feed = source.name.split('_', 1)[0].lower()
+    if 'observation_time' not in metadata and record and record.get('captured_at'):
+        metadata['observation_time'] = record['captured_at']
+        metadata['epoch_source'] = ('camera-server Last-Modified via OMRcam manifest'
+                                    if record.get('last_modified') else
+                                    'retrieval time via OMRcam manifest')
+    if 'observation_time' not in metadata and feed in OMR_FEEDS:
+        match = re.search(r'_(\d{8}T\d{6}Z)(?:_|\.)', source.name)
+        if match:
+            metadata['observation_time'] = match.group(1)
+            metadata['epoch_source'] = 'source-or-retrieval time encoded by OMRcam filename'
+    if 'latitude' not in metadata and feed in OMR_FEEDS:
+        metadata.update(OMR_SITE)
+    if feed:
+        metadata['camera'] = str(feed).lower()
+    return metadata
+
+
+
+def report_filename(result):
+    """Return a filesystem-safe report name containing camera and UTC."""
+    source = Path(result.get('source', 'image'))
+    metadata = observation_metadata(result)
+    camera = metadata.get('camera') or source.stem.split('_', 1)[0] or 'camera'
+    camera = re.sub(r'[^A-Za-z0-9-]+', '-', str(camera)).strip('-').lower() or 'camera'
+    raw_time = str(metadata.get('observation_time') or '')
+    digits = re.sub(r'[^0-9]', '', raw_time)
+    utc = f'{digits[:8]}T{digits[8:14]}Z' if len(digits) >= 14 else 'UTCunknown'
+    return f'report_{camera}_{utc}.pdf'
+
+
+def _fmt(value, digits=3, missing='--'):
+    try:
+        number = float(value)
+        return f'{number:.{digits}f}' if np.isfinite(number) else missing
+    except (TypeError, ValueError):
+        return missing
+
+
+def _camera_from_result(result):
+    from point_star_barghini import BarghiniCamera
+    camera = result['camera']
+    return BarghiniCamera(tuple(camera['shape']), np.asarray(camera['reference_rotation']),
+                          np.asarray(camera['normalised_parameters']))
+
+
+def _load_science(output, science):
+    if science is not None:
+        return science
+    path = Path(output)/'science_summary.json'
+    return json.loads(path.read_text()) if path.is_file() else {}
+
+
+def report_sections(result, science=None, **legacy):
+    """Return concise interpretation blocks for the report."""
+    science = science or {}
+    fit = result['fit']
+    p = result['camera']['parameters']
+    stellar = result.get('stellar_epoch') or science.get('stellar_epoch') or {}
+    refraction = science.get('refraction') or {}
+    photometry = science.get('photometry') or {}
+    extinction = photometry.get('extinction') or {}
+    extinction_by_channel = photometry.get('extinction_by_channel') or {}
+    planets = science.get('planets') or {}
+
+    lens = (
+        f"Barghini O/Z FET fit using {fit['count']:,} catalogue stars. "
+        f"The optical centre is O=({_fmt(p['x_o'], 1)}, {_fmt(p['y_o'], 1)}) px and "
+        f"the fitted reference point is Z=({_fmt(p['x_z'], 1)}, {_fmt(p['y_z'], 1)}) px. "
+        f"The radial law u(r)=Vr+S[exp(Dr)-1] has V={p['v']:.6g} rad px⁻¹, "
+        f"S={p['s']:.6g} rad and D={p['d']:.6g} px⁻¹."
+    )
+    if stellar.get('status') == 'not_identifiable':
+        epoch_text = (
+            f"The stellar epoch is unresolved. The saved solution uses the provisional adopted "
+            f"epoch J{_fmt(stellar.get('applied_epoch_jyear'), 1)}. "
+            "The profile minimum is not an established observation date."
+        )
+    elif stellar.get('status') == 'supplied_epoch':
+        epoch_text = (
+            f"Proper motions were applied at supplied epoch J{_fmt(stellar.get('applied_epoch_jyear'), 1)}; "
+            "this date was not inferred from the stars."
+        )
+    elif stellar.get('status') == 'conditional_epoch':
+        interval = stellar.get('conditional_interval_95_jyear', [None, None])
+        epoch_text = (
+            f"The conditional stellar epoch is J{_fmt(stellar.get('epoch_jyear'), 2)}, "
+            f"with approximate conditional 95% interval {_fmt(interval[0], 2)} to {_fmt(interval[1], 2)}. "
+            f"All {stellar.get('fitted_count', 0)} associations enter the fit. "
+            "This interval excludes catalogue and lens/atmospheric systematic errors."
+        )
+    else:
+        epoch_text = 'The stellar proper-motion epoch analysis has not been run.'
+    astrometry = (
+        f"Detector residuals are RMS {_fmt(fit['rms_px'])} px, median "
+        f"{_fmt(fit['median_px'])} px and 90th percentile {_fmt(fit['p90_px'])} px. "
+        + epoch_text
+    )
+
+    photometric_zenith = photometry.get('photometric_zenith') or {}
+    if refraction:
+        status = refraction.get('status', 'unknown').replace('_', ' ')
+        atmosphere = (
+            f"The empirical refraction fit has status “{status}”. Its tangent coefficients are "
+            f"A={_fmt(refraction.get('refraction_a_arcsec'), 2)} arcsec and "
+            f"B={_fmt(refraction.get('refraction_b_arcsec'), 3)} arcsec, with ΔBIC "
+            f"{_fmt(refraction.get('delta_bic'), 1)}. The baseline/fitted RMS values are "
+            f"{_fmt(refraction.get('baseline_rms_arcmin'), 2)}/"
+            f"{_fmt(refraction.get('fitted_rms_arcmin'), 2)} arcmin."
+        )
+    else:
+        atmosphere = 'The empirical refraction fit has not been run.'
+    if photometric_zenith:
+        atmosphere += (f" Blind photometric zenith: {photometric_zenith.get('status', 'unknown').replace('_', ' ')}. "
+                       'Extinction is a constraint; unresolved zenith gives provisional airmasses.')
+    if extinction_by_channel:
+        channel_values = ', '.join(
+            f"{channel}: {_fmt(values.get('coefficient_mag_per_airmass'))}±"
+            f"{_fmt(values.get('coefficient_sigma_mag_per_airmass'))}"
+            for channel, values in extinction_by_channel.items())
+        representative = extinction_by_channel.get('G') or next(iter(extinction_by_channel.values()))
+        image_kind = (photometry.get('image_colour') or {}).get('classification', 'unknown')
+        atmosphere += (
+            f" The {image_kind.replace('_', ' ')} image gives extinction slopes "
+            f"k [mag per airmass] of {channel_values}, from "
+            f"{representative.get('fitted_count', 0)} stars over X="
+            f"{_fmt(representative.get('airmass_range', [None, None])[0], 2)}–"
+            f"{_fmt(representative.get('airmass_range', [None, None])[1], 2)}."
+        )
+    elif extinction:
+        atmosphere += (
+            f" The extinction slope is k={_fmt(extinction.get('coefficient_mag_per_airmass'))}±"
+            f"{_fmt(extinction.get('coefficient_sigma_mag_per_airmass'))} mag per airmass."
+        )
+    else:
+        atmosphere += ' The image lacks a usable airmass-based extinction fit.'
+
+    matches = planets.get('matches') or []
+    if matches:
+        descriptions = [
+            f"{row['planet']} at source #{row['detection_id']} "
+            f"({_fmt(row['separation_px'], 2)} px; source brightness rank "
+            f"{row.get('unused_brightness_rank', '--')})"
+            for row in matches
+        ]
+        if planets.get('status') in ('planet_epoch_ambiguous', 'conditional_planet_epoch'):
+            planet_text = (
+                f"Blind positional candidates: {'; '.join(descriptions)}. "
+                + (f"Alternative identities: {', '.join(sorted({name for values in planets.get('source_identity_alternatives', {}).values() for name in values}))}. "
+                   if planets.get('source_identity_alternatives') else '') +
+                f"Best candidate: {planets.get('best_candidate_epoch_tdb', '--')}. "
+                f"{planets.get('candidate_count', 0)} date/identity solutions retained. "
+                f"Status: {planets['status'].replace('_', ' ')}. "
+                "Local precision does not resolve alternative dates or model errors. "
+                "See planet_candidates.csv and planet_source_candidates.csv.")
+        else:
+            planet_text = (
+                f"{'; '.join(descriptions)}. The planet-derived epoch is "
+                f"{planets.get('derived_epoch_utc', '--')} with {planets.get('confidence', 'unknown')} "
+                f"confidence and conditional local σ={_fmt(planets.get('conditional_time_sigma_minutes'), 1)} min. "
+                f"There are {planets.get('competing_daily_minima', 0)} competing daily minima in the search interval."
+            )
+    elif planets.get('status') == 'no_planet_match':
+        planet_text = 'No competitive planet match survived the measured-source and catalogue checks.'
+    else:
+        planet_text = planets.get('reason', 'A blind planetary epoch has not been established.')
+    return dict(lens=lens, astrometry=astrometry, atmosphere=atmosphere, planets=planet_text)
+
+
+def catalogue_label(result):
+    """Identify the fitted catalogue from its saved content checksum."""
+    checksum = result.get('catalogue_sha256')
+    if not checksum:
+        return 'Unrecorded catalogue'
+    references = [('stars_gaia_dr3_g75.csv', 'Gaia DR3 + bright Tycho-2/Hipparcos supplement'),
+                  ('stars_tycho2_mag75.csv', 'Tycho-2 + bright Hipparcos supplement')]
+    for filename, label in references:
+        path = Path(__file__).parent/'data'/filename
+        if path.is_file() and hashlib.sha256(path.read_bytes()).hexdigest() == checksum:
+            return label
+    return 'Unrecognized catalogue (see saved catalogue checksum)'
+
+
+def table_rows(result, science):
+    fit = result['fit']
+    p = result['camera']['parameters']
+    stellar = result.get('stellar_epoch') or science.get('stellar_epoch') or {}
+    refraction = science.get('refraction') or {}
+    photometry = science.get('photometry') or {}
+    by_channel = photometry.get('extinction_by_channel') or {}
+    extinction = photometry.get('extinction') or {}
+    planets = science.get('planets') or {}
+    stellar_value = (
+        f"{_fmt(stellar.get('epoch_jyear'), 1)} ({stellar.get('status', 'unknown').replace('_', ' ')})"
+        if stellar else '--')
+    if stellar.get('status') == 'not_identifiable':
+        stellar_value = f"Unresolved; adopted J{_fmt(stellar.get('applied_epoch_jyear'), 1)}"
+    planet_value = (
+        f"{planets.get('derived_epoch_utc')} ({planets.get('match_count')} planet(s), "
+        f"{planets.get('confidence', 'unknown')})"
+        if planets.get('matches') else
+        ('No matched planet' if planets.get('status') == 'no_planet_match' else
+         'Not run — blind planet search unavailable' if planets.get('status') == 'not_run' else
+         planets.get('status', 'Not run').replace('_', ' ')))
+    if planets.get('status') in ('planet_epoch_ambiguous', 'conditional_planet_epoch'):
+        label = 'Ambiguous' if planets['status'] == 'planet_epoch_ambiguous' else 'Conditional candidate'
+        planet_value = f"{label}; {planets.get('candidate_count', 0)} date/identity solutions; {planets.get('match_count', 0)} planet(s) in best candidate"
+    if by_channel:
+        extinction_value = '; '.join(
+            f"k{channel}={_fmt(values.get('coefficient_mag_per_airmass'))} ± "
+            f"{_fmt(values.get('coefficient_sigma_mag_per_airmass'))}"
+            for channel, values in by_channel.items()) + ' mag/airmass'
+    elif extinction:
+        extinction_value = (
+            f"k={_fmt(extinction.get('coefficient_mag_per_airmass'))} ± "
+            f"{_fmt(extinction.get('coefficient_sigma_mag_per_airmass'))} mag/airmass")
+    else:
+        extinction_value = '--'
+    image_kind = (photometry.get('image_colour') or {}).get('classification', '--')
+    return [
+        ('Catalogue', catalogue_label(result)),
+        ('Astrometry', f"{fit['count']}/{result['detection_count']} associations/detections; "
+                       f"RMS {_fmt(fit['rms_px'])} px"),
+        ('Lens', f"O=({_fmt(p['x_o'],1)},{_fmt(p['y_o'],1)}) px; "
+                 f"V={p['v']:.4g}, S={p['s']:.4g}, D={p['d']:.4g}"),
+        ('Stellar epoch', stellar_value),
+        ('Refraction', f"{refraction.get('status', '--').replace('_', ' ')}; "
+                       f"A={_fmt(refraction.get('refraction_a_arcsec'),2)} arcsec, "
+                       f"B={_fmt(refraction.get('refraction_b_arcsec'),3)} arcsec; "
+                       f"ΔBIC={_fmt(refraction.get('delta_bic'),1)}"),
+        ('Photometry', f"{image_kind.replace('_', ' ')}; "
+                       f"{photometry.get('usable_photometric_stars', photometry.get('usable_unsaturated_compact_stars', '--'))} usable stars"),
+        ('Extinction', extinction_value),
+        ('Planet epoch', planet_value),
+    ]
+
+
+def _show_image(ax, path, title):
+    # PDF supports native image embedding; default interpolation downsamples
+    # to the figure's 100 dpi and destroys detail in existing high-res PNGs.
+    ax.imshow(mpimg.imread(path), interpolation='none')
+    ax.set_title(title, fontsize=9, pad=3)
+    ax.axis('off')
+
+
+
+def _draw_photometric_zenith(ax, result, science, *, native_image):
+    """Project only the saved extinction candidate through the fitted camera."""
+    zenith = (science.get('photometry') or {}).get('photometric_zenith') or {}
+    if not zenith:
+        return None
+    vector = zenith.get('zenith_unit_vector')
+    note = 'Extinction zenith: no candidate'
+    if vector is not None:
+        # A rendered fallback overlay has margins/scaling, not detector pixels.
+        # Never project a detector coordinate onto that different image frame.
+        if not native_image:
+            note = 'Extinction zenith: original image unavailable'
+        else:
+            vector = np.asarray(vector, dtype=float)
+            if vector.shape == (3,) and np.all(np.isfinite(vector)) and np.linalg.norm(vector) > 0:
+                camera = _camera_from_result(result)
+                x, y = camera.project([vector / np.linalg.norm(vector)])[0]
+                height, width = camera.shape
+                if np.isfinite(x) and np.isfinite(y) and -.5 <= x < width-.5 and -.5 <= y < height-.5:
+                    provisional = zenith.get('status') != 'conditional_zenith' or zenith.get('provisional', False)
+                    label = 'Extinction zenith — ' + ('provisional' if provisional else 'conditional')
+                    marker, = ax.plot(x, y, marker='x', color='red', ms=13, mew=2.5,
+                                      linestyle='none', label=label, zorder=6)
+                    ax.annotate('Zenith' + (' (provisional)' if provisional else ' (conditional)'),
+                                (x, y), xytext=(9 if x < .7*width else -9, 12),
+                                textcoords='offset points',
+                                ha='left' if x < .7*width else 'right', color='white', fontsize=8,
+                                bbox=dict(boxstyle='round,pad=.2', fc='black', ec='red', alpha=.8))
+                    return marker
+                note = 'Extinction zenith: candidate outside image'
+            else:
+                note = 'Extinction zenith: invalid candidate'
+    ax.text(.02, .98, note, transform=ax.transAxes, va='top', color='white', fontsize=8,
+            bbox=dict(boxstyle='round,pad=.2', fc='black', ec='red', alpha=.8))
+    return None
+
+
+def write_report_sky_overlay(output, result, science, maximum_labels=24):
+    """Draw stars, matched planets and the saved photometric zenith candidate."""
+    output = Path(output)
+    source = Path(result.get('source', ''))
+    fallback = output/'astrometry_overlay.png'
+    image_path = source if source.is_file() else fallback
+    rgb = mpimg.imread(image_path)
+    labelled_path = output/'labelled_stars.json'
+    labelled = json.loads(labelled_path.read_text()).get('stars', []) if labelled_path.is_file() else []
+    labelled = labelled[:maximum_labels]
+    planets = (science.get('planets') or {}).get('matches') or []
+
+    fig, ax = plt.subplots(figsize=(8, 8))
+    ax.imshow(rgb)
+    height, width = rgb.shape[:2]
+    for index, row in enumerate(labelled):
+        x, y = float(row['x_px']), float(row['y_px'])
+        ax.plot(x, y, 'o', ms=6.5, mfc='none', mec='#ffe45e', mew=.9)
+        label = plot_label(row)
+        if label is None:
+            continue
+        right = x < .76*width
+        above = y > .14*height
+        dx = 7 if right else -7
+        dy = -7 if above else 8
+        ax.annotate(label, (x, y),
+                    xytext=(dx, dy), textcoords='offset points',
+                    ha='left' if right else 'right',
+                    va='top' if above else 'bottom',
+                    fontsize=7.0, color='#ffe45e',
+                    bbox=dict(boxstyle='round,pad=.14', fc='black', ec='none', alpha=.58))
+    for row in planets:
+        x, y = float(row['measured_x_px']), float(row['measured_y_px'])
+        ax.plot(x, y, marker='*', ms=15, mfc='#ff3bd5', mec='white', mew=.8)
+        ax.annotate(row['planet'], (x, y), xytext=(10, 9), textcoords='offset points',
+                    fontsize=9, weight='bold', color='white',
+                    bbox=dict(boxstyle='round,pad=.2', fc='#a00078', ec='white', alpha=.9),
+                    arrowprops=dict(arrowstyle='-', color='white', lw=.7))
+    from matplotlib.lines import Line2D
+    handles = [Line2D([], [], marker='o', linestyle='none', markersize=6,
+                      markerfacecolor='none', markeredgecolor='#ffe45e',
+                      label='identified catalogue star')]
+    if planets:
+        handles.append(Line2D([], [], marker='*', linestyle='none', markersize=11,
+                              markerfacecolor='#ff3bd5', markeredgecolor='white',
+                              label='planet candidate' if (science.get('planets') or {}).get('status') in
+                              ('planet_epoch_ambiguous', 'conditional_planet_epoch') else 'matched planet'))
+    zenith_marker = _draw_photometric_zenith(
+        ax, result, science, native_image=source.is_file())
+    if zenith_marker is not None:
+        handles.append(zenith_marker)
+    legend = ax.legend(handles=handles, loc='lower left', fontsize=7,
+                       facecolor='black', edgecolor='white', framealpha=.72)
+    for item in legend.get_texts():
+        item.set_color('white')
+    ax.set_xlim(-.5, width-.5)
+    ax.set_ylim(height-.5, -.5)
+    ax.axis('off')
+    fig.tight_layout(pad=.05)
+    target = output/'report_sky_overlay.png'
+    save_png(fig, target, dpi=190, bbox_inches='tight', pad_inches=.02)
+    plt.close(fig)
+    return target
+
+
+
+def formula_page():
+    """Return the fixed, image-independent formula reverse page."""
+    fig = plt.figure(figsize=(8.27, 11.69), facecolor='white')
+    fig.text(.5, .955, 'Formulae used in the wide-field solution',
+             ha='center', fontsize=18, weight='bold')
+    fig.text(.5, .925,
+             'Symbol definitions only; no image-specific fitted values are shown.',
+             ha='center', fontsize=10, color='.35')
+
+    left = fig.add_axes((.07, .09, .41, .80))
+    right = fig.add_axes((.54, .09, .39, .80))
+    for ax in (left, right):
+        ax.axis('off')
+
+    left.text(0, .98, 'Barghini O/Z fish-eye mapping', fontsize=13,
+              weight='bold', va='top')
+    left.text(0, .91, r'Detector point and optical centre $O=(x_O,y_O)$:',
+              fontsize=9.3, va='top')
+    left.text(.03, .855, r'$\Delta x=x-x_O,\quad \Delta y=y-y_O$',
+              fontsize=12.5, va='top')
+    left.text(.03, .795, r'$r=\sqrt{\Delta x^2+\Delta y^2}$',
+              fontsize=12.5, va='top')
+
+    left.text(0, .715, 'FET radial mapping:', fontsize=9.3, va='top')
+    left.text(.03, .655, r'$u(r)=Vr+S\left[\exp(Dr)-1\right]$',
+              fontsize=13.5, va='top')
+    left.text(.03, .585, r'$\dfrac{du}{dr}=V+SD\exp(Dr)$',
+              fontsize=13, va='top')
+
+    left.text(0, .495, 'Independent reference point $Z$:', fontsize=9.3, va='top')
+    left.text(.03, .435, r'$r_\epsilon=\sqrt{(x_O-x_Z)^2+(y_O-y_Z)^2}$',
+              fontsize=11.5, va='top')
+    left.text(.03, .370, r'$\epsilon=u(r_\epsilon)$', fontsize=12, va='top')
+    left.text(.03, .310, r'$E=\operatorname{wrap}\!\left[a_0+'
+              r'\operatorname{atan2}(y_O-y_Z,x_O-x_Z)\right]$',
+              fontsize=10.3, va='top')
+
+    left.text(0, .220, 'Angular coordinates for each detector point:',
+              fontsize=9.3, va='top')
+    left.text(.03, .165, r'$b=a_0-E+\operatorname{atan2}(\Delta y,\Delta x)$',
+              fontsize=10.5, va='top')
+    left.text(.03, .110,
+              r'$N=\sin b\sin u,\quad M=\cos b\sin u\cos\epsilon+'
+              r'\cos u\sin\epsilon$', fontsize=9.2, va='top')
+    left.text(.03, .055, r'$a=E+\operatorname{atan2}(N,M),\quad '
+              r'\cos z=\cos u\cos\epsilon-\cos b\sin u\sin\epsilon$',
+              fontsize=8.8, va='top')
+
+    right.text(0, .98, 'Atmospheric-refraction model', fontsize=13,
+               weight='bold', va='top')
+    right.text(0, .91, r'For fitted zenith $\boldsymbol{n}$,',
+               fontsize=9.3, va='top')
+    right.text(.04, .855, r'$z=\cos^{-1}\!\left('
+               r'\boldsymbol{s}_{\rm vacuum}\!\cdot\!'
+               r'\boldsymbol{n}\right)$', fontsize=12.5, va='top')
+    right.text(0, .775, 'The displacement towards the zenith is',
+               fontsize=9.3, va='top')
+    right.text(.04, .715, r'$R(z)=A\tan z+B\tan^3 z$',
+               fontsize=13.5, va='top')
+    right.text(.04, .650, r'$z_{\rm apparent}=z-R(z)$',
+               fontsize=13, va='top')
+    right.text(0, .575,
+               '$A$ gives the leading refraction term; $B$ gives the '
+               'higher-order low-altitude curvature.',
+               fontsize=9.0, va='top', wrap=True)
+
+    right.text(0, .475, 'Direction and camera rotation', fontsize=12,
+               weight='bold', va='top')
+    right.text(.02, .410, r'$\boldsymbol{s}_{\rm local}='
+               r'(\sin z\cos a,\sin z\sin a,\cos z)$',
+               fontsize=10.2, va='top')
+    right.text(.02, .350, r'$\boldsymbol{s}_{\rm ICRS}='
+               r'\mathbf{Q}\boldsymbol{s}_{\rm local}$',
+               fontsize=11, va='top')
+
+    right.text(0, .265, 'Parameter roles', fontsize=12,
+               weight='bold', va='top')
+    roles = [
+        ('$a_0$', 'detector angular zero point'),
+        ('$x_O,y_O$', 'optical-centre coordinates'),
+        ('$x_Z,y_Z$', 'reference-point coordinates'),
+        ('$V,S,D$', 'radial FET coefficients'),
+        (r'$E,\epsilon$', 'optical-axis direction'),
+        (r'$\mathbf{Q}$', 'camera-to-ICRS rotation'),
+        (r'$\boldsymbol{n}$', 'fitted zenith direction'),
+        ('$A,B$', 'refraction coefficients'),
+    ]
+    y = .205
+    for symbol, meaning in roles:
+        right.text(.02, y, symbol, fontsize=9.2, va='top')
+        right.text(.27, y, meaning, fontsize=8.4, va='top')
+        y -= .027
+
+    fig.text(.5, .04,
+             'Lens mapping: Barghini et al. O/Z formulation. '
+             'Refraction: tangent series directed towards the fitted zenith.',
+             ha='center', fontsize=8.5, color='.35')
+    return fig
+
+
+def write_report(output, result, *, science=None, **unused):
+    """Write a two-page portrait PDF: results front, fixed formulae reverse."""
+    output = Path(output)
+    science = _load_science(output, science)
+    sections = report_sections(result, science)
+    sky_overlay = write_report_sky_overlay(output, result, science)
+
+    fig = plt.figure(figsize=(8.27, 11.69))
+    grid = fig.add_gridspec(4, 1, height_ratios=(5.45, 1.55, 1.75, 1.08),
+                           left=.045, right=.97, top=.935, bottom=.035,
+                           hspace=.24)
+    ax1 = fig.add_subplot(grid[0])
+    _show_image(ax1, sky_overlay,
+                'Figure 1. Stars (yellow), planets (magenta); extinction zenith (red X, status in legend)')
+    ax2 = fig.add_subplot(grid[1])
+    second = output/'extinction_fit.png'
+    if second.is_file():
+        _show_image(ax2, second,
+                    'Figure 2. Instrumental minus catalogue magnitude versus airmass')
+    else:
+        _show_image(ax2, output/'astrometry_residuals.png',
+                    'Figure 2. Astrometric residuals across the detector')
+
+    ax_table = fig.add_subplot(grid[2])
+    ax_table.axis('off')
+    ax_table.text(0, 1.03, 'Table 1. Per-image astrometric, lens, atmosphere and epoch results',
+                  transform=ax_table.transAxes, fontsize=8.5, weight='bold', va='bottom')
+    rows = table_rows(result, science)
+    table = ax_table.table(cellText=rows, colLabels=('Quantity', 'Result'),
+                           colWidths=(.18, .82), loc='upper left',
+                           cellLoc='left', colLoc='left', bbox=(0, 0, 1, .98))
+    table.auto_set_font_size(False)
+    table.set_fontsize(6.8)
+    for (row, column), cell in table.get_celld().items():
+        cell.set_edgecolor('.7')
+        cell.set_linewidth(.4)
+        if row == 0:
+            cell.set_facecolor('.90')
+            cell.set_text_props(weight='bold')
+        elif row % 2 == 0:
+            cell.set_facecolor('.97')
+
+    bottom = grid[3].subgridspec(1, 3, wspace=.13)
+    blocks = [
+        ('Lens and astrometry', sections['lens']+' '+sections['astrometry']),
+        ('Refraction and extinction', sections['atmosphere']),
+        ('Planets', sections['planets']),
+    ]
+    for column, (heading, body) in enumerate(blocks):
+        ax = fig.add_subplot(bottom[0, column])
+        ax.axis('off')
+        ax.text(0, 1, heading, va='top', fontsize=7.5, weight='bold')
+        ax.text(0, .84, textwrap.fill(body, width=49),
+                va='top', fontsize=5.45, linespacing=1.12)
+
+    source = Path(result.get('source', 'image')).name
+    metadata = observation_metadata(result)
+    provenance = metadata.get('observation_time', 'hidden during blind solving' if result.get('blind') else 'unavailable')
+    fig.suptitle(f'Wide-field image solution: {source}\nMetadata time (not inferred): {provenance}',
+                 fontsize=11.5, weight='bold')
+    path = output/report_filename(result)
+    metadata_pdf = {
+        'Title': f'Wide-field image solution: {source}',
+        'Author': 'Peter Thejll and Chris Flynn',
+        'Subject': 'Astrometry, Barghini lens, refraction, extinction and planet epoch',
+    }
+    reverse = formula_page()
+    with PdfPages(path, metadata=metadata_pdf) as pdf:
+        pdf.savefig(fig)
+        pdf.savefig(reverse)
+        epochs_plot = output/'planet_epoch_candidates.png'
+        if epochs_plot.is_file():
+            appendix = plt.figure(figsize=(8.27, 11.69))
+            appendix.suptitle('Blind planetary epoch candidates', fontsize=14, weight='bold')
+            axis = appendix.add_axes([.07, .50, .86, .42])
+            _show_image(axis, epochs_plot, 'Candidate dates and positional residuals')
+            planets = science.get('planets') or {}
+            rows = []
+            for rank, candidate in enumerate(planets.get('candidates', [])[:16], 1):
+                bodies = '/'.join(sorted({m['planet'] for m in candidate['matches']}))
+                rows.append([rank, candidate['epoch_tdb'].replace(' TDB', ''), bodies,
+                             _fmt(candidate['rms_px'], 3)])
+            axis = appendix.add_axes([.07, .10, .86, .34]); axis.axis('off')
+            axis.set_title('First 16 candidates by positional ranking; all dates are printed and saved', fontsize=8)
+            if rows:
+                table = axis.table(cellText=rows, colLabels=['Rank', 'Candidate date (TDB)', 'Planet(s)', 'RMS px'],
+                                   colWidths=[.08, .49, .28, .15], cellLoc='left', loc='upper center', bbox=(0, 0, 1, 1))
+                table.auto_set_font_size(False); table.set_fontsize(7)
+            appendix.text(.07, .045, 'All candidates: planet_epoch_candidates.txt and planet_candidates.csv.\n'
+                          'One planet can admit several dates and identities; local precision does not resolve these alternatives.',
+                          fontsize=8)
+            pdf.savefig(appendix)
+            plt.close(appendix)
+    plt.close(fig)
+    plt.close(reverse)
+    return path
