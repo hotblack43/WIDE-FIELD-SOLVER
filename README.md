@@ -41,6 +41,21 @@ sources are available for fitting; no stars are withheld.
 
 ![Forty identified stars across the Milky Way fisheye image](examples/milky_way/reference/identified_40_stars.png)
 
+## One-command Gaia analysis (0.4.0)
+
+```sh
+./go_v0.4.0.sh /full/path/to/image.jpg
+```
+
+`./go.sh` is an alias. The launcher verifies solver version 0.4.0, selects the
+Gaia catalogue, fits stellar epoch blindly and runs offline. From the preserved
+root checkout it uses `.worktrees/gaia-v0.4`; in the Gaia checkout it runs locally.
+Each invocation creates a unique folder under `results/runs/` beside the launcher,
+with the image name, version and run timestamp. The folder contains `run.log` and
+an `analysis/` directory holding all generated images, tables and the PDF report.
+The output locations are printed; repeated runs preserve earlier results.
+Use `--version` or `--help` to inspect the launcher.
+
 ## Try the preserved example
 
 Requires Git and [uv](https://docs.astral.sh/uv/getting-started/installation/).
