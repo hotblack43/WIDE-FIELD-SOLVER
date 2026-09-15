@@ -278,3 +278,11 @@ coordinates and reached the Barghini numerical inverse before it could be
 rejected. Non-finite trial transforms are now recorded and skipped. The unchanged
 camera validates at order 13 with 0.012976-pixel maximum added export error,
 below the existing 0.05-pixel threshold; no astrometry is refitted.
+
+The planet stage still under-classifies the same image because Mars detection 22
+has a plausible but poorer Gaia association. A full-range diagnostic that lets
+that source enter the joint search finds one and only one three-body candidate:
+Mars, Jupiter and Saturn on 2018-04-16, with 0.3543-pixel RMS. The evidence,
+root cause and proposed constellation/relative-brightness work are recorded in
+[PLANET_CONSTELLATION_NOTES.md](PLANET_CONSTELLATION_NOTES.md). This is a design
+note, not a claim that the joint scoring change is already implemented.
