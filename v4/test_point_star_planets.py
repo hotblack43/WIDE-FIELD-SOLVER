@@ -21,6 +21,39 @@ class PlanetSearchTests(unittest.TestCase):
         return search_planet_epochs(self.camera, sources, dates, grid, vectors,
                                     gate_px=1., positional_sigma_px=.2, zenith_unit_vector=[0, 0, 1])
 
+    def test_other_planets_use_fixed_epoch_and_visibility_without_changing_fit(self):
+        from copy import deepcopy
+        from point_star_planets import predict_other_planets
+        answer = {'best_candidate_jd_tdb': self.origin + 4.3,
+                  'matches': [{'planet': 'Mars', 'detection_id': 7}],
+                  'searched_planets': ['mars', 'jupiter', 'uranus', 'neptune'],
+                  'visibility': {'zenith_unit_vector': [0., 0., 1.]}}
+        before = deepcopy(answer)
+        calls = []
+        def vectors(name, jd):
+            calls.append((name, list(jd)))
+            if name == 'neptune':
+                return np.array([[0., 0., -1.]])
+            point = [240., 160.] if name == 'jupiter' else [450., 150.]
+            return self.camera.to_sky([point])
+        rows = predict_other_planets(self.camera, answer, vectors)
+        self.assertEqual(answer, before)
+        self.assertEqual([r['planet'] for r in rows], ['Jupiter'])
+        np.testing.assert_allclose([rows[0]['predicted_x_px'], rows[0]['predicted_y_px']],
+                                   [240., 160.], atol=1e-7)
+        self.assertTrue(all(date == [self.origin + 4.3] for name, date in calls))
+        self.assertNotIn('mars', [name for name, date in calls])
+        self.assertNotIn('detection_id', rows[0])
+
+    def test_no_predictions_without_a_fitted_candidate_or_visibility(self):
+        from point_star_planets import predict_other_planets
+        from unittest.mock import Mock
+        vectors = Mock(side_effect=AssertionError('No epoch to predict'))
+        for answer in ({}, {'matches': [{'planet': 'Mars'}]},
+                       {'matches': [{'planet': 'Mars'}], 'best_candidate_jd_tdb': self.origin}):
+            self.assertEqual(predict_other_planets(self.camera, answer, vectors), [])
+        vectors.assert_not_called()
+
     def test_two_planets_recover_date_from_positions_without_epoch_hint(self):
         tracks = {'saturn': lambda t: np.c_[120+2*(t-4.3), np.full(len(t), 100.)],
                   'jupiter': lambda t: np.c_[np.full(len(t), 270.), 170+3*(t-4.3)]}

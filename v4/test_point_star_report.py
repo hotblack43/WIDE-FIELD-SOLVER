@@ -73,6 +73,30 @@ class ReportTests(unittest.TestCase):
             self.assertIn('Extinction zenith: no candidate',
                           ' '.join(item.get_text() for item in axis.texts))
 
+    def test_predicted_planets_are_distinct_and_keep_saved_positions(self):
+        from PIL import Image
+        from point_star_report import write_report_sky_overlay
+        from point_star_planets import _plot_candidates
+        answer = {'status': 'planet_epoch_ambiguous',
+                  'matches': [{'planet': 'Mars', 'measured_x_px': 30., 'measured_y_px': 40.}],
+                  'predicted_planets': [{'planet': 'Jupiter', 'predicted_x_px': 85., 'predicted_y_px': 60.}]}
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            Image.new('RGB', (120, 100)).save(root/'source.png')
+            with patch('point_star_report.save_png') as save:
+                write_report_sky_overlay(root, {'source': str(root/'source.png')}, {'planets': answer})
+            report_axis = save.call_args.args[0].axes[0]
+            with patch('point_star_plotting.save_png') as save:
+                _plot_candidates(root/'source.png', root, answer)
+            for axis in (report_axis, save.call_args.args[0].axes[0]):
+                markers = [line for line in axis.lines if line.get_marker() == '*']
+                self.assertEqual(len(markers), 2)
+                np.testing.assert_allclose(markers[0].get_xydata(), [[30., 40.]])
+                np.testing.assert_allclose(markers[1].get_xydata(), [[85., 60.]])
+                self.assertTrue(all(m.get_markerfacecolor() == 'none' for m in markers))
+                self.assertLess(markers[1].get_markeredgewidth(), markers[0].get_markeredgewidth())
+                self.assertIn('Jupiter (predicted)', [t.get_text() for t in axis.texts])
+
     def test_planet_table_distinguishes_not_run_from_no_match(self):
         from point_star_report import table_rows
         for status, expected in [('not_run', 'Not run'),

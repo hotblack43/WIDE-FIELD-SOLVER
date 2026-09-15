@@ -328,6 +328,22 @@ def _draw_photometric_zenith(ax, result, science, *, native_image):
     return None
 
 
+def _draw_predicted_planets(ax, predictions):
+    """Draw expected positions without implying a measured planet identification."""
+    if not predictions:
+        return None
+    for row in predictions:
+        x, y = row['predicted_x_px'], row['predicted_y_px']
+        ax.plot(x, y, marker='*', ms=15, mfc='none', mec='#ff3bd5', mew=.6)
+        ax.annotate(row['planet'] + ' (predicted)', (x, y), xytext=(10, -12),
+                    textcoords='offset points', va='top', fontsize=8, color='#ff3bd5',
+                    bbox=dict(boxstyle='round,pad=.2', fc='black', ec='none', alpha=.7))
+    from matplotlib.lines import Line2D
+    return Line2D([], [], marker='*', linestyle='none', markersize=11,
+                  markerfacecolor='none', markeredgecolor='#ff3bd5', markeredgewidth=.6,
+                  label='predicted at candidate epoch (unmatched)')
+
+
 def write_report_sky_overlay(output, result, science, maximum_labels=24):
     """Draw stars, matched planets and the saved photometric zenith candidate."""
     output = Path(output)
@@ -361,7 +377,7 @@ def write_report_sky_overlay(output, result, science, maximum_labels=24):
                     bbox=dict(boxstyle='round,pad=.14', fc='black', ec='none', alpha=.58))
     for row in planets:
         x, y = float(row['measured_x_px']), float(row['measured_y_px'])
-        ax.plot(x, y, marker='*', ms=15, mfc='none', mec='#ff3bd5', mew=.8)
+        ax.plot(x, y, marker='*', ms=15, mfc='none', mec='#ff3bd5', mew=1.4)
         ax.annotate(row['planet'], (x, y), xytext=(10, 9), textcoords='offset points',
                     fontsize=9, weight='bold', color='white',
                     bbox=dict(boxstyle='round,pad=.2', fc='#a00078', ec='white', alpha=.9),
@@ -372,9 +388,13 @@ def write_report_sky_overlay(output, result, science, maximum_labels=24):
                       label='identified catalogue star')]
     if planets:
         handles.append(Line2D([], [], marker='*', linestyle='none', markersize=11,
-                              markerfacecolor='none', markeredgecolor='#ff3bd5',
+                              markerfacecolor='none', markeredgecolor='#ff3bd5', markeredgewidth=1.4,
                               label='planet candidate' if (science.get('planets') or {}).get('status') in
                               ('planet_epoch_ambiguous', 'conditional_planet_epoch') else 'matched planet'))
+    prediction_handle = _draw_predicted_planets(
+        ax, (science.get('planets') or {}).get('predicted_planets', []))
+    if prediction_handle is not None:
+        handles.append(prediction_handle)
     zenith_marker = _draw_photometric_zenith(
         ax, result, science, native_image=source.is_file())
     if zenith_marker is not None:

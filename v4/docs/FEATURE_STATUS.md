@@ -218,3 +218,15 @@ added only after all original attempts fail. A measured-pixel regression exercis
 real blind pattern identification and Barghini fitting after simulated timeout.
 No sources are withheld and no metadata or cached identities seed the search.
 See `BOOTSTRAP_FAILURES.md` for the measured failure and controlled diagnosis.
+
+## Planet display at the fixed candidate epoch
+
+After the blind fit is fixed, the Gaia report and planet-candidate image project
+other searched planets through the saved camera at that exact candidate epoch.
+Only valid detector projections above the image-derived horizon are displayed.
+Thick hollow stars mark measured matches; thin hollow stars labelled predicted
+mark expected, unmatched positions. Predictions are recorded separately as
+`predicted_planets` in `planet_epoch.json` and do not alter matches, ranking or
+epoch inference. Ambiguous epochs and provisional zenith limitations still apply.
+Synthetic checks verify the common epoch, visibility, unchanged fit records and
+faithful, distinct symbols in both plots. Gaia PDFs are named `report.pdf`.

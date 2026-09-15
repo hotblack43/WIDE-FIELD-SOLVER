@@ -82,8 +82,10 @@ Other useful products include:
 
 A successful plate solution does not guarantee that the observation date or
 physical zenith has been determined. Read the reported status and uncertainty.
-For `go4.sh`, the sky plot labels the planets in the number-one candidate fit;
-other date/identity alternatives remain in the numerical records.
+For `go4.sh`, thick hollow stars label the planets in the number-one candidate
+fit. Thinner hollow stars labelled “predicted” show the other planets expected
+in view at that same candidate epoch; they are not measured identifications.
+Other date/identity alternatives remain in the numerical records.
 
 `go4.sh` fits from the image and reference catalogues. Observing time and site
 are reserved for a separately requested comparison after the blind fits.

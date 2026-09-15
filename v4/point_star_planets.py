@@ -400,6 +400,29 @@ def search_planet_epochs(camera, detections, jd_grid, sky_grid, vector_function,
     return output
 
 
+def predict_other_planets(camera, answer, vector_function):
+    """Project unmatched planets at the fixed best candidate epoch, for display only."""
+    date = answer.get('best_candidate_jd_tdb')
+    zenith = (answer.get('visibility') or {}).get('zenith_unit_vector')
+    if not answer.get('matches') or date is None or zenith is None:
+        return []
+    zenith = np.asarray(zenith, dtype=float)
+    zenith = zenith / np.linalg.norm(zenith)
+    matched = {row['planet'].lower() for row in answer['matches']}
+    rows = []
+    for name in answer.get('searched_planets', []):
+        if name.lower() in matched:
+            continue
+        vectors = vector_function(name.lower(), [date])
+        point = _visible_projection(camera, vectors, zenith)[0]
+        if np.isfinite(point).all():
+            rows.append(dict(planet=name.title(), predicted_x_px=float(point[0]),
+                             predicted_y_px=float(point[1]),
+                             predicted_altitude_deg=float(_altitudes(vectors, zenith)[0]),
+                             jd_tdb=float(date), epoch_tdb=_date_text(date)))
+    return rows
+
+
 def fit_blind_planet_epoch(image_path, solution, result, *, epoch_limits=(1850., 2150.), gate_px=3.):
     """Integrate the blind search; image_path is used only for the final plot."""
     from point_star_planet_ephemeris import load_ephemeris, planet_vectors
@@ -425,6 +448,8 @@ def fit_blind_planet_epoch(image_path, solution, result, *, epoch_limits=(1850.,
                                  latest_jd_tdb=ceiling['jd_tdb'])
     answer['causal_epoch_ceiling'] = ceiling
     answer['ephemeris'] = provenance
+    answer['predicted_planets'] = predict_other_planets(
+        _camera_from_result(result), answer, planet_vectors)
     identities = {}
     for candidate in answer['source_candidates']:
         identities.setdefault(candidate['detection_id'], set()).add(candidate['planet'])
@@ -461,9 +486,13 @@ def _plot_candidates(image_path, output, answer):
     ax.imshow(Image.open(image_path))
     for row in answer['matches']:
         x, y = row['measured_x_px'], row['measured_y_px']
-        ax.plot(x, y, '*', mfc='none', mec='magenta', ms=12)
+        ax.plot(x, y, '*', mfc='none', mec='magenta', mew=1.4, ms=12)
         ax.annotate(row['planet'], (x, y), xytext=(7, 7), textcoords='offset points', color='white',
                     bbox=dict(fc='black', alpha=.7))
+    from point_star_report import _draw_predicted_planets
+    prediction_handle = _draw_predicted_planets(ax, answer.get('predicted_planets', []))
+    if prediction_handle is not None:
+        ax.legend(handles=[prediction_handle], loc='lower left', fontsize=8)
     ax.set_title('Blind planet candidates: '+answer['status'].replace('_', ' ')+'\n'+
                  answer.get('best_candidate_epoch_tdb', 'No positional match')+'; alternatives in planet_candidates.csv')
     ax.axis('off'); fig.tight_layout()
