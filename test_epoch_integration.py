@@ -66,7 +66,7 @@ class EpochIntegrationTests(unittest.TestCase):
             self.assertEqual(len(saturated), 1)
             self.assertEqual(saturated[0]['detection_id'], '0')
             self.assertIn('fit', saturated[0]['usage'])
-            self.assertEqual(saved['solver_version'], '0.4.2')
+            self.assertEqual(saved['solver_version'], '0.4.3')
             camera = _camera_from_result(saved)
             propagated = vectors([float(r['propagated_ra_deg']) for r in exported],
                                  [float(r['propagated_dec_deg']) for r in exported])

@@ -81,6 +81,25 @@ class ReportTests(unittest.TestCase):
                 'status': status, 'matches': []}}))
             self.assertIn(expected, rows['Planet epoch'])
 
+    def test_report_catalogue_label_uses_saved_checksum(self):
+        import hashlib
+        from point_star_report import table_rows
+        cases = [('stars_gaia_dr3_g75.csv', 'Gaia DR3 + bright Tycho-2/Hipparcos supplement'),
+                 ('stars_tycho2_mag75.csv', 'Tycho-2 + bright Hipparcos supplement')]
+        for filename, expected in cases:
+            with self.subTest(catalogue=filename):
+                result = self.sample_result()
+                result['catalogue_sha256'] = hashlib.sha256(
+                    (Path(__file__).parent/'data'/filename).read_bytes()).hexdigest()
+                rows = dict(table_rows(result, {}))
+                self.assertIn('Catalogue', rows)
+                self.assertEqual(rows['Catalogue'], expected)
+        result = self.sample_result()
+        result.update(source='/data/gaia_image.jpg', catalogue_sha256='unknown')
+        rows = dict(table_rows(result, {}))
+        self.assertIn('Catalogue', rows)
+        self.assertIn('unrecognized', rows['Catalogue'].lower())
+
     def test_epoch_is_only_reported_when_planets_are_measured(self):
         no_planets = report_sections(
             self.sample_result(),

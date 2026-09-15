@@ -1,6 +1,6 @@
 [project]
 name = "wide-field-solver"
-version = "0.4.2"
+version = "0.4.3"
 description = "Point-star fisheye astrometry with the Barghini O/Z FET model"
 requires-python = ">=3.12,<3.13"
 dependencies = [

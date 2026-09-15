@@ -1,22 +1,14 @@
-Latest v4: `./go4.sh /full/path/to/image.jpg` now selects **0.4.2**.
-It attempts a blind planetary date search across 1850–2150 and reports competing
-dates/identities. The first run builds a local reference ephemeris cache (about
-three minutes); later runs reuse it. Use `go_v0.4.2.sh` to pin this release.
-`go.sh` and earlier versioned launchers retain their established behavior.
-
-Use `./go4.sh /full/path/to/image.jpg` for the latest v4 (currently 0.4.2).
-The original root `go.sh` remains pinned to v0.4.0.
-
-Version 0.4.1: use `./go_v0.4.1.sh /full/path/to/image.jpg`.
-The preserved `go.sh` belongs to v0.4.0; use it from the original root checkout.
-Gaia magnitude 7.5, horizon-inclusive extinction fitting, explicit saturation
-flags, and a red X for the conditional/provisional extinction zenith are enabled.
-Saturated stars remain eligible for astrometry but are excluded from photometry.
-The blind planet search is now attempted; ambiguous results retain all positional date/identity candidates.
+Latest v4: `./go4.sh /full/path/to/image.jpg` selects **0.4.3**.
+Planet matches require nonnegative measured and predicted altitude relative to
+the image-derived zenith. Both blind epoch searches stop at the recorded current
+run time. Epoch lists, plots and the three-page report remain enabled.
+Use `go_v0.4.3.sh` to pin this version. `go.sh` and earlier versioned launchers
+retain their established behavior. Both launchers select Gaia DR3 at G ≤ 7.5;
+the PDF explicitly identifies the catalogue used, including its bright-star supplement.
 
 # WIDE-FIELD SOLVER
 
-**Version 0.4.1 — horizon photometry and zenith display.** This development
+**Version 0.4.3 — visible planetary candidates and causal epoch bounds.** This development
 version preserves a local Gaia DR3 catalogue and a reproducible same-image experiment,
 including paired spatial resampling of the stellar epoch and camera fit.
 The default catalogue remains Tycho/Hipparcos pending evaluation. Version 0.3.0
@@ -57,16 +49,16 @@ sources are available for fitting; no stars are withheld.
 
 ![Forty identified stars across the Milky Way fisheye image](examples/milky_way/reference/identified_40_stars.png)
 
-## One-command Gaia analysis (0.4.1)
+## One-command Gaia analysis (0.4.3)
 
 ```sh
-./go_v0.4.1.sh /full/path/to/image.jpg
+./go_v0.4.3.sh /full/path/to/image.jpg
 ```
 
-The versioned launcher verifies solver version 0.4.1, selects the
+The versioned launcher verifies solver version 0.4.3, selects the
 Gaia catalogue and fits stellar epoch blindly. Ordinary star names come from a
 local display-only cache, with missing aliases queried from SIMBAD after fitting. From the preserved
-root checkout it uses `.worktrees/zenith-v0.4.1`; in this checkout it runs locally.
+root checkout it uses `.worktrees/visibility-v0.4.3`; in this checkout it runs locally.
 Each invocation creates a unique folder under `results/runs/` beside the launcher,
 with the image name, version and run timestamp. The folder contains `run.log` and
 an `analysis/` directory holding all generated images, tables and the PDF report.

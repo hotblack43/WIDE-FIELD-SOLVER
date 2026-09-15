@@ -19,7 +19,7 @@ class PlanetSearchTests(unittest.TestCase):
                         source_class='broad_blob', flux_above_background=100.)
                    for i, (x, y) in enumerate(positions)]
         return search_planet_epochs(self.camera, sources, dates, grid, vectors,
-                                    gate_px=1., positional_sigma_px=.2)
+                                    gate_px=1., positional_sigma_px=.2, zenith_unit_vector=[0, 0, 1])
 
     def test_two_planets_recover_date_from_positions_without_epoch_hint(self):
         tracks = {'saturn': lambda t: np.c_[120+2*(t-4.3), np.full(len(t), 100.)],
@@ -84,13 +84,13 @@ class PlanetSearchTests(unittest.TestCase):
         row = dict(detection_id='1', x_px=150., y_px=130., saturated='True',
                    catalogue_star_id='wrong-star', catalogue_residual_px=3.)
         result = search_planet_epochs(self.camera, [row], dates, {'saturn': vectors('saturn', dates)},
-                                     vectors, gate_px=1., positional_sigma_px=.5)
+                                     vectors, gate_px=1., positional_sigma_px=.5, zenith_unit_vector=[0, 0, 1])
         self.assertEqual(result['match_count'], 1)
         self.assertEqual(result['matches'][0]['catalogue_star_id'], 'wrong-star')
         self.assertGreater(result['matches'][0]['improvement_over_star_chi2'], 9.)
         row['catalogue_residual_px'] = .1
         result = search_planet_epochs(self.camera, [row], dates, {'saturn': vectors('saturn', dates)},
-                                     vectors, gate_px=1., positional_sigma_px=.5)
+                                     vectors, gate_px=1., positional_sigma_px=.5, zenith_unit_vector=[0, 0, 1])
         self.assertEqual(result['match_count'], 0)
 
     def test_integrated_search_ignores_poisoned_site_date_and_stellar_epoch(self):
@@ -111,10 +111,12 @@ class PlanetSearchTests(unittest.TestCase):
                 with (output/'dots/star_candidates.csv').open('w') as handle:
                     writer = csv.DictWriter(handle, fieldnames=list(row)); writer.writeheader(); writer.writerow(row)
                 (output/'star_coordinates.csv').write_text('detection_id,star_id,residual_px\n')
+                (output/'photometric_zenith.json').write_text('{"status": "conditional_zenith", "zenith_unit_vector": [0,0,1]}')
                 result = {'camera': self.camera.serialise(), 'fit': {'rms_px': .5},
                           'source': f'/poison/warwick_{year}.jpg',
                           'observation': {'time_utc': year, 'latitude_deg': 999},
-                          'stellar_epoch': {'epoch_jyear': 1800+index*300}}
+                          'stellar_epoch': {'epoch_jyear': 1800+index*300},
+                          'causal_epoch_ceiling': {'jd_tdb': self.origin+100, 'source': 'test clock'}}
                 with patch('point_star_planet_ephemeris.load_ephemeris', return_value=(dates, grid, {})) as load, \
                      patch('point_star_planet_ephemeris.planet_vectors', side_effect=vectors), \
                      patch('point_star_planets._plot_candidates'), \
@@ -142,6 +144,88 @@ class PlanetSearchTests(unittest.TestCase):
             self.assertIn('Mars', printed.getvalue())
             self.assertEqual(save.call_args.args[1].name, 'planet_epoch_candidates.png')
             self.assertTrue((Path(tmp)/'planet_epoch_candidates.txt').is_file())
+
+    def test_below_horizon_measured_source_is_rejected(self):
+        from point_star_planets import search_planet_epochs
+        dates = self.origin+np.arange(3.)
+        ray = self.camera.to_sky([[150., 130.]])[0]
+        def vectors(name, jd):
+            return np.tile(ray, (len(np.atleast_1d(jd)), 1))
+        answer = search_planet_epochs(self.camera, [dict(detection_id='1', x_px=150., y_px=130.)],
+            dates, {'saturn': vectors('saturn', dates)}, vectors, zenith_unit_vector=-ray)
+        self.assertEqual(answer['matches'], [])
+        self.assertEqual(answer['visibility']['rejected_below_horizon_count'], 1)
+
+    def test_below_horizon_ephemeris_is_rejected_even_within_pixel_gate(self):
+        from point_star_planets import search_planet_epochs
+        dates = self.origin+np.arange(3.)
+        ray = self.camera.to_sky([[199.2, 149.5]])[0]
+        def vectors(name, jd):
+            return np.tile(ray, (len(np.atleast_1d(jd)), 1))
+        answer = search_planet_epochs(self.camera, [dict(detection_id='1', x_px=199.8, y_px=149.5)],
+            dates, {'saturn': vectors('saturn', dates)}, vectors,
+            gate_px=1., zenith_unit_vector=[1, 0, 0])
+        self.assertEqual(answer['matches'], [])
+
+    def test_missing_zenith_cannot_produce_visible_planet_claims(self):
+        from point_star_planets import search_planet_epochs
+        dates = self.origin+np.arange(3.)
+        def vectors(name, jd):
+            return self.camera.to_sky(np.tile([150., 130.], (len(np.atleast_1d(jd)), 1)))
+        answer = search_planet_epochs(self.camera, [dict(detection_id='1', x_px=150., y_px=130.)],
+            dates, {'saturn': vectors('saturn', dates)}, vectors)
+        self.assertEqual(answer['status'], 'visibility_unresolved')
+        self.assertEqual(answer['matches'], [])
+
+    def test_future_planet_solution_is_excluded_at_recorded_cutoff(self):
+        from point_star_planets import search_planet_epochs
+        dates = self.origin+np.arange(11.)
+        def vectors(name, jd):
+            t = np.atleast_1d(jd)-self.origin
+            return self.camera.to_sky(np.c_[150+10*(t-8), np.full(len(t), 130.)])
+        answer = search_planet_epochs(self.camera, [dict(detection_id='1', x_px=150., y_px=130.)],
+            dates, {'saturn': vectors('saturn', dates)}, vectors,
+            zenith_unit_vector=[0, 0, 1], latest_jd_tdb=self.origin+5.5)
+        self.assertEqual(answer['matches'], [])
+        self.assertLessEqual(answer['search_end_jd_tdb'], self.origin+5.5)
+
+    def test_brief_visible_passage_is_not_hidden_by_visibility_penalty(self):
+        from point_star_planets import search_planet_epochs
+        dates = self.origin+np.array([0., 1.])
+        def vectors(name, jd):
+            t = np.atleast_1d(jd)-self.origin
+            return self.camera.to_sky(np.c_[199.5001-(t-.1)**2, 149.5+(t-.1)])
+        answer = search_planet_epochs(self.camera, [dict(detection_id='1', x_px=199.5001, y_px=149.5)],
+            dates, {'saturn': vectors('saturn', dates)}, vectors,
+            zenith_unit_vector=[1,0,0], latest_jd_tdb=self.origin+10.)
+        self.assertEqual(answer['match_count'], 1)
+        self.assertAlmostEqual(answer['best_candidate_jd_tdb']-self.origin, .1, places=4)
+        self.assertGreaterEqual(answer['matches'][0]['predicted_altitude_deg'], 0.)
+
+    def test_both_visible_sides_of_below_horizon_minimum_are_retained(self):
+        from point_star_planets import search_planet_epochs
+        dates = self.origin+np.arange(3.)
+        def vectors(name, jd):
+            t = np.atleast_1d(jd)-self.origin-1.
+            return self.camera.to_sky(np.c_[199.4+t*t, 149.5+2*t])
+        answer = search_planet_epochs(self.camera, [dict(detection_id='1', x_px=199.6, y_px=149.5)],
+            dates, {'saturn': vectors('saturn', dates)}, vectors, gate_px=1.,
+            zenith_unit_vector=[1,0,0], latest_jd_tdb=self.origin+10.)
+        candidate_dates = [c['jd_tdb']-self.origin for c in answer['candidates']]
+        self.assertTrue(any(abs(t-(1-np.sqrt(.1))) < 1e-5 for t in candidate_dates))
+        self.assertTrue(any(abs(t-(1+np.sqrt(.1))) < 1e-5 for t in candidate_dates))
+        self.assertEqual(len(candidate_dates), 2)
+
+    def test_off_detector_projection_failure_does_not_abort_other_bodies(self):
+        from point_star_planets import _visible_projection
+        camera = BarghiniCamera.initial((300,400),180.,np.eye(3))
+        camera.p[6] = -.1; camera.p[7] = 1.
+        self.assertTrue(camera.is_monotonic())
+        bad = np.array([np.sin(3.),0.,np.cos(3.)]); good = np.array([0.,0.,1.])
+        zenith = bad+good; zenith /= np.linalg.norm(zenith)
+        points = _visible_projection(camera, np.array([bad,good]), zenith)
+        self.assertFalse(np.isfinite(points[0]).any())
+        self.assertTrue(np.isfinite(points[1]).all())
 
     def test_no_match_and_empty_sources_are_explicit(self):
         tracks = {'saturn': lambda t: np.c_[100+t, np.full(len(t), 100.)]}

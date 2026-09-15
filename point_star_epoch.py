@@ -124,7 +124,7 @@ def fit_epoch(camera, xy, catalogue, year_limits=(1850., 2150.), *, fixed_year=N
     else:
         grid = np.linspace(low, high, 21)
         costs = np.array([evaluate(year)[2] for year in grid])
-        candidates = [(float(grid[0]), costs[0]), (float(grid[-1]), costs[-1])]
+        candidates = [(float(grid[0]), float(costs[0])), (float(grid[-1]), float(costs[-1]))]
         for i in range(len(grid)):
             if (i == 0 or costs[i] <= costs[i-1]) and (i == len(grid)-1 or costs[i] <= costs[i+1]):
                 answer = minimize_scalar(lambda year: evaluate(year)[2],

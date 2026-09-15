@@ -111,6 +111,8 @@ class EpochFitTests(unittest.TestCase):
         self.assertTrue(epoch['boundary_limited'])
         self.assertEqual(epoch['applied_epoch_jyear'], epoch['best_epoch_jyear'])
         self.assertTrue(epoch['provisional'])
+        import json
+        self.assertEqual(json.loads(json.dumps(epoch))['boundary_limited'], True)
 
     def test_fixed_epoch_propagates_without_claiming_a_measured_date(self):
         fitted, xy, target, info, epoch = self.solve(fixed_year=2060.)

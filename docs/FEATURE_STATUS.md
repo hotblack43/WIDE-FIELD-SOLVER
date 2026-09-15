@@ -1,4 +1,4 @@
-# Point-source feature status, version 0.4.2
+# Point-source feature status, version 0.4.3
 
 This inventory distinguishes implemented behavior from recorded proposals. A new
 version must preserve implemented behavior or document an explicit change, and
@@ -17,7 +17,7 @@ must not describe a proposal as working merely because related products exist.
 | Zenith estimated by minimising photometric regression scatter | Added in 0.3.0; conditional component | Synthetic recovery and degeneracy tests; real example remains unresolved under the radial-response check |
 | Zenith fitted through astrometric refraction residuals | Implemented downstream diagnostic | Different objective from photometric zenith; does not establish that photometric proposal works |
 | Joint photometric zenith/extinction and astrometric epoch constraint | **Not implemented** | Not part of the 0.3.0 proper-motion bugfix; must be designed and tested explicitly |
-| Blind planetary epoch | Candidate search implemented in 0.4.2 | Full 1850–2150 positional search; source/date alternatives retained, single-planet results ambiguous; unique dating not established on Warwick |
+| Blind planetary epoch | Candidate search implemented in 0.4.2 | Past-only positional search capped at recorded run time, with measured/predicted horizon checks; alternatives retained and single-planet results ambiguous |
 | Post-fit metadata comparison, including pole–zenith latitude | Added in 0.3.0 | Explicit `--compare-metadata`; no refit, uncertainty/status retained |
 | Gaia reference catalogue | Added in 0.4.0 as an opt-in alternative | Native DR3 epochs/PM, 36,663 Gaia rows plus 78 labelled bright supplements; `go_v0.4.0.sh` explicitly selects Gaia; bare solve/analyse CLI defaults remain Tycho/Hipparcos |
 | Independent same-image catalogue comparison and paired spatial resampling | Added in 0.4.0 | Different associations allowed; 32 explicit spatial deletion refits; conditional sensitivity, not independent validation |
@@ -155,3 +155,52 @@ Final same-image evidence is saved in `PLANETS_V042_RESULTS.json`. The complete
 v0.4.2 run preserves byte-identical astrometric coordinates, stellar epoch,
 photometric zenith and stellar photometry from v0.4.1. 99 tests and the unchanged
 historical demo pass. The normal go4.sh path produces a three-page report.
+
+## v0.4.3: physical visibility and a causal upper epoch limit
+
+The previous planet stage never received the fitted photometric zenith. In the
+03:16 Warwick image it therefore accepted two logo-area detections as planetary
+candidates: sources 32 and 7 have measured altitudes -48.48 and -45.47 degrees.
+
+The planet stage now checks every measured source and every exact ephemeris
+prediction against the image-derived photometric zenith. Negative altitude,
+outside-detector coordinates and non-invertible detector projections cannot
+count as planet matches. The minimum altitude is zero degrees, with only
+1e-7-degree numerical roundoff tolerance; no 10-degree cutoff is introduced.
+The check operates during refinement and assignment, not merely on plotted
+symbols. `planet_visibility.csv` retains all source altitudes/rejection reasons,
+and accepted match rows record measured and predicted altitudes. Missing zenith
+information yields `visibility_unresolved`; a provisional zenith cannot support
+a unique planetary date claim. This relies on the photometric zenith rather than
+assuming the Barghini reference Z or a fitted optical centre is physical zenith.
+
+Peter explicitly authorised a causal present-time upper bound: the image already
+exists. The default stellar fit captures one system-clock instant and saves it
+as `causal_epoch_ceiling` in result and stellar epoch products. Stellar profile
+bounds are capped at its Julian year; the planet stage reuses its exact TDB Julian
+date, clips the reference grid, and inserts an exact final endpoint. No candidate
+may exceed that instant. Image timestamps, sites and filename dates remain unused.
+Fixed-epoch controls and the historical catalogue-mode demo remain explicit controls.
+
+The reference-only cache still covers 1850–2150 for reuse; its future entries are
+not candidate dates. The actual search endpoint and causal cutoff are saved and
+printed. Existing v0.4.2 run folders and launchers remain preserved. Only go4.sh
+selects the new v0.4.3; go.sh retains its established version.
+
+The 0.4.3 validation also exposed a pre-existing JSON export failure when the
+stellar optimum lies exactly at a search boundary. Endpoint profile costs now
+use ordinary Python scalars, just as interior optima do; this changes no fit
+numerics and allows the unresolved boundary result to be saved. Planetary time
+refinement minimises raw positional residuals before checking visibility, with
+rise/set crossings considered as constrained boundary candidates. Off-detector
+rays outside the radial inverse domain are rejected individually.
+
+A fresh v0.4.3 solve of the affected `warwick_20260915T031637Z_c84a1e387bb5.jpg`
+retains 400 astrometric associations (RMS 0.610010 px), rejects 61 below-horizon
+sources from the planet search, and retains 52 past-only positional alternatives.
+The former false candidates at detection IDs 7 and 32 occur in none of these
+alternatives. A Saturn alternative is retained; this is not a unique planetary
+epoch. The stellar profile reaches the causal upper bound and is explicitly
+unresolved. Both launcher reports identify the fitted catalogue from its saved
+content checksum; the current Gaia catalogue includes a bright Tycho-2/Hipparcos
+supplement.

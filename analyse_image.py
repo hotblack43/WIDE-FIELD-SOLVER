@@ -21,7 +21,7 @@ def parser():
     p.add_argument('--overwrite', action='store_true', help='Explicitly replace an existing output directory')
     p.add_argument('--epoch-mode', choices=('fit', 'fixed', 'catalog'), default='fit')
     p.add_argument('--epoch-year', type=float, help='Julian year required for fixed epoch mode')
-    p.add_argument('--epoch-limits', type=float, nargs=2, default=(1850., 2150.))
+    p.add_argument('--epoch-limits', type=float, nargs=2, default=(1850., 2150.), help='Requested Julian-year range; blind upper bound is capped at the current run time')
     p.add_argument('--catalog', type=Path, default=ROOT/'data/stars_tycho2_mag75.csv')
     p.add_argument('--labels', type=int, default=40)
     p.add_argument('--names-cache', type=Path)

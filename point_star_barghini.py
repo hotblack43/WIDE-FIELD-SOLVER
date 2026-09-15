@@ -25,9 +25,10 @@ from barghini_model import (
     BarghiniParameters, detector_to_horizontal, horizontal_to_detector, radial_du_dr)
 from point_star_detection import write_products
 from point_star_plotting import save_png
+from point_star_time_bounds import capture_time_ceiling, limit_epoch_range
 
 
-SOLVER_VERSION = '0.4.2'
+SOLVER_VERSION = '0.4.3'
 
 
 def vectors(ra, dec):
@@ -264,6 +265,11 @@ def run(image_path, output, catalog_path, *, label_count=40, names_cache=None, o
         raise ValueError('Supplied epoch must be finite')
     if len(epoch_limits) != 2 or not np.isfinite(epoch_limits).all() or epoch_limits[0] >= epoch_limits[1]:
         raise ValueError('Epoch limits must be finite and increasing')
+    # An existing image cannot be from after this run. The system clock is a
+    # causal bound, independent of observing timestamps and site metadata.
+    causal_epoch_ceiling = capture_time_ceiling() if epoch_mode == 'fit' else None
+    if causal_epoch_ceiling is not None:
+        epoch_limits = limit_epoch_range(epoch_limits, causal_epoch_ceiling)
     started = time.monotonic()
     image_path = Path(image_path).expanduser().resolve()
     destination = Path(output).expanduser().resolve()
@@ -336,6 +342,8 @@ def run(image_path, output, catalog_path, *, label_count=40, names_cache=None, o
             raise RuntimeError('Proper-motion association did not converge after six profiles')
         stellar_epoch.update(association_iterations=association_iteration+1,
                              association_converged=True)
+        if causal_epoch_ceiling is not None:
+            stellar_epoch['causal_epoch_ceiling'] = causal_epoch_ceiling
         write_epoch_products(output, stellar_epoch)
     train_delta = camera.project(sky[train_j])-xy[train[train_i]]
     fit_score = stats(train_delta)
@@ -354,6 +362,8 @@ def run(image_path, output, catalog_path, *, label_count=40, names_cache=None, o
         elapsed_seconds=time.monotonic()-started)
     result.update(solver_version=SOLVER_VERSION, epoch_mode=epoch_mode, blind=epoch_mode != 'fixed',
                   coordinate_frame='ICRS')
+    if causal_epoch_ceiling is not None:
+        result['causal_epoch_ceiling'] = causal_epoch_ceiling
     if stellar_epoch is not None:
         result['stellar_epoch'] = stellar_epoch
         result['coordinate_epoch_jyear'] = stellar_epoch['applied_epoch_jyear']
@@ -413,7 +423,8 @@ def run(image_path, output, catalog_path, *, label_count=40, names_cache=None, o
     result['code_sha256'] = {name:hashlib.sha256((Path(__file__).parent/name).read_bytes()).hexdigest()
         for name in ['point_star_detection.py', 'point_star_barghini.py', 'barghini_model.py',
                      'point_star_names.py', 'point_star_diagnostics.py', 'point_star_report.py',
-                     'point_star_epoch.py', 'point_star_zenith.py', 'point_star_science.py']}
+                     'point_star_epoch.py', 'point_star_zenith.py', 'point_star_science.py',
+                     'point_star_time_bounds.py']}
     if observation_time is not None:
         result['observation'] = dict(time_utc=observation_time, latitude_deg=latitude,
             longitude_deg=longitude, elevation_m=elevation_m, pressure_hpa=pressure_hpa,
