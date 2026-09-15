@@ -54,6 +54,22 @@ class PlanetSearchTests(unittest.TestCase):
             self.assertEqual(predict_other_planets(self.camera, answer, vectors), [])
         vectors.assert_not_called()
 
+    def test_single_planet_alias_does_not_project_an_unearned_constellation(self):
+        from point_star_planets import predict_other_planets
+        calls = []
+        def vectors(name, jd):
+            calls.append((name, list(jd)))
+            return self.camera.to_sky([[240., 160.]])
+        answer = {'status': 'planet_epoch_not_identifiable',
+                  'match_count': 1,
+                  'matches': [{'planet': 'Mercury', 'detection_id': 7}],
+                  'best_candidate_jd_tdb': self.origin + 4.3,
+                  'searched_planets': ['mercury', 'jupiter'],
+                  'visibility': {'zenith_unit_vector': [0., 0., 1.]},
+                  'candidates': [{'match_count': 1, 'epoch_tdb': 'an audited alias'}]}
+        self.assertEqual(predict_other_planets(self.camera, answer, vectors), [])
+        self.assertEqual(calls, [])
+
     def test_two_planets_recover_date_from_positions_without_epoch_hint(self):
         tracks = {'saturn': lambda t: np.c_[120+2*(t-4.3), np.full(len(t), 100.)],
                   'jupiter': lambda t: np.c_[np.full(len(t), 270.), 170+3*(t-4.3)]}

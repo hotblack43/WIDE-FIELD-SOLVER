@@ -207,6 +207,11 @@ def report_sections(result, science=None, **legacy):
                 f"confidence and conditional local σ={_fmt(planets.get('conditional_time_sigma_minutes'), 1)} min. "
                 f"There are {planets.get('competing_daily_minima', 0)} competing daily minima in the search interval."
             )
+    elif planets.get('status') == 'planet_epoch_not_identifiable':
+        planet_text = (
+            f"Planetary epoch not identifiable: {planets.get('single_planet_candidate_count', 0)} "
+            "single-planet date/identity aliases retained; no multi-planet solution. "
+            "See planet_candidates.csv and planet_source_candidates.csv.")
     elif planets.get('status') == 'no_planet_match':
         planet_text = 'No competitive planet match survived the measured-source and catalogue checks.'
     else:
@@ -258,6 +263,9 @@ def table_rows(result, science):
         planet_value = f"{label}; {planets.get('candidate_count', 0)} date/identity solutions; {planets.get('match_count', 0)} planet(s) in best candidate"
     if planets.get('status') == 'planet_epoch_inconsistent':
         planet_value = 'No supported epoch; all positional candidates contradicted'
+    if planets.get('status') == 'planet_epoch_not_identifiable':
+        planet_value = (f"Not identifiable; {planets.get('single_planet_candidate_count', 0)} "
+                        "single-planet aliases; no multi-planet solution")
     if by_channel:
         extinction_value = '; '.join(
             f"k{channel}={_fmt(values.get('coefficient_mag_per_airmass'))} ± "

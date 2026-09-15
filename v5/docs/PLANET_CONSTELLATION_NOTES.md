@@ -120,3 +120,13 @@ relaxing the astrometric thresholds:
   products;
 - the concise report keeps the sky-position overlay and omits the crowded
   epoch-candidate appendix.
+
+## Implemented presentation boundary
+
+The search continues to save every positional passage, including one-planet
+aliases. After candidate-specific absence checks, however, a result whose best
+remaining candidate contains only one planet is now reported as
+`planet_epoch_not_identifiable`. It has no selected epoch or selected planet
+match, and unmatched planets are not projected at that arbitrary alias date.
+The complete candidate list remains available for audit. This presentation
+boundary does not implement the joint constellation scoring proposed above.

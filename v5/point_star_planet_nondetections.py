@@ -170,6 +170,13 @@ def apply_evidence(answer,evidence_rows):
             best_candidate_jd_tdb=None,best_candidate_epoch_tdb=None,rms_px=None,conditional_time_sigma_minutes=None,
             competing_candidates=0,reason='All positional candidates predict an absent bright planet in locally supported sky')
         return out
+    single_count=sum(c['match_count']==1 for c in candidates)
+    if best['match_count']<2:
+        out.update(status='planet_epoch_not_identifiable',confidence='single_planet_aliases',matches=[],match_count=0,
+            best_candidate_jd_tdb=None,best_candidate_epoch_tdb=None,rms_px=None,conditional_time_sigma_minutes=None,
+            competing_candidates=0,single_planet_candidate_count=single_count,
+            reason=f'Planetary epoch not identifiable: {single_count} single-planet aliases retained; no multi-planet solution')
+        return out
     sigma=out.get('positional_sigma_px',.5)
     peers=[c for c in candidates if not c['absence_penalty'] and c['match_count']==best['match_count']
            and c['cost_px2']<=best['cost_px2']+9*sigma*sigma]

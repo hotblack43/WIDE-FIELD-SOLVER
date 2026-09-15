@@ -416,6 +416,8 @@ def search_planet_epochs(camera, detections, jd_grid, sky_grid, vector_function,
 
 def predict_other_planets(camera, answer, vector_function):
     """Project unmatched planets at the fixed best candidate epoch, for display only."""
+    if answer.get('status') == 'planet_epoch_not_identifiable':
+        return []
     date = answer.get('best_candidate_jd_tdb')
     zenith = (answer.get('visibility') or {}).get('zenith_unit_vector')
     if not answer.get('matches') or date is None or zenith is None:

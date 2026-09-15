@@ -286,3 +286,11 @@ Mars, Jupiter and Saturn on 2018-04-16, with 0.3543-pixel RMS. The evidence,
 root cause and proposed constellation/relative-brightness work are recorded in
 [PLANET_CONSTELLATION_NOTES.md](PLANET_CONSTELLATION_NOTES.md). This is a design
 note, not a claim that the joint scoring change is already implemented.
+
+Single-planet date/identity aliases no longer select or display an epoch after
+the absence-evidence stage. They remain intact in the JSON and CSV candidate
+lists, but the final status is `planet_epoch_not_identifiable`, its selected
+matches and epoch are empty, and no unmatched-planet constellation is projected
+onto the image. This prevents an arbitrary closest one-body crossing from
+looking like a recovered planetary arrangement. Conditional multi-planet
+candidates retain the measured and predicted overlays.

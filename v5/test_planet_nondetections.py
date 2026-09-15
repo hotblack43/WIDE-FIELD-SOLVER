@@ -175,14 +175,19 @@ class RankingTests(unittest.TestCase):
             predicted_planets=[dict(planet='Jupiter',epoch_tdb='date 0')],
             visibility=dict(zenith_status='conditional_zenith'),positional_sigma_px=.5)
 
-    def test_missing_bright_planet_changes_ranking_without_changing_fits(self):
+    def test_single_planet_aliases_are_audited_without_selecting_an_epoch(self):
         import copy
         from point_star_planet_nondetections import apply_evidence
         before=self.answer(); original=copy.deepcopy(before)
         after=apply_evidence(before,[[dict(planet='Jupiter',status='missing_bright_planet')],[]])
         self.assertEqual(before,original)
-        self.assertEqual(after['best_candidate_jd_tdb'],2459001.)
-        self.assertEqual(after['status'],'planet_epoch_ambiguous')
+        self.assertIsNone(after['best_candidate_jd_tdb'])
+        self.assertIsNone(after['best_candidate_epoch_tdb'])
+        self.assertEqual(after['status'],'planet_epoch_not_identifiable')
+        self.assertEqual(after['confidence'],'single_planet_aliases')
+        self.assertEqual(after['matches'],[])
+        self.assertEqual(after['match_count'],0)
+        self.assertEqual(after['single_planet_candidate_count'],2)
         self.assertEqual(after['candidates'][0]['positional_rank'],2)
         for candidate in after['candidates']:
             expected=original['candidates'][candidate['positional_rank']-1]
