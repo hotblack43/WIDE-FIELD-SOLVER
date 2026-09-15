@@ -10,7 +10,7 @@
     ".python-version": "7b55f8e67b5623c4bef3fa691288da9437d79d3aba156de48d481db32ac7d16d",
     "AGENTS.md": "709fdca7e125774ca53efa274f212a7892296d12ae92e3eb4ad7d3d57d02bd72",
     "GOAL.md": "3d6e8b77bc6d7da9abdb902673eabd801d21def26ab6293bb416a735b9fa9915",
-    "NOTICE.md": "2973cffac65f492ca341abc403fd3be5d4bb47786f028f96259fbd310fbd401a",
+    "NOTICE.md": "5ae750e282eaa70c5752d2249575ba286ff8a430c177b5ce0dd1daadc7c06983",
     "analyse.sh": "26b3fd13c31100b3492d73f1663d3fcd6602c8e49a562911aa4755a27f3e1cac",
     "analyse_image.py": "4090b1ae5d05c102f120a1f95282e29043aee2d9485348afa03cf4fc9a4a1fcb",
     "barghini_model.py": "fd591084b407034907f03c3f9cca05126037fc06691c374c3cda3fc884d085af",
@@ -99,6 +99,6 @@
   },
   "packaging_sha256": {
     "run.sh": "1ccbfbd28600498044425f743b59903183d6c8b2c4d00c71edbc5a87ae324517",
-    "README.md": "b19e23b9a672eef1c86f50d8147510bc78115e4923ba9214ac0cc8bf53465b61"
+    "README.md": "4031093419dcf1c74fdd0e391785540f6bea1b3141fa764caf66f0ac8bb8fa8f"
   }
 }

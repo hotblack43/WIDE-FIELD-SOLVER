@@ -1,5 +1,8 @@
 # Gaia v4 runtime
 
+For installation, choosing a solver and running images, use the
+[shared guide for go.sh and go4.sh](../README.md).
+
 Run `./go4.sh /path/to/image.jpg` from the repository root. This directory contains
 v0.4.3 and its local Python modules, Gaia catalogue, provenance, dependency lockfile,
 tests and scientific status. No development worktree is required.

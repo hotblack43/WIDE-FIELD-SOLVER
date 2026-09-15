@@ -15,7 +15,7 @@ snapshot. No new public software licence is granted by this packaging step.
 originally named `FishEye_MilkyWay_no_trails.jpeg`. Its SHA-256 is recorded in
 `examples/milky_way/baseline.json`. Original photographer, capture date,
 location and redistribution licence have not been documented. It and its
-annotated derivatives are retained here for this private research test;
+annotated derivatives are retained here as research test materials;
 check rights before public redistribution. No authorship of the photograph
 is asserted.
 
