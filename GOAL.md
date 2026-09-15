@@ -120,3 +120,12 @@ that a constraint enters the solve. Update the feature-status record and relevan
 regression tests when behavior changes. No new feature may silently displace an
 existing requirement. Gaia catalogue work follows verified proper-motion handling;
 it does not replace these objectives.
+
+## Preserve launcher behavior
+
+Do not repoint or overwrite an existing launcher such as `go.sh` when adding a
+version. Keep its established behavior and add a separate versioned launcher.
+Changing an existing launcher requires Peter's explicit request.
+
+Peter explicitly designated `go4.sh` to follow the latest v4 release. Keep
+`go.sh` pinned; version-specific launchers also retain their established versions.

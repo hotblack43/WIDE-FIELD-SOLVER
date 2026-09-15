@@ -1,4 +1,8 @@
-Version 0.4.1: use `./go_v0.4.1.sh /full/path/to/image.jpg` (or `./go.sh`).
+Use `./go4.sh /full/path/to/image.jpg` for the latest v4 (currently 0.4.1).
+The original root `go.sh` remains pinned to v0.4.0.
+
+Version 0.4.1: use `./go_v0.4.1.sh /full/path/to/image.jpg`.
+The preserved `go.sh` belongs to v0.4.0; use it from the original root checkout.
 Gaia magnitude 7.5, horizon-inclusive extinction fitting, explicit saturation
 flags, and a red X for the conditional/provisional extinction zenith are enabled.
 Saturated stars remain eligible for astrometry but are excluded from photometry.
@@ -53,7 +57,7 @@ sources are available for fitting; no stars are withheld.
 ./go_v0.4.1.sh /full/path/to/image.jpg
 ```
 
-`./go.sh` is an alias. The launcher verifies solver version 0.4.1, selects the
+The versioned launcher verifies solver version 0.4.1, selects the
 Gaia catalogue and fits stellar epoch blindly. Ordinary star names come from a
 local display-only cache, with missing aliases queried from SIMBAD after fitting. From the preserved
 root checkout it uses `.worktrees/zenith-v0.4.1`; in this checkout it runs locally.
