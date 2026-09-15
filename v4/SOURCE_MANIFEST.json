@@ -65,7 +65,7 @@
     "point_star_planets.py": "f6fbec4a85f39aae6b331d4e23e479298adf3939deb17292186bb2e43bbc031f",
     "point_star_plotting.py": "530e87c10137c9b0e5f91ce1946de2b3783fa80eb330e3cebf5d41b050a1a876",
     "point_star_refraction.py": "440a7104ecb020094f176274c2c0c76c05a5a28e8490f490ad4fbaf88abe71f0",
-    "point_star_report.py": "bc326b959a77697885ceddad95fdd2def048a83be431aba69a521fd2b9310956",
+    "point_star_report.py": "7d00979da79115e09de75bf5e5a9ac2937162404488b146fcf783f0b7f4c0f49",
     "point_star_science.py": "ce1c430477f9d39eeab0c4431d1dc4f1bcabf1b5aecc7105a67a9ab2feb7588b",
     "point_star_time_bounds.py": "ba233c34f1656b4555962fcc9e1eb6ada17d746f532eb2abb345c6f0c419b5a3",
     "point_star_zenith.py": "ddc774e2ee7b5ca8f395442296477d49c3924087bc026f0c0514a7ebc891b67e",
@@ -90,7 +90,7 @@
     "test_point_star_planet_ephemeris.py": "9ce1c54bddf2aba358daf22d8507e7ee99cec81cdfeccdcfb87320c2d06f32d1",
     "test_point_star_planets.py": "4e715cc25f3c9a37ac7f327f5f1100e8986d2cf9e481dca124ea0ed55e4be37d",
     "test_point_star_plotting.py": "83ff2f7745410e43341ef688ca8a769a678437047011c0977889663fc6bf95c1",
-    "test_point_star_report.py": "747d3d2c26c441d6e7e90537b6348dff45b4ea46128ad8a942ad9531dacefcd9",
+    "test_point_star_report.py": "77a0acdf3c19c51038feeb502be932f35ec85e21be666029500173ba11d4b19c",
     "test_point_star_science.py": "c2fefdc8eb542caec6bdce5f7a6b54b930275400a09febc636acee19f2dda3ab",
     "test_point_star_time_bounds.py": "f4883bea1712726bab4d135cf4d0eb6457effb6d8e3c3bc2cbe9e52180658b7c",
     "test_point_star_zenith.py": "88d5bdceb313e05a257ff098e9054589e8dfa7a3d5e1679524f0415e708a89ce",
@@ -105,6 +105,7 @@
     "Hollow magenta planet markers and matching legend preserve visible measured source centres.",
     "Gaia report filename is report.pdf; launcher and existing PDF regression updated together.",
     "The separate planet-candidate image also uses hollow stars.",
-    "Post-fit predictions for other planets at the unchanged best candidate epoch, with separate thin hollow markers and regression evidence."
+    "Post-fit predictions for other planets at the unchanged best candidate epoch, with separate thin hollow markers and regression evidence.",
+    "If the original image is missing, retain the rendered astrometry fallback without adding detector-coordinate markers to a different frame."
   ]
 }

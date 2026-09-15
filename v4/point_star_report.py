@@ -349,7 +349,12 @@ def write_report_sky_overlay(output, result, science, maximum_labels=24):
     output = Path(output)
     source = Path(result.get('source', ''))
     fallback = output/'astrometry_overlay.png'
-    image_path = source if source.is_file() else fallback
+    if not source.is_file():
+        # The rendered fallback has margins/scaling, not detector coordinates.
+        target = output/'report_sky_overlay.png'
+        target.write_bytes(fallback.read_bytes())
+        return target
+    image_path = source
     rgb = mpimg.imread(image_path)
     labelled_path = output/'labelled_stars.json'
     labelled = json.loads(labelled_path.read_text()).get('stars', []) if labelled_path.is_file() else []

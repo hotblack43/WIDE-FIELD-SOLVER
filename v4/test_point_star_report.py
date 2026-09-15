@@ -97,6 +97,17 @@ class ReportTests(unittest.TestCase):
                 self.assertLess(markers[1].get_markeredgewidth(), markers[0].get_markeredgewidth())
                 self.assertIn('Jupiter (predicted)', [t.get_text() for t in axis.texts])
 
+    def test_missing_original_preserves_rendered_fallback_without_detector_labels(self):
+        from PIL import Image
+        from point_star_report import write_report_sky_overlay
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            Image.new('RGB', (240, 180), color='gray').save(root/'astrometry_overlay.png')
+            science = {'planets': {'matches': [{'planet': 'Mars', 'measured_x_px': 30., 'measured_y_px': 40.}],
+                       'predicted_planets': [{'planet': 'Jupiter', 'predicted_x_px': 80., 'predicted_y_px': 60.}]}}
+            target = write_report_sky_overlay(root, {'source': str(root/'missing.png')}, science)
+            self.assertEqual(target.read_bytes(), (root/'astrometry_overlay.png').read_bytes())
+
     def test_planet_table_distinguishes_not_run_from_no_match(self):
         from point_star_report import table_rows
         for status, expected in [('not_run', 'Not run'),

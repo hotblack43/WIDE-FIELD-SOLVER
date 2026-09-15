@@ -35,7 +35,7 @@ branch wholesale. CI runs both suites and both historical demos.
 
 ## Validation of the consolidation
 
-The root suite passes 42 tests and v4 passes 117. A clean export of the exact
+The root suite passes 42 tests and v4 passes 118. A clean export of the exact
 staged files, with no `.worktrees`, passed launcher routing/preservation checks
 and both historical demos: 3,653 associations, 0.397892-pixel RMS, 40 labels.
 The root legacy runtime hashes still match `c023f1c`. Both lockfiles and every
