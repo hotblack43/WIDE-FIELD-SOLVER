@@ -1,7 +1,6 @@
 """One-page scientific PDF for a completed point-source Barghini analysis."""
 from __future__ import annotations
 
-import hashlib
 import json
 from pathlib import Path
 import re
@@ -15,7 +14,6 @@ from matplotlib.backends.backend_pdf import PdfPages
 import numpy as np
 
 from point_star_plotting import save_png
-from point_star_names import plot_label
 
 
 OMR_FEEDS = {'murdoc', 'gtc1', 'gtc2', 'liverpool', 'magic', 'warwick'}
@@ -23,10 +21,8 @@ OMR_SITE = dict(latitude=28.7606, longitude=-17.8850, elevation_m=2326.,
                 site_source='ORM reference location inferred from OMRcam feed')
 
 
-def observation_metadata(result, *, reveal=False):
-    """Recover metadata only for controls or explicitly revealed post-fit validation."""
-    if result.get('blind') and not (reveal or result.get('metadata_revealed')):
-        return {}
+def observation_metadata(result):
+    """Recover saved solver arguments or OMRcam archive provenance."""
     saved = result.get('observation') or {}
     metadata = {}
     if saved.get('time_utc'):
@@ -110,7 +106,7 @@ def report_sections(result, science=None, **legacy):
     science = science or {}
     fit = result['fit']
     p = result['camera']['parameters']
-    stellar = result.get('stellar_epoch') or science.get('stellar_epoch') or {}
+    stellar = science.get('stellar_epoch') or {}
     refraction = science.get('refraction') or {}
     photometry = science.get('photometry') or {}
     extinction = photometry.get('extinction') or {}
@@ -124,25 +120,18 @@ def report_sections(result, science=None, **legacy):
         f"The radial law u(r)=Vr+S[exp(Dr)-1] has V={p['v']:.6g} rad px⁻¹, "
         f"S={p['s']:.6g} rad and D={p['d']:.6g} px⁻¹."
     )
-    if stellar.get('status') == 'not_identifiable':
-        epoch_text = (
-            f"The stellar epoch is unresolved. The saved solution uses the provisional adopted "
-            f"epoch J{_fmt(stellar.get('applied_epoch_jyear'), 1)}. "
-            "The profile minimum is not an established observation date."
-        )
-    elif stellar.get('status') == 'supplied_epoch':
-        epoch_text = (
-            f"Proper motions were applied at supplied epoch J{_fmt(stellar.get('applied_epoch_jyear'), 1)}; "
-            "this date was not inferred from the stars."
-        )
-    elif stellar.get('status') == 'conditional_epoch':
-        interval = stellar.get('conditional_interval_95_jyear', [None, None])
-        epoch_text = (
-            f"The conditional stellar epoch is J{_fmt(stellar.get('epoch_jyear'), 2)}, "
-            f"with approximate conditional 95% interval {_fmt(interval[0], 2)} to {_fmt(interval[1], 2)}. "
-            f"All {stellar.get('fitted_count', 0)} associations enter the fit. "
-            "This interval excludes catalogue and lens/atmospheric systematic errors."
-        )
+    if stellar:
+        if stellar.get('status') == 'not_identifiable':
+            epoch_text = (
+                f"The stellar proper-motion profile reaches a search boundary at "
+                f"{_fmt(stellar.get('epoch_jyear'), 1)}. A stellar epoch is unresolved in this image. "
+                f"Its withheld RMS is {_fmt(stellar.get('withheld_rms_px'))} px."
+            )
+        else:
+            epoch_text = (
+                f"The conditional stellar epoch is {_fmt(stellar.get('epoch_jyear'), 1)} Julian year "
+                f"from catalogue proper motions, using {stellar.get('withheld_count', 0)} withheld stars."
+            )
     else:
         epoch_text = 'The stellar proper-motion epoch analysis has not been run.'
     astrometry = (
@@ -151,7 +140,6 @@ def report_sections(result, science=None, **legacy):
         + epoch_text
     )
 
-    photometric_zenith = photometry.get('photometric_zenith') or {}
     if refraction:
         status = refraction.get('status', 'unknown').replace('_', ' ')
         atmosphere = (
@@ -164,9 +152,6 @@ def report_sections(result, science=None, **legacy):
         )
     else:
         atmosphere = 'The empirical refraction fit has not been run.'
-    if photometric_zenith:
-        atmosphere += (f" Blind photometric zenith: {photometric_zenith.get('status', 'unknown').replace('_', ' ')}. "
-                       'Extinction is a constraint; unresolved zenith gives provisional airmasses.')
     if extinction_by_channel:
         channel_values = ', '.join(
             f"{channel}: {_fmt(values.get('coefficient_mag_per_airmass'))}±"
@@ -206,28 +191,14 @@ def report_sections(result, science=None, **legacy):
     elif planets.get('status') == 'no_planet_match':
         planet_text = 'No ephemeris planet matched an unused measured point source within the stated search gate.'
     else:
-        planet_text = planets.get('reason', 'A blind planetary epoch has not been established.')
+        planet_text = 'The planet search was unavailable because it lacked unused sources or an epoch search centre.'
     return dict(lens=lens, astrometry=astrometry, atmosphere=atmosphere, planets=planet_text)
-
-
-def catalogue_label(result):
-    """Identify the fitted catalogue from its saved content checksum."""
-    checksum = result.get('catalogue_sha256')
-    if not checksum:
-        return 'Unrecorded catalogue'
-    references = [('stars_gaia_dr3_g75.csv', 'Gaia DR3 + bright Tycho-2/Hipparcos supplement'),
-                  ('stars_tycho2_mag75.csv', 'Tycho-2 + bright Hipparcos supplement')]
-    for filename, label in references:
-        path = Path(__file__).parent/'data'/filename
-        if path.is_file() and hashlib.sha256(path.read_bytes()).hexdigest() == checksum:
-            return label
-    return 'Unrecognized catalogue (see saved catalogue checksum)'
 
 
 def table_rows(result, science):
     fit = result['fit']
     p = result['camera']['parameters']
-    stellar = result.get('stellar_epoch') or science.get('stellar_epoch') or {}
+    stellar = science.get('stellar_epoch') or {}
     refraction = science.get('refraction') or {}
     photometry = science.get('photometry') or {}
     by_channel = photometry.get('extinction_by_channel') or {}
@@ -236,8 +207,6 @@ def table_rows(result, science):
     stellar_value = (
         f"{_fmt(stellar.get('epoch_jyear'), 1)} ({stellar.get('status', 'unknown').replace('_', ' ')})"
         if stellar else '--')
-    if stellar.get('status') == 'not_identifiable':
-        stellar_value = f"Unresolved; adopted J{_fmt(stellar.get('applied_epoch_jyear'), 1)}"
     planet_value = (
         f"{planets.get('derived_epoch_utc')} ({planets.get('match_count')} planet(s), "
         f"{planets.get('confidence', 'unknown')})"
@@ -255,7 +224,6 @@ def table_rows(result, science):
         extinction_value = '--'
     image_kind = (photometry.get('image_colour') or {}).get('classification', '--')
     return [
-        ('Catalogue', catalogue_label(result)),
         ('Astrometry', f"{fit['count']}/{result['detection_count']} associations/detections; "
                        f"RMS {_fmt(fit['rms_px'])} px"),
         ('Lens', f"O=({_fmt(p['x_o'],1)},{_fmt(p['y_o'],1)}) px; "
@@ -273,9 +241,7 @@ def table_rows(result, science):
 
 
 def _show_image(ax, path, title):
-    # PDF supports native image embedding; default interpolation downsamples
-    # to the figure's 100 dpi and destroys detail in existing high-res PNGs.
-    ax.imshow(mpimg.imread(path), interpolation='none')
+    ax.imshow(mpimg.imread(path))
     ax.set_title(title, fontsize=9, pad=3)
     ax.axis('off')
 
@@ -299,14 +265,11 @@ def write_report_sky_overlay(output, result, science, maximum_labels=24):
     for index, row in enumerate(labelled):
         x, y = float(row['x_px']), float(row['y_px'])
         ax.plot(x, y, 'o', ms=6.5, mfc='none', mec='#ffe45e', mew=.9)
-        label = plot_label(row)
-        if label is None:
-            continue
         right = x < .76*width
         above = y > .14*height
         dx = 7 if right else -7
         dy = -7 if above else 8
-        ax.annotate(label, (x, y),
+        ax.annotate(row.get('display_name') or row['star_id'], (x, y),
                     xytext=(dx, dy), textcoords='offset points',
                     ha='left' if right else 'right',
                     va='top' if above else 'bottom',
@@ -499,8 +462,8 @@ def write_report(output, result, *, science=None, **unused):
 
     source = Path(result.get('source', 'image')).name
     metadata = observation_metadata(result)
-    provenance = metadata.get('observation_time', 'hidden during blind solving' if result.get('blind') else 'unavailable')
-    fig.suptitle(f'Wide-field image solution: {source}\nMetadata time (not inferred): {provenance}',
+    provenance = metadata.get('observation_time', 'observation time unavailable')
+    fig.suptitle(f'Wide-field image solution: {source}\nObservation time: {provenance}',
                  fontsize=11.5, weight='bold')
     path = output/report_filename(result)
     metadata_pdf = {

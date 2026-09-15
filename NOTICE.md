@@ -15,7 +15,7 @@ snapshot. No new public software licence is granted by this packaging step.
 originally named `FishEye_MilkyWay_no_trails.jpeg`. Its SHA-256 is recorded in
 `examples/milky_way/baseline.json`. Original photographer, capture date,
 location and redistribution licence have not been documented. It and its
-annotated derivatives are retained here for this private research test;
+annotated derivatives are retained here as research test materials;
 check rights before public redistribution. No authorship of the photograph
 is asserted.
 
@@ -37,17 +37,3 @@ The blind pattern bootstrap uses [ESA tetra3](https://github.com/esa/tetra3),
 pinned to commit `f9fa2eb9a32a5efc529e2d86f0b59f35b1e9028d`, including its
 bundled default pattern database. Other software dependencies are declared
 in `pyproject.toml` and resolved in `uv.lock`; their upstream licences apply.
-
-
-## Gaia DR3 alternative catalogue
-
-The optional Gaia catalogue uses public Gaia DR3 data from the ESA Gaia Archive.
-This work has made use of data from the European Space Agency (ESA) mission
-Gaia (https://www.cosmos.esa.int/gaia), processed by the Gaia Data Processing and
-Analysis Consortium (DPAC, https://www.cosmos.esa.int/web/gaia/dpac/consortium).
-Funding for DPAC has been provided by national institutions, in particular the
-institutions participating in the Gaia Multilateral Agreement.
-
-The local bright-star supplement remains attributed to Tycho-2/Hipparcos above.
-Archive query, source identifiers and checksums are recorded alongside the data;
-see data/README.md and the Gaia provenance sidecar.

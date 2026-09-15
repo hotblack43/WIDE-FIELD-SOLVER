@@ -35,3 +35,15 @@ revealed only after the fitted results are fixed, for separate validation.
 Do not replace the photometric-zenith constraint with metadata-derived airmass
 or describe a metadata-centred planet lookup as blind epoch inference.
 Preserve implemented capabilities and add regression evidence for new ones.
+
+## Consolidated version boundary
+
+`go.sh` is the preserved root Tycho-2/Hipparcos workflow. Its runtime is
+recorded in `docs/legacy-runtime.json`. `go4.sh`, `go_v0.4.3.sh`, and the complete
+`v4/` package are frozen at the public `v0.4.3` checkpoint; their hashes are in
+`docs/v4-runtime.json`. Never replace either preserved version during an upgrade.
+
+Develop upgrades in `v5/`, launched by `go5.sh` or `go_v0.5.0.sh`, with its own
+catalogue, lockfile and source manifest. All versions must work without
+`.worktrees`. Update the v5 manifest deliberately and test all three versions
+before publishing. Never merge a development worktree over a preserved runtime.

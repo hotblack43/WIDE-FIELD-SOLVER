@@ -14,11 +14,12 @@ from PIL import Image
 from scipy.optimize import minimize_scalar
 from scipy.spatial import cKDTree
 
-from point_star_barghini import vectors
+from point_star_barghini import fit_camera, vectors
 from point_star_plotting import save_png
 from point_star_refraction import fit_atmospheric_refraction
 from point_star_report import _camera_from_result, observation_metadata
 
+MAS_TO_RAD = math.radians(1.0 / 3_600_000.0)
 PLANETS = ('mercury', 'venus', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune')
 
 
@@ -32,13 +33,83 @@ def _float(row, key, default=0.):
     return float(value) if value else float(default)
 
 
+def _catalogue_arrays(rows, catalogue_path):
+    catalogue = {row['star_id']: row for row in _read(catalogue_path)}
+    selected = [catalogue[row['star_id']] for row in rows]
+    ra = np.array([_float(row, 'ra_deg') for row in selected])
+    dec = np.array([_float(row, 'dec_deg') for row in selected])
+    reference = np.array([_float(row, 'reference_epoch_jyear', 2000.) for row in selected])
+    pm_ra = np.array([_float(row, 'pm_ra_cosdec_mas_per_year') for row in selected])
+    pm_dec = np.array([_float(row, 'pm_dec_mas_per_year') for row in selected])
+    base = vectors(ra, dec)
+    ra_rad, dec_rad = np.deg2rad(ra), np.deg2rad(dec)
+    east = np.c_[-np.sin(ra_rad), np.cos(ra_rad), np.zeros(len(ra))]
+    north = np.c_[-np.cos(ra_rad)*np.sin(dec_rad),
+                  -np.sin(ra_rad)*np.sin(dec_rad), np.cos(dec_rad)]
+    return base, reference, pm_ra, pm_dec, east, north
+
+
+def propagated_catalogue(arrays, year):
+    base, reference, pm_ra, pm_dec, east, north = arrays
+    moved = base + (year-reference)[:, None]*MAS_TO_RAD*(
+        pm_ra[:, None]*east + pm_dec[:, None]*north)
+    return moved/np.linalg.norm(moved, axis=1)[:, None]
+
+
 def fit_stellar_epoch(solution, result, catalogue_path, year_limits=(1850., 2150.)):
-    """Reuse the epoch that actually produced the saved camera and coordinates."""
-    if 'stellar_epoch' in result:
-        return result['stellar_epoch']
-    return dict(status='not_run', epoch_jyear=None, applied_epoch_jyear=None,
-                reason='Catalogue replay has no integrated epoch fit; run the v0.3 solver',
-                fitted_count=0, withheld_count=0, profile=[])
+    """Profile a proper-motion epoch while refitting the camera on training stars."""
+    solution = Path(solution)
+    rows = _read(solution/'star_coordinates.csv')
+    xy = np.array([[_float(row, 'x_px'), _float(row, 'y_px')] for row in rows])
+    ids = np.array([int(row['detection_id']) for row in rows])
+    training = ids % 5 != 0
+    test = ~training
+    arrays = _catalogue_arrays(rows, catalogue_path)
+    base_camera = _camera_from_result(result)
+
+    def evaluate(year):
+        sky = propagated_catalogue(arrays, year)
+        camera, info = fit_camera(base_camera, xy[training], sky[training], max_nfev=120)
+        delta = camera.project(sky[test])-xy[test]
+        radius = np.linalg.norm(delta, axis=1)
+        return float(np.sqrt(np.mean(radius**2))), float(np.median(radius)), info
+
+    years = np.linspace(year_limits[0], year_limits[1], 31)
+    profile = []
+    for year in years:
+        rms, median, _ = evaluate(float(year))
+        profile.append(dict(year=float(year), withheld_rms_px=rms,
+                            withheld_median_px=median))
+    best_index = int(np.argmin([row['withheld_rms_px'] for row in profile]))
+    low = years[max(0, best_index-1)]
+    high = years[min(len(years)-1, best_index+1)]
+    if low == high:
+        best_year = float(years[best_index])
+    else:
+        optimum = minimize_scalar(lambda year: evaluate(year)[0], bounds=(low, high),
+                                  method='bounded', options={'xatol': .01})
+        best_year = float(optimum.x)
+    rms, median, info = evaluate(best_year)
+    boundary = best_index in (0, len(years)-1) or min(
+        best_year-year_limits[0], year_limits[1]-best_year) < 1.
+    improvement = profile[len(profile)//2]['withheld_rms_px']-rms
+    status = 'not_identifiable' if boundary or improvement < .01 else 'conditional_epoch'
+    output = dict(status=status, method='catalogue proper motions with camera refitted',
+                  epoch_jyear=best_year, search_limits_jyear=list(year_limits),
+                  boundary_limited=boundary, withheld_count=int(test.sum()),
+                  training_count=int(training.sum()), withheld_rms_px=rms,
+                  withheld_median_px=median, rms_improvement_px=float(improvement),
+                  profile=profile, limitation=(
+                      'Global precession is degenerate with camera orientation in one point image; '
+                      'only differential catalogue proper motions constrain this epoch.'))
+    (solution/'stellar_epoch.json').write_text(json.dumps(output, indent=2)+'\n')
+    fig, ax = plt.subplots(figsize=(7, 4))
+    ax.plot(years, [row['withheld_rms_px'] for row in profile], 'o-')
+    ax.axvline(best_year, color='tab:red', linestyle='--')
+    ax.set(xlabel='Trial epoch (Julian year)', ylabel='Withheld RMS [pixel]',
+           title=f'Stellar proper-motion epoch: {status}')
+    fig.tight_layout(); save_png(fig, solution/'stellar_epoch_profile.png', dpi=160); plt.close(fig)
+    return output
 
 
 def fit_refraction(solution, result, catalogue_path, stellar_epoch):
@@ -46,9 +117,9 @@ def fit_refraction(solution, result, catalogue_path, stellar_epoch):
     rows = _read(solution/'star_coordinates.csv')
     xy = np.array([[_float(row, 'x_px'), _float(row, 'y_px')] for row in rows])
     camera = _camera_from_result(result)
-    year = stellar_epoch.get('applied_epoch_jyear')
-    target = vectors([_float(row, 'propagated_ra_deg', _float(row, 'catalog_ra_deg')) for row in rows],
-                     [_float(row, 'propagated_dec_deg', _float(row, 'catalog_dec_deg')) for row in rows])
+    arrays = _catalogue_arrays(rows, catalogue_path)
+    year = stellar_epoch['epoch_jyear'] if stellar_epoch['status'] != 'not_identifiable' else 2000.
+    target = propagated_catalogue(arrays, year)
     apparent_camera = camera.to_sky(xy) @ camera.reference_rotation
     fitted = fit_atmospheric_refraction(apparent_camera, target, camera.reference_rotation)
     output = fitted.as_dict()
@@ -141,7 +212,23 @@ def measure_photometry(image_path, solution, result, refraction):
               'R_minus_catalogue_mag', 'G_minus_catalogue_mag', 'B_minus_catalogue_mag',
               'R_used_for_extinction', 'G_used_for_extinction', 'B_used_for_extinction']
     records = []
-    camera = _camera_from_result(result)
+    metadata = observation_metadata(result)
+    altitude_by_id = {}
+    if (metadata.get('observation_time') and metadata.get('latitude') is not None
+            and metadata.get('longitude') is not None):
+        from astropy import units as u
+        from astropy.coordinates import AltAz, EarthLocation, SkyCoord
+        from astropy.time import Time
+        location = EarthLocation.from_geodetic(metadata['longitude']*u.deg,
+            metadata['latitude']*u.deg, metadata.get('elevation_m', 0.)*u.m)
+        ordered = list(coordinates.values())
+        sky = SkyCoord([_float(row, 'catalog_ra_deg') for row in ordered]*u.deg,
+                       [_float(row, 'catalog_dec_deg') for row in ordered]*u.deg,
+                       frame='icrs')
+        horizontal = sky.transform_to(AltAz(obstime=Time(metadata['observation_time']),
+            location=location, pressure=0*u.hPa))
+        altitude_by_id = {row['detection_id']: float(altitude)
+                          for row, altitude in zip(ordered, horizontal.alt.deg)}
     for identity, coordinate in coordinates.items():
         detection = detections[identity]
         x, y = _float(coordinate, 'x_px'), _float(coordinate, 'y_px')
@@ -160,7 +247,7 @@ def measure_photometry(image_path, solution, result, refraction):
         positive = fluxes > 0
         mags[positive] = -2.5*np.log10(fluxes[positive])
         catalogue_magnitude = _float(coordinate, 'magnitude')
-        altitude = float('nan')
+        altitude = altitude_by_id.get(identity, float('nan'))
         airmass = float(_airmass_kasten_young([altitude])[0])
         record = dict(detection_id=identity, star_id=coordinate['star_id'],
                       catalogue_magnitude=catalogue_magnitude,
@@ -173,45 +260,10 @@ def measure_photometry(image_path, solution, result, refraction):
             record[f'{channel}_used_for_extinction'] = False
         records.append(record)
 
-    from point_star_zenith import fit_photometric_zenith, write_zenith_products
-    # Membership is fixed before zenith optimisation; all measurement rows survive.
-    usable = [r for r in records if r['saturated'] == 'False'
-              and r['source_class'] == 'compact' and np.isfinite(r['G_mag'])
-              and _float(coordinates[r['detection_id']], 'residual_px') <= 1.5]
-    for r in records:
-        r['used_for_photometric_zenith'] = False
-    if usable:
-        pixels = np.array([[_float(coordinates[r['detection_id']], 'x_px'),
-                            _float(coordinates[r['detection_id']], 'y_px')] for r in usable])
-        rays = camera.to_sky(pixels)
-        centre = rays.mean(axis=0); centre /= np.linalg.norm(centre)
-        # A fixed geometric cap leaves validity margin for trial zeniths. This
-        # direction is a search frame, never treated as a physical zenith.
-        cap = rays@centre >= np.cos(np.deg2rad(75.))
-        fit_rows = [r for r, keep in zip(usable, cap) if keep]
-        radial = np.sum((pixels-np.array([camera.physical.x_o, camera.physical.y_o]))**2, axis=1)/camera.scale**2
-        zenith = fit_photometric_zenith(rays[cap],
-                    [r['G_minus_catalogue_mag'] for r in fit_rows], radial[cap])
-        for r in fit_rows:
-            r['used_for_photometric_zenith'] = True
-        zenith['excluded_by_fixed_geometric_cap'] = int((~cap).sum())
-    else:
-        zenith = fit_photometric_zenith(np.empty((0, 3)), np.array([]), np.array([]))
-        zenith['excluded_by_fixed_geometric_cap'] = 0
-    zenith.update(coordinate_frame='ICRS', objective_channel='G',
-                  membership='unsaturated compact positive-flux sources, residual <=1.5 px; fixed 75-degree geometric cap',
-                  fitted_detection_ids=[r['detection_id'] for r in records if r['used_for_photometric_zenith']])
-    write_zenith_products(solution, zenith)
-    vector = zenith.get('zenith_unit_vector')
-    if vector is not None:
-        for r in records:
-            coordinate = coordinates[r['detection_id']]
-            ray = camera.to_sky(np.array([[_float(coordinate, 'x_px'), _float(coordinate, 'y_px')]]))[0]
-            r['altitude_deg'] = float(np.rad2deg(np.arcsin(np.clip(ray@vector, -1, 1))))
-            r['airmass'] = float(_airmass_kasten_young([r['altitude_deg']])[0])
-    fields.append('used_for_photometric_zenith')
-    base_usable = [r for r in usable if r['used_for_photometric_zenith'] and np.isfinite(r['airmass'])]
-
+    base_usable = [row for row in records if row['saturated'] == 'False'
+                   and row['source_class'] == 'compact'
+                   and np.isfinite(row['airmass']) and row['airmass'] <= 4.
+                   and _float(coordinates[row['detection_id']], 'residual_px') <= 1.5]
     channels = list('RGB') if colour['classification'] == 'rgb' else ['G']
     extinction_by_channel = {}
     plot_data = {}
@@ -221,26 +273,15 @@ def measure_photometry(image_path, solution, result, refraction):
             continue
         x = np.array([row['airmass'] for row in fit_rows])
         y = np.array([row[f'{channel}_minus_catalogue_mag'] for row in fit_rows])
-        if channel == 'G':
-            # Show the nuisance regression that actually selected the zenith.
-            fitted = dict(intercept_mag=zenith['intercept_mag'],
-                          coefficient_mag_per_airmass=zenith['extinction_mag_per_airmass'],
-                          coefficient_sigma_mag_per_airmass=zenith['extinction_sigma'],
-                          rms_mag=zenith['rms_mag'], fitted_count=len(fit_rows), rejected_count=0,
-                          fit_role='zenith_objective')
-            keep = np.ones(len(fit_rows), dtype=bool)
-        else:
-            fitted, keep = _robust_line(x, y)
-            if fitted is not None:
-                fitted['fit_role'] = 'post_fit_channel_diagnostic'
+        fitted, keep = _robust_line(x, y)
         if fitted is None:
             continue
         for row, retained in zip(fit_rows, keep):
             row[f'{channel}_used_for_extinction'] = bool(retained)
         fitted['airmass_range'] = [float(np.min(x[keep])), float(np.max(x[keep]))]
         fitted['airmass_span'] = float(np.ptp(x[keep]))
-        fitted['status'] = ('provisional_zenith' if zenith['status'] != 'conditional_zenith' else
-                            ('fitted' if fitted['airmass_span'] >= .3 else 'insufficient_airmass_leverage'))
+        fitted['status'] = ('fitted' if fitted['airmass_span'] >= .3
+                            else 'insufficient_airmass_leverage')
         fitted['relation'] = f'{channel}_machine - catalogue_mag = intercept + k * airmass'
         fitted['catalogue_passband'] = 'local bright-star catalogue magnitude'
         extinction_by_channel[channel] = fitted
@@ -261,16 +302,14 @@ def measure_photometry(image_path, solution, result, refraction):
             ax.plot(span, fitted['intercept_mag']+
                     fitted['coefficient_mag_per_airmass']*span,
                     color='black', linewidth=1.1)
-            sigma = fitted['coefficient_sigma_mag_per_airmass']
-            uncertainty = f" ± {sigma:.3f}" if sigma is not None else " (uncertainty unresolved)"
-            role = 'zenith objective' if channel == 'G' else 'post-fit diagnostic'
-            ax.set_title(f"{channel}: k={fitted['coefficient_mag_per_airmass']:.3f}{uncertainty}\n{role}",
+            ax.set_title(f"{channel}: k={fitted['coefficient_mag_per_airmass']:.3f} ± "
+                         f"{fitted['coefficient_sigma_mag_per_airmass']:.3f}",
                          fontsize=9, color=colours[channel])
             ax.set_xlabel('Airmass', fontsize=8)
             ax.set_ylabel(r'$m_{machine}-m_{catalogue}$ [mag]', fontsize=8)
             ax.tick_params(labelsize=7)
             ax.grid(alpha=.2)
-        fig.suptitle(f"Blind photometric zenith: {zenith['status']} — regression by channel", fontsize=10)
+        fig.suptitle('Atmospheric-extinction fits by stored image channel', fontsize=10)
         fig.tight_layout()
         save_png(fig, solution/'extinction_fit.png', dpi=180)
         plt.close(fig)
@@ -288,8 +327,7 @@ def measure_photometry(image_path, solution, result, refraction):
                    extinction_by_channel=extinction_by_channel,
                    extinction_status=(representative['status']
                                       if representative else 'not_fitted'),
-                   epoch_and_site_source=None, metadata_used=False,
-                   airmass_source='blind_photometric_zenith', photometric_zenith=zenith,
+                   epoch_and_site_source=metadata.get('epoch_source'),
                    limitation=('Each channel is compared with the same catalogue magnitude. '
                      'Passband mismatch, JPEG response, colour terms and vignetting add scatter.'))
     (solution/'photometry_summary.json').write_text(json.dumps(summary, indent=2)+'\n')
@@ -313,13 +351,8 @@ def planet_confidence(match_count, random_expectation, bright_single=True):
     return 'none'
 
 
-def fit_planet_epoch(image_path, solution, result, stellar_epoch, search_days=366, gate_px=3., *, allow_metadata=False):
-    """Legacy metadata-assisted diagnostic; excluded from the blind default."""
-    if not allow_metadata:
-        output = dict(status='not_run', matches=[], metadata_used=False,
-                      reason='Blind planetary epoch search is a separate unfinished objective; metadata-seeded lookup disabled')
-        (Path(solution)/'planet_epoch.json').write_text(json.dumps(output, indent=2)+'\n')
-        return output
+def fit_planet_epoch(image_path, solution, result, stellar_epoch, search_days=366, gate_px=3.):
+    """Fit an epoch by matching ephemeris planets to unused measured sources."""
     from astropy import units as u
     from astropy.coordinates import AltAz, EarthLocation
     from astropy.time import Time
@@ -449,33 +482,3 @@ def analyse_existing(image_path, solution, result, catalogue_path):
                    photometry=photometry, planets=planets)
     (Path(solution)/'science_summary.json').write_text(json.dumps(science, indent=2)+'\n')
     return science
-
-
-def compare_metadata(result, science):
-    """Reveal validation answers after the blind results are fixed; never refit."""
-    from astropy import units as u
-    from astropy.coordinates import FK5, ICRS, SkyCoord
-    from astropy.time import Time
-    metadata = observation_metadata(result, reveal=True)
-    comparison = dict(used_in_fit=False, metadata=metadata,
-                      limitation='Post-fit comparison only. Latitude uses the mean celestial pole at the adopted epoch; '
-                                 'uncertainties in stellar epoch and physical zenith limit this estimate.')
-    year = result.get('coordinate_epoch_jyear')
-    zenith = (science.get('photometry') or {}).get('photometric_zenith') or {}
-    if year is not None and zenith.get('zenith_unit_vector') is not None:
-        pole = SkyCoord(ra=0*u.deg, dec=90*u.deg,
-                        frame=FK5(equinox=Time(year, format='jyear'))).transform_to(ICRS()).cartesian.xyz.value
-        latitude = float(np.rad2deg(np.arcsin(np.clip(pole@np.array(zenith['zenith_unit_vector']), -1, 1))))
-        comparison.update(derived_latitude_deg=latitude, zenith_status=zenith['status'],
-                          stellar_epoch_status=(result.get('stellar_epoch') or {}).get('status'))
-        if metadata.get('latitude') is not None:
-            comparison['latitude_minus_metadata_deg'] = latitude-metadata['latitude']
-    if year is not None and metadata.get('observation_time'):
-        raw = metadata['observation_time']
-        try:
-            observed = Time(raw).jyear
-        except (ValueError, TypeError):
-            comparison['time_comparison_status'] = 'Metadata time could not be parsed'
-        else:
-            comparison['stellar_epoch_minus_metadata_years'] = float(year-observed)
-    return comparison
