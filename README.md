@@ -1,4 +1,8 @@
-Current launcher: `./go_v0.4.1.sh /full/path/to/image.jpg` or `./go.sh`.
+Use `./go4.sh /full/path/to/image.jpg` for the latest v4 (currently 0.4.1).
+The original root `go.sh` remains pinned to v0.4.0.
+
+New version: `./go_v0.4.1.sh /full/path/to/image.jpg`.
+The original root `./go.sh` remains pinned to v0.4.0.
 It delegates to `.worktrees/zenith-v0.4.1`. The preserved `go_v0.4.0.sh` still
 runs v0.4.0. New runs use Gaia magnitude 7.5, include unsaturated identified stars
 down to the horizon in extinction fitting, and mark the fitted zenith with a red X.
@@ -24,7 +28,7 @@ sources are available for fitting; no stars are withheld.
 ./go_v0.4.1.sh /full/path/to/image.jpg
 ```
 
-`./go.sh` is an alias. The launcher verifies solver version 0.4.1, selects the
+The versioned launcher verifies solver version 0.4.1, selects the
 Gaia catalogue and fits stellar epoch blindly. Ordinary star names come from a
 local display-only cache, with missing aliases queried from SIMBAD after fitting. From the preserved
 root checkout it uses `.worktrees/zenith-v0.4.1`; in the v0.4.1 checkout it runs locally.
