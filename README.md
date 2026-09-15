@@ -1,18 +1,10 @@
-Latest v4: `./go4.sh /full/path/to/image.jpg` now selects **0.4.2**.
-It attempts a blind planetary date search across 1850–2150 and reports competing
-dates/identities. The first run builds a local reference ephemeris cache (about
-three minutes); later runs reuse it. Use `go_v0.4.2.sh` to pin this release.
-`go.sh` and earlier versioned launchers retain their established behavior.
-
-Use `./go4.sh /full/path/to/image.jpg` for the latest v4 (currently 0.4.2).
-The original root `go.sh` remains pinned to v0.4.0.
-
-New version: `./go_v0.4.1.sh /full/path/to/image.jpg`.
-The original root `./go.sh` remains pinned to v0.4.0.
-It delegates to `.worktrees/zenith-v0.4.1`. The preserved `go_v0.4.0.sh` still
-runs v0.4.0. New runs use Gaia magnitude 7.5, include unsaturated identified stars
-down to the horizon in extinction fitting, and mark the fitted zenith with a red X.
-Saturated stars remain eligible for astrometry and are flagged out of photometry.
+Latest v4: `./go4.sh /full/path/to/image.jpg` selects **0.4.3**.
+Planet matches require nonnegative measured and predicted altitude relative to
+the image-derived zenith. Both blind epoch searches stop at the recorded current
+run time. Epoch lists, plots and the three-page report remain enabled.
+Use `go_v0.4.3.sh` to pin this version. `go.sh` and earlier versioned launchers
+retain their established behavior. Both launchers select Gaia DR3 at G ≤ 7.5;
+the PDF explicitly identifies the catalogue used, including its bright-star supplement.
 
 # WIDE-FIELD SOLVER
 

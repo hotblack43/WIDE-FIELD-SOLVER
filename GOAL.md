@@ -129,3 +129,23 @@ Changing an existing launcher requires Peter's explicit request.
 
 Peter explicitly designated `go4.sh` to follow the latest v4 release. Keep
 `go.sh` pinned; version-specific launchers also retain their established versions.
+
+## Visibility and the causal date ceiling
+
+An existing image cannot have been observed in the future. Capture the current
+system time once at the start of a blind run and use it as the upper limit of
+both stellar and planetary epoch searches. Record that ceiling. This causal
+bound is explicitly allowed; the image timestamp/site metadata still must not
+seed or constrain the blind fits. Explicit fixed-epoch controls remain controls.
+
+Planet candidates must have nonnegative measured and predicted altitude relative
+to the image-derived photometric zenith, and valid detector projections. The
+Barghini reference Z is not a substitute for that zenith. Keep the limit at the
+horizon, not 10 degrees. Record source altitudes and visibility rejection reasons.
+When no photometric zenith is available, report visibility as unresolved and do
+not present unchecked geometric matches as visible planet detections.
+
+The investigator-facing PDF must explicitly identify the stellar catalogue used
+by that solve (Gaia or Tycho-2/Hipparcos), including reports from both `go.sh`
+and `go4.sh`. Derive this label from saved catalogue provenance, not from the
+launcher name or an assumed default.
