@@ -8,7 +8,7 @@ jobs:
     timeout-minutes: 15
     strategy:
       matrix:
-        solver: [".", "v4"]
+        solver: [".", "v4", "v5"]
     defaults:
       run:
         working-directory: ${{ matrix.solver }}
