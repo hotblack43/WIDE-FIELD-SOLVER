@@ -190,7 +190,7 @@ class ReportTests(unittest.TestCase):
             result['source'] = '/data/warwick_20260914T052808Z_abcd.jpg'
             report = write_report(root, result)
 
-            self.assertEqual(report.name, 'report_warwick_20260914T052808Z.pdf')
+            self.assertEqual(report.name, 'report.pdf')
             payload = report.read_bytes()
             self.assertTrue(payload.startswith(b'%PDF'))
             self.assertEqual(len(re.findall(rb'/Type\s*/Page\b', payload)), 2)

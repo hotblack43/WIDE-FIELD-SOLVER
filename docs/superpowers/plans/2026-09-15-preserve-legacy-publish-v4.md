@@ -14,3 +14,11 @@
 - [x] Route root `go4.sh` and `go_v0.4.3.sh` into the packaged runtime. Keep other version-specific launchers unchanged. Test the Gaia catalogue and blind epoch flags through the actual shell route.
 - [x] Update README and CI to document and test both variants. Run root and v4 complete unittest suites and historical demos. Verify packaging from a clean exported checkout with no `.worktrees` or local environments.
 - [x] Review the staged file list and preservation hashes, commit, push only `release/preserve-tycho-publish-gaia-v4`, and open a PR against main. Verify remote main and `v0.1.0` did not move.
+
+## Integration follow-up
+
+Peter subsequently delegated branch integration and asked that good work be
+preserved. Publish both tested solver paths on `main` through PR #1 after saving
+its previous tip as `pre-consolidation-2026-09-15`; retain existing tags, branches
+and worktrees. Switch the local checkout to the resulting `main`. This supersedes
+the initial PR-only integration boundary above.

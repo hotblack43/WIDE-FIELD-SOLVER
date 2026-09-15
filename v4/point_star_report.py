@@ -72,15 +72,8 @@ def observation_metadata(result, *, reveal=False):
 
 
 def report_filename(result):
-    """Return a filesystem-safe report name containing camera and UTC."""
-    source = Path(result.get('source', 'image'))
-    metadata = observation_metadata(result)
-    camera = metadata.get('camera') or source.stem.split('_', 1)[0] or 'camera'
-    camera = re.sub(r'[^A-Za-z0-9-]+', '-', str(camera)).strip('-').lower() or 'camera'
-    raw_time = str(metadata.get('observation_time') or '')
-    digits = re.sub(r'[^0-9]', '', raw_time)
-    utc = f'{digits[:8]}T{digits[8:14]}Z' if len(digits) >= 14 else 'UTCunknown'
-    return f'report_{camera}_{utc}.pdf'
+    """Use a fixed report name; the run directory identifies the input."""
+    return 'report.pdf'
 
 
 def _fmt(value, digits=3, missing='--'):
@@ -368,7 +361,7 @@ def write_report_sky_overlay(output, result, science, maximum_labels=24):
                     bbox=dict(boxstyle='round,pad=.14', fc='black', ec='none', alpha=.58))
     for row in planets:
         x, y = float(row['measured_x_px']), float(row['measured_y_px'])
-        ax.plot(x, y, marker='*', ms=15, mfc='#ff3bd5', mec='white', mew=.8)
+        ax.plot(x, y, marker='*', ms=15, mfc='none', mec='#ff3bd5', mew=.8)
         ax.annotate(row['planet'], (x, y), xytext=(10, 9), textcoords='offset points',
                     fontsize=9, weight='bold', color='white',
                     bbox=dict(boxstyle='round,pad=.2', fc='#a00078', ec='white', alpha=.9),
@@ -379,7 +372,7 @@ def write_report_sky_overlay(output, result, science, maximum_labels=24):
                       label='identified catalogue star')]
     if planets:
         handles.append(Line2D([], [], marker='*', linestyle='none', markersize=11,
-                              markerfacecolor='#ff3bd5', markeredgecolor='white',
+                              markerfacecolor='none', markeredgecolor='#ff3bd5',
                               label='planet candidate' if (science.get('planets') or {}).get('status') in
                               ('planet_epoch_ambiguous', 'conditional_planet_epoch') else 'matched planet'))
     zenith_marker = _draw_photometric_zenith(

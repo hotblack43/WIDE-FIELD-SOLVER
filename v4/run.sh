@@ -58,11 +58,10 @@ if ! OPENBLAS_NUM_THREADS=1 "$solver/analyse.sh" "$image" \
     exit 1
 fi
 
-shopt -s nullglob
-reports=("$output"/report_*.pdf)
-if [[ ${#reports[@]} -eq 0 ]]; then
+report="$output/report.pdf"
+if [[ ! -f "$report" ]]; then
     echo "Analysis finished without a report PDF. See $run_dir/run.log" >&2
     exit 1
 fi
 printf '\nImages and reports: %s\n' "$output"
-printf 'Report: %s\n' "${reports[@]}"
+printf 'Report: %s\n' "$report"

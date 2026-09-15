@@ -8,8 +8,10 @@
   planetary date searches, physical visibility checks, photometric zenith,
   report improvements and the tested bootstrap fallback. Scientific limitations
   remain recorded in `v4/docs/FEATURE_STATUS.md`.
-- The original `v0.1.0` tag and all historical files remain intact. GitHub main
-  is not replaced by publishing this branch; the consolidation is proposed by PR.
+- The original `v0.1.0` tag and all historical files remain intact. Both solver
+  paths are available on `main` through consolidation PR #1. The checkpoint tag
+  `pre-consolidation-2026-09-15` preserves the previous GitHub `main` at `392bedb`.
+  Existing development branches and worktrees are retained.
 
 The old root `go.sh` was a wrapper around `go_v0.4.0.sh`, which explicitly selected
 Gaia. It has been corrected locally as well as in the published branch. Tests run
@@ -38,3 +40,7 @@ staged files, with no `.worktrees`, passed launcher routing/preservation checks
 and both historical demos: 3,653 associations, 0.397892-pixel RMS, 40 labels.
 The root legacy runtime hashes still match `c023f1c`. Both lockfiles and every
 required v4 catalogue, Python module, shell entrypoint and example are included.
+
+Planet markers in v4 are hollow magenta stars so that the measured source
+remains visible at their centres. The legend uses the same symbol. This display
+change does not alter coordinates or fitted results.

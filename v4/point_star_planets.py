@@ -461,7 +461,7 @@ def _plot_candidates(image_path, output, answer):
     ax.imshow(Image.open(image_path))
     for row in answer['matches']:
         x, y = row['measured_x_px'], row['measured_y_px']
-        ax.plot(x, y, '*', color='magenta', ms=12)
+        ax.plot(x, y, '*', mfc='none', mec='magenta', ms=12)
         ax.annotate(row['planet'], (x, y), xytext=(7, 7), textcoords='offset points', color='white',
                     bbox=dict(fc='black', alpha=.7))
     ax.set_title('Blind planet candidates: '+answer['status'].replace('_', ' ')+'\n'+

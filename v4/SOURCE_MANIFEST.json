@@ -62,10 +62,10 @@
     "point_star_gaia.py": "0d66646b1b6adb931d06d16de8ef5c85d0f58529d0dc92c2ba79caed522f3201",
     "point_star_names.py": "b213020fb957dea6d7bf067197db8cc35ab0b64dfadf8a0d9227b897f6e32284",
     "point_star_planet_ephemeris.py": "11c7794cc14e2836063366b277b6f99ed339a6d8cbac507f096a981a666c655e",
-    "point_star_planets.py": "e2e5f284d9c610f0bcff3adbeb03405337539a6844bce262dbdca0af7f8a6438",
+    "point_star_planets.py": "2404f1546cf01d91d6d97498d7ed748b5e1872708c6a6f36ed61024efde39ff5",
     "point_star_plotting.py": "530e87c10137c9b0e5f91ce1946de2b3783fa80eb330e3cebf5d41b050a1a876",
     "point_star_refraction.py": "440a7104ecb020094f176274c2c0c76c05a5a28e8490f490ad4fbaf88abe71f0",
-    "point_star_report.py": "47fee6c45e0b5f4497fc077d955ec73a7d4160d61c555b4bd368061b77a177e0",
+    "point_star_report.py": "acf559a15f9cde5a408d64a0dc6c46b788695615576d4590d911cbe8deafa10a",
     "point_star_science.py": "ce1c430477f9d39eeab0c4431d1dc4f1bcabf1b5aecc7105a67a9ab2feb7588b",
     "point_star_time_bounds.py": "ba233c34f1656b4555962fcc9e1eb6ada17d746f532eb2abb345c6f0c419b5a3",
     "point_star_zenith.py": "ddc774e2ee7b5ca8f395442296477d49c3924087bc026f0c0514a7ebc891b67e",
@@ -90,7 +90,7 @@
     "test_point_star_planet_ephemeris.py": "9ce1c54bddf2aba358daf22d8507e7ee99cec81cdfeccdcfb87320c2d06f32d1",
     "test_point_star_planets.py": "98f88680ba789b57b27495192999d7ab2a8868fe2145f35c809fda3768b512dc",
     "test_point_star_plotting.py": "83ff2f7745410e43341ef688ca8a769a678437047011c0977889663fc6bf95c1",
-    "test_point_star_report.py": "7b17082dca0ef3501141c89e17026dd8a651dc54d1eb20865760f6e7ebbab4e6",
+    "test_point_star_report.py": "f6c7fd76a4ed0bcede2c652c1b1fde590bf71449a815d7d1f43299d23803a1ac",
     "test_point_star_science.py": "c2fefdc8eb542caec6bdce5f7a6b54b930275400a09febc636acee19f2dda3ab",
     "test_point_star_time_bounds.py": "f4883bea1712726bab4d135cf4d0eb6457effb6d8e3c3bc2cbe9e52180658b7c",
     "test_point_star_zenith.py": "88d5bdceb313e05a257ff098e9054589e8dfa7a3d5e1679524f0415e708a89ce",
@@ -98,7 +98,12 @@
     "uv.lock": "4fbc2fdaa7b940ff09146d72e1de6fbcbda18f1f87b8172892178587a133a8c0"
   },
   "packaging_sha256": {
-    "run.sh": "1ccbfbd28600498044425f743b59903183d6c8b2c4d00c71edbc5a87ae324517",
+    "run.sh": "d08ec5d193faaebf7fceda65657fd302c4c652f74de9b1db77fa70444d9fe39c",
     "README.md": "4031093419dcf1c74fdd0e391785540f6bea1b3141fa764caf66f0ac8bb8fa8f"
-  }
+  },
+  "packaging_changes": [
+    "Hollow magenta planet markers and matching legend preserve visible measured source centres.",
+    "Gaia report filename is report.pdf; launcher and existing PDF regression updated together.",
+    "The separate planet-candidate image also uses hollow stars."
+  ]
 }

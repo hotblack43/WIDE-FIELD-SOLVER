@@ -24,11 +24,10 @@ choose between them. Both accept monochrome and RGB images.
 You need Git, Bash and [uv](https://docs.astral.sh/uv/getting-started/installation/).
 Linux is the tested platform. `uv` manages Python 3.12 and the pinned dependencies.
 
-Until [the consolidation PR](https://github.com/hotblack43/WIDE-FIELD-SOLVER/pull/1)
-is merged, obtain the version containing both commands with:
+The default `main` branch contains both commands:
 
 ```sh
-git clone --branch release/preserve-tycho-publish-gaia-v4 git@github.com:hotblack43/WIDE-FIELD-SOLVER.git
+git clone https://github.com/hotblack43/WIDE-FIELD-SOLVER.git
 cd WIDE-FIELD-SOLVER
 uv sync --frozen
 uv sync --project v4 --frozen
@@ -69,7 +68,8 @@ several minutes, especially when bootstrap or planetary searches need more work.
 | `go4.sh` | `results/runs/IMAGE-v0.4.3-TIMESTAMP-UNIQUE/analysis/` | A new folder is created; the run log is alongside `analysis/` |
 
 `IMAGE_STEM` means the input filename without its extension.
-Start by opening **`report_*.pdf`** in the printed output folder.
+For `go4.sh`, open **`report.pdf`** in the printed output folder; its parent run
+folder identifies the input image. Legacy `go.sh` retains its `report_*.pdf` name.
 
 Other useful products include:
 

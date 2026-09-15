@@ -40,7 +40,8 @@ else:
         f.write(json.dumps(args)+'\\n')
     output=pathlib.Path(args[args.index('--output')+1])
     output.mkdir(parents=True, exist_ok=True)
-    (output/'report_test.pdf').write_bytes(b'%PDF-test')
+    name = 'report.pdf' if pathlib.Path(args[args.index('--project')+1]).name == 'v4' else 'report_test.pdf'
+    (output/name).write_bytes(b'%PDF-test')
 ''')
             uv.chmod(0o755)
             image = root/'test image.jpg'; image.touch()
