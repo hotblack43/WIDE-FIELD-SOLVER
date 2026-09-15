@@ -7,7 +7,8 @@
     "Bright-planet local absence evidence and candidate ranking; astrometric fits unchanged.",
     "Audit JSON, CSV and PDF evidence; same-epoch overlays regenerated after ranking.",
     "Image-only sky-footprint masking excludes dark exterior frames before association; no OCR or metadata.",
-    "Non-finite intermediate ZPN trials are audited and skipped without changing the fixed camera."
+    "Non-finite intermediate ZPN trials are audited and skipped without changing the fixed camera.",
+    "The v5 PDF omits the crowded planet-epoch appendix and hidden-metadata placeholder title while retaining standalone audit products."
   ],
   "sha256": {
     ".python-version": "7b55f8e67b5623c4bef3fa691288da9437d79d3aba156de48d481db32ac7d16d",
@@ -27,7 +28,7 @@
     "demo.sh": "6d3d897e95032eef782aee49446a8c426cf8b26899ae662e2d60ce1f8932c96f",
     "docs/BOOTSTRAP_FAILURES.md": "e2fe3b1137b767704ef9e5f7e14e865b38fd67f8ebd4b2e6d75625fea19c4249",
     "docs/COMPARISON.md": "012ca16042299ce6c0710ea487266590511c2f3af34726a2f1cdefc7da5dfbba",
-    "docs/FEATURE_STATUS.md": "4420d3a9e125d8ee869908ab80c5a5540076f58c5b8b8d67e349b79ce44feba1",
+    "docs/FEATURE_STATUS.md": "4a003f244d972952e569bf70325c6f8a5564516bdcf5430eb65097215d5d213f",
     "docs/FITS_EXPORT.md": "c29b2eba04de95cb14caa194a3dfb94e312330558d5ca5926930e11bfd65b284",
     "docs/GAIA_V04.md": "4791518373e51e2dd698b34c007bc6c3cc305df704b02ebaf00f21c09c6f54c9",
     "docs/GAIA_V04_RESULTS.json": "34cfabd191ad0d3f3209c4c0879b21fbf9cffe8aee247d6e881ff419ce4c8bed",
@@ -75,7 +76,7 @@
     "point_star_planets.py": "4e3ee040220dc37056c823421ea18277c450716067b1e56d2b3a8c8368188832",
     "point_star_plotting.py": "530e87c10137c9b0e5f91ce1946de2b3783fa80eb330e3cebf5d41b050a1a876",
     "point_star_refraction.py": "440a7104ecb020094f176274c2c0c76c05a5a28e8490f490ad4fbaf88abe71f0",
-    "point_star_report.py": "15585b61080878bc30b58d4e9ed150f87add1527ca4db011d2b2d784dce6e9a4",
+    "point_star_report.py": "71eb266f7e3baed377ea15b72e963d4d93bcb3a237870eca1257902b9f8e1e96",
     "point_star_science.py": "ce1c430477f9d39eeab0c4431d1dc4f1bcabf1b5aecc7105a67a9ab2feb7588b",
     "point_star_time_bounds.py": "ba233c34f1656b4555962fcc9e1eb6ada17d746f532eb2abb345c6f0c419b5a3",
     "point_star_zenith.py": "ddc774e2ee7b5ca8f395442296477d49c3924087bc026f0c0514a7ebc891b67e",
@@ -105,7 +106,7 @@
     "test_point_star_planet_ephemeris.py": "9ce1c54bddf2aba358daf22d8507e7ee99cec81cdfeccdcfb87320c2d06f32d1",
     "test_point_star_planets.py": "5cd9d6d479b817cb283ac29399bdb2ec00de35430b57dff1ef6d78720d946c37",
     "test_point_star_plotting.py": "83ff2f7745410e43341ef688ca8a769a678437047011c0977889663fc6bf95c1",
-    "test_point_star_report.py": "77a0acdf3c19c51038feeb502be932f35ec85e21be666029500173ba11d4b19c",
+    "test_point_star_report.py": "4d7e238b1ecabe0e24e11ad543a7032a11e48efbe26c56db7e495e286e5f527d",
     "test_point_star_science.py": "c2fefdc8eb542caec6bdce5f7a6b54b930275400a09febc636acee19f2dda3ab",
     "test_point_star_time_bounds.py": "f4883bea1712726bab4d135cf4d0eb6457effb6d8e3c3bc2cbe9e52180658b7c",
     "test_point_star_zenith.py": "88d5bdceb313e05a257ff098e9054589e8dfa7a3d5e1679524f0415e708a89ce",

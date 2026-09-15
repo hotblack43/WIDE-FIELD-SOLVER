@@ -212,10 +212,25 @@ class ReportTests(unittest.TestCase):
                     self.assertIn(source.size, dimensions,
                                   f'{name} was downsampled when embedded in the PDF')
 
-    def test_write_report_creates_two_page_pdf(self):
+    def test_report_title_does_not_spend_a_line_on_hidden_metadata(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             for name in ('astrometry_overlay.png', 'astrometry_residuals.png'):
+                fig, ax = plt.subplots(figsize=(3, 2))
+                ax.plot([0, 1], [0, 1])
+                fig.savefig(root/name)
+                plt.close(fig)
+            with patch('point_star_report.PdfPages') as pages:
+                write_report(root, self.sample_result())
+            saved = pages.return_value.__enter__.return_value.savefig.call_args_list
+            self.assertEqual(saved[0].args[0]._suptitle.get_text(),
+                             'Wide-field image solution: example.jpeg')
+
+    def test_write_report_stays_two_pages_when_epoch_diagnostic_exists(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name in ('astrometry_overlay.png', 'astrometry_residuals.png',
+                         'planet_epoch_candidates.png'):
                 fig, ax = plt.subplots(figsize=(3, 2))
                 ax.plot([0, 1], [0, 1])
                 fig.savefig(root/name)

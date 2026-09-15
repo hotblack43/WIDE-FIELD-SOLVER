@@ -158,6 +158,12 @@ dates and positional residuals with local time-error bars. The PDF adds a third
 page with the plot and a compact table; complete machine-readable lists remain
 available in CSV/JSON.
 
+That three-page layout remains historical behavior in the preserved v4 runtime.
+The v5 PDF omits the crowded epoch-candidate appendix and its redundant metadata
+placeholder title line. The standalone PNG, TXT, CSV and JSON evidence remains
+available in the run directory; the useful sky-position overlay remains in the
+two-page report.
+
 Final same-image evidence is saved in `PLANETS_V042_RESULTS.json`. The complete
 v0.4.2 run preserves byte-identical astrometric coordinates, stellar epoch,
 photometric zenith and stellar photometry from v0.4.1. 99 tests and the unchanged

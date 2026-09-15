@@ -581,10 +581,7 @@ def write_report(output, result, *, science=None, **unused):
                 va='top', fontsize=5.45, linespacing=1.12)
 
     source = Path(result.get('source', 'image')).name
-    metadata = observation_metadata(result)
-    provenance = metadata.get('observation_time', 'hidden during blind solving' if result.get('blind') else 'unavailable')
-    fig.suptitle(f'Wide-field image solution: {source}\nMetadata time (not inferred): {provenance}',
-                 fontsize=11.5, weight='bold')
+    fig.suptitle(f'Wide-field image solution: {source}', fontsize=11.5, weight='bold')
     path = output/report_filename(result)
     metadata_pdf = {
         'Title': f'Wide-field image solution: {source}',
@@ -595,29 +592,6 @@ def write_report(output, result, *, science=None, **unused):
     with PdfPages(path, metadata=metadata_pdf) as pdf:
         pdf.savefig(fig)
         pdf.savefig(reverse)
-        epochs_plot = output/'planet_epoch_candidates.png'
-        if epochs_plot.is_file():
-            appendix = plt.figure(figsize=(8.27, 11.69))
-            appendix.suptitle('Blind planetary epoch candidates', fontsize=14, weight='bold')
-            axis = appendix.add_axes([.07, .50, .86, .42])
-            _show_image(axis, epochs_plot, 'Candidate dates and positional residuals')
-            planets = science.get('planets') or {}
-            rows = []
-            for rank, candidate in enumerate(planets.get('candidates', [])[:16], 1):
-                bodies = '/'.join(sorted({m['planet'] for m in candidate['matches']}))
-                rows.append([rank, candidate['epoch_tdb'].replace(' TDB', ''), bodies,
-                             _fmt(candidate['rms_px'], 3), ', '.join(candidate.get('missing_bright_planets', [])) or '--'])
-            axis = appendix.add_axes([.07, .10, .86, .34]); axis.axis('off')
-            axis.set_title('First 16 candidates after absence checks; all dates are saved', fontsize=8)
-            if rows:
-                table = axis.table(cellText=rows, colLabels=['Rank', 'Candidate date (TDB)', 'Planet(s)', 'RMS px', 'Missing bright'],
-                                   colWidths=[.06, .36, .23, .10, .25], cellLoc='left', loc='upper center', bbox=(0, 0, 1, 1))
-                table.auto_set_font_size(False); table.set_fontsize(7)
-            appendix.text(.07, .045, 'All candidates: planet_epoch_candidates.txt and planet_candidates.csv.\n'
-                          'One planet can admit several dates and identities; local precision does not resolve these alternatives.',
-                          fontsize=8)
-            pdf.savefig(appendix)
-            plt.close(appendix)
     plt.close(fig)
     plt.close(reverse)
     return path
