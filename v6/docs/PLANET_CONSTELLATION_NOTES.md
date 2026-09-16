@@ -43,26 +43,50 @@ blind diagnostic was the embedded timestamp inspected: it records
 2018-04-16T04:55:31, independently confirming the recovered date. Metadata must
 remain validation-only and must never seed or rank the blind result.
 
-## Proposed constellation search
+## Implemented conservative v6 constellation recruitment
 
 Catalogue association should remain an alternative explanation rather than an
 irreversible per-source veto. Candidate generation can still use conservative
-individual gates, but a joint stage should be able to add a catalogue-associated
-source when doing so creates a stronger multi-planet solution. It should compare
-the complete alternatives:
+individual gates. In v6, a candidate containing at least two independently
+eligible planets may recruit an unused Gaia-associated detection for a third or
+later planet when the source lies inside the ordinary planet gate at the anchor
+date. The epoch is then refitted against the full constellation. The recruitment
+survives only when every anchor remains inside its original gate and the added
+planet is both inside the ordinary gate and closer to the measured centroid than
+the saved Gaia prediction. Planet and source assignments remain one-to-one.
+
+This ordering matters: Mars can be farther from the centroid than Gaia at the
+Jupiter/Saturn-only epoch, yet become the better explanation after its faster
+motion constrains the common epoch. Applying the Gaia comparison before that
+joint refit reproduces the original failure.
+
+The complete alternatives remain inspectable:
 
 1. every selected source is explained by its stellar association;
 2. one or more sources are reassigned to distinct planets at one common epoch;
 3. unmatched planets are allowed, and no measured source can represent two
    planets.
 
-Rank first by the amount of coherent evidence, then by a documented joint
-objective. The objective should include the planet residuals and the cost of
-displacing catalogue explanations. The present nine-sigma-squared rule can
-remain useful for isolated one-body claims, but must not discard a source before
-the multi-body likelihood is known. Any resulting confidence term needs a
-look-elsewhere calibration across searched dates, planets and measured sources;
-the number of matched bodies alone is not a false-alarm probability.
+Candidates continue to rank first by matched-planet count and then positional
+cost. The nine-sigma-squared rule remains unchanged for isolated and two-body
+claims. Each recruited match records its Gaia identifier, catalogue residual,
+planet residual, improvement and `constellation_override` flag in JSON and CSV.
+This is a conservative deterministic rule, not a calibrated posterior or
+false-alarm probability.
+
+The fresh v6 run with the unchanged fitted camera and detections recovered:
+
+| Planet | Detection | Residual (px) | Constellation override |
+|---|---:|---:|---|
+| Mars | 22 | 0.099625 | yes; Gaia residual 1.125722 px |
+| Jupiter | 6 | 0.470192 | no |
+| Saturn | 37 | 0.381568 | no |
+
+The joint epoch is 2018-04-16T07:37:57.194 TDB and the three-source RMS is
+0.354307 pixels. The image timestamp remained hidden until after the blind result
+was fixed.
+
+## Possible future constellation scoring
 
 Pairwise angular separations provide an efficient, camera-orientation-independent
 coarse index. For two planets, their angular distance sharply reduces candidate
@@ -101,7 +125,7 @@ use is a broad rank or censored likelihood:
 - use agreement as supporting evidence and strong, measurable contradictions as
   penalties, never as an unreported hard identity veto.
 
-## Regression requirements
+## Regression evidence and remaining requirements
 
 The implementation should add evidence for all of the following without
 relaxing the astrometric thresholds:
@@ -112,8 +136,8 @@ relaxing the astrometric thresholds:
   metadata;
 - two-planet aliases remain explicitly conditional when geometry does not make
   them unique;
-- triangle indexing and the final full-position objective return the same
-  physical candidate;
+- the implemented final full-position objective recovers the documented
+  three-body candidate; triangle indexing remains a possible optimisation;
 - brightness ordering can improve ranking but cannot erase an otherwise valid
   positional solution when photometry is saturated or uncalibrated;
 - all alternative dates and identity changes remain available in CSV/JSON audit
@@ -128,5 +152,7 @@ aliases. After candidate-specific absence checks, however, a result whose best
 remaining candidate contains only one planet is now reported as
 `planet_epoch_not_identifiable`. It has no selected epoch or selected planet
 match, and unmatched planets are not projected at that arbitrary alias date.
-The complete candidate list remains available for audit. This presentation
-boundary does not implement the joint constellation scoring proposed above.
+The complete candidate list remains available for audit. V6 now implements the
+conservative two-anchor recruitment described above. Pairwise triangle indexing,
+relative-brightness scoring and calibrated look-elsewhere probabilities remain
+future work.

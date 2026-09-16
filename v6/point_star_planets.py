@@ -404,6 +404,47 @@ def search_planet_epochs(camera, detections, jd_grid, sky_grid, vector_function,
         return [(names[p], int(s)) for p, s in zip(planets, sources)
                 if s < len(xy) and distance2[p, s] <= source_gate2[s]*(1+1e-8)]
 
+    def recruit_constellation(date, anchors):
+        """Add Gaia-associated sources only behind a two-planet date anchor."""
+        if len(anchors) < 2:
+            return list(anchors)
+        anchored_planets = {name for name, _ in anchors}
+        anchored_sources = {source for _, source in anchors}
+        remaining_planets = [name for name in names if name not in anchored_planets]
+        override_sources = [source for source in range(len(xy))
+                            if source not in anchored_sources and visible[source]
+                            and not eligible[source] and np.isfinite(star_residual[source])]
+        if not remaining_planets or not override_sources:
+            return list(anchors)
+        predictions = np.array([prediction(name, date) for name in remaining_planets])
+        distance2 = np.sum((predictions[:, None, :]-xy[override_sources][None, :, :])**2, axis=2)
+        # The anchor-only date can place a faster third planet farther from its
+        # source than the Gaia alternative. Admit ordinary-gate proposals here;
+        # assignment_is_valid applies the Gaia comparison after the common epoch
+        # has been refitted with the complete constellation.
+        valid = distance2 <= gate_px**2
+        # Dummy columns leave a planet unmatched. Every valid real assignment is
+        # cheaper than a dummy; invalid assignments can never be selected.
+        costs = np.ones((len(remaining_planets), len(override_sources)+len(remaining_planets)))
+        costs[:, :len(override_sources)] = np.where(
+            valid, distance2/((len(names)+1)*gate_px**2), 1e6)
+        planet_rows, source_columns = linear_sum_assignment(costs)
+        additions = [(remaining_planets[row], override_sources[column])
+                     for row, column in zip(planet_rows, source_columns)
+                     if column < len(override_sources) and valid[row, column]]
+        return list(anchors)+additions
+
+    def assignment_is_valid(name, source, date):
+        predicted = prediction(name, date)
+        if not np.isfinite(predicted).all():
+            return False
+        distance2 = float(np.sum((predicted-xy[source])**2))
+        if eligible[source]:
+            return distance2 <= source_gate2[source]*(1+1e-8)
+        return (visible[source] and np.isfinite(star_residual[source]) and
+                distance2 <= gate_px**2*(1+1e-8) and
+                distance2 < star_residual[source]**2)
+
     joint_started = time.perf_counter()
     candidates = []
     brightness_order = sorted(range(len(detections)), key=lambda i: float(detections[i].get('flux_above_background', 0)), reverse=True)
@@ -452,9 +493,25 @@ def search_planet_epochs(camera, detections, jd_grid, sky_grid, vector_function,
                 start, stop = common_interval(assignments, date)
             else:
                 date, _ = refine(assignments, start, stop)
+            expanded = recruit_constellation(date, assignments)
+            while len(expanded) > len(assignments):
+                expanded_date, _ = refine(expanded, start, stop)
+                if any(not assignment_is_valid(n, i, expanded_date)
+                       for n, i in assignments):
+                    break
+                survivors = list(assignments)+[
+                    (name, source) for name, source in expanded[len(assignments):]
+                    if assignment_is_valid(name, source, expanded_date)]
+                if len(survivors) == len(assignments):
+                    break
+                if len(survivors) == len(expanded):
+                    assignments = expanded
+                    date = expanded_date
+                    break
+                expanded = survivors
         if (trial_index+1) % 100 == 0:
             print(f'Blind planets: {trial_index+1}/{len(seeds)} joint date trials', flush=True)
-        if any(not np.isfinite(prediction(n, date)).all() or np.sum((prediction(n, date)-xy[i])**2) > source_gate2[i]*(1+1e-8) for n, i in assignments):
+        if any(not assignment_is_valid(n, i, date) for n, i in assignments):
             continue
         matches, speed_squared = [], 0.
         for name, source in assignments:
@@ -476,6 +533,7 @@ def search_planet_epochs(camera, detections, jd_grid, sky_grid, vector_function,
                 catalogue_residual_px=(float(star_residual[source]) if np.isfinite(star_residual[source]) else None),
                 improvement_over_star_chi2=(float((star_residual[source]**2-np.sum((predicted-xy[source])**2))/positional_sigma_px**2)
                                             if np.isfinite(star_residual[source]) else None),
+                constellation_override=bool(not eligible[source]),
                 unused_brightness_rank=rank[source],
                 flux_above_background=float(row.get('flux_above_background', 0))))
         if not matches:
@@ -483,6 +541,7 @@ def search_planet_epochs(camera, detections, jd_grid, sky_grid, vector_function,
         cost = sum(m['separation_px']**2 for m in matches)
         candidate = dict(jd_tdb=float(date), epoch_tdb=_date_text(date), matches=matches,
                          match_count=len(matches), cost_px2=cost,
+                         constellation_override_count=sum(m['constellation_override'] for m in matches),
                          rms_px=float(np.sqrt(cost/len(matches))),
                          conditional_time_sigma_minutes=(float(1440*positional_sigma_px/np.sqrt(speed_squared))
                                                          if speed_squared > 1e-16 else None),
@@ -590,8 +649,14 @@ def fit_blind_planet_epoch(image_path, solution, result, *, epoch_limits=(1850.,
     identities = {}
     for candidate in answer['source_candidates']:
         identities.setdefault(candidate['detection_id'], set()).add(candidate['planet'])
+    for candidate in answer['candidates']:
+        for match in candidate['matches']:
+            identities.setdefault(match['detection_id'], set()).add(match['planet'])
     answer['source_identity_alternatives'] = {str(key): sorted(value) for key, value in identities.items()}
-    answer['candidate_selection'] = 'nonnegative measured/predicted altitude relative to photometric zenith and valid detector projection; all measured detections considered; a matched star may be challenged only with positional delta chi-square >=9; saturated/broad sources retained'
+    answer['candidate_selection'] = ('nonnegative measured/predicted altitude relative to photometric zenith and valid detector projection; '
+        'all measured detections considered; an isolated matched star may be challenged only with positional delta chi-square >=9; '
+        'a coherent three-or-more-planet constellation anchored by two independently eligible planets may recruit a matched star '
+        'inside the ordinary planet gate only when the planet residual is smaller than the catalogue residual; saturated/broad sources retained')
     performance = answer.get('planet_search_performance')
     if performance is not None:
         for key, value in post_search_counts.items():
@@ -623,7 +688,7 @@ def fit_blind_planet_epoch(image_path, solution, result, *, epoch_limits=(1850.,
               'measured_x_px', 'measured_y_px', 'predicted_x_px', 'predicted_y_px', 'separation_px',
               'saturated', 'source_class', 'unused_brightness_rank', 'flux_above_background',
               'catalogue_star_id', 'catalogue_residual_px', 'improvement_over_star_chi2',
-              'measured_altitude_deg', 'predicted_altitude_deg']
+              'constellation_override', 'measured_altitude_deg', 'predicted_altitude_deg']
     with (output/'planet_candidates.csv').open('w') as handle:
         writer = csv.DictWriter(handle, fieldnames=fields); writer.writeheader()
         for rank, candidate in enumerate(answer['candidates'], 1):

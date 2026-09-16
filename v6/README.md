@@ -27,6 +27,13 @@ uv run --frozen python -m unittest discover -v
 
 Bright-planet evidence, numerical rules and limitations: [docs/PLANET_NONDETECTIONS.md](docs/PLANET_NONDETECTIONS.md).
 
+V6 can conservatively recover a third or later planet that was initially
+assigned to Gaia when two independently eligible planets anchor a common date.
+The full constellation is refitted before the planet and Gaia residuals are
+compared; isolated and two-body gates remain unchanged. JSON and CSV retain the
+displaced catalogue identity and a `constellation_override` flag. See
+[the verified Mars/Jupiter/Saturn case](docs/PLANET_CONSTELLATION_NOTES.md).
+
 The v6 blind planet search ships a validated 1850--2036 daily proposal table,
 batches exact Astropy refinement and uses up to four deterministic planet
 workers. Set `WFS_PLANET_WORKERS=1` for the serial reference path. Timing and

@@ -22,6 +22,7 @@ must not describe a proposal as working merely because related products exist.
 | Zenith fitted through astrometric refraction residuals | Implemented downstream diagnostic | Different objective from photometric zenith; does not establish that photometric proposal works |
 | Joint photometric zenith/extinction and astrometric epoch constraint | **Not implemented** | Not part of the 0.3.0 proper-motion bugfix; must be designed and tested explicitly |
 | Blind planetary epoch | Candidate search implemented in 0.4.2 | Past-only positional search capped at recorded run time, with measured/predicted horizon checks; alternatives retained and single-planet results ambiguous |
+| Coherent planet-constellation Gaia reassignment | Added in v6 | Two independently eligible planets may recruit a third or later detected planet only inside the ordinary gate and only when the joint epoch refit beats its saved Gaia residual; isolated and two-body gates are unchanged |
 | Post-fit metadata comparison, including pole–zenith latitude | Added in 0.3.0 | Explicit `--compare-metadata`; no refit, uncertainty/status retained |
 | Gaia reference catalogue | Added in 0.4.0 as an opt-in alternative | Native DR3 epochs/PM, 36,663 Gaia rows plus 78 labelled bright supplements; `go_v0.4.0.sh` explicitly selects Gaia; bare solve/analyse CLI defaults remain Tycho/Hipparcos |
 | Independent same-image catalogue comparison and paired spatial resampling | Added in 0.4.0 | Different associations allowed; 32 explicit spatial deletion refits; conditional sensitivity, not independent validation |
@@ -285,13 +286,19 @@ rejected. Non-finite trial transforms are now recorded and skipped. The unchange
 camera validates at order 13 with 0.012976-pixel maximum added export error,
 below the existing 0.05-pixel threshold; no astrometry is refitted.
 
-The planet stage still under-classifies the same image because Mars detection 22
-has a plausible but poorer Gaia association. A full-range diagnostic that lets
-that source enter the joint search finds one and only one three-body candidate:
-Mars, Jupiter and Saturn on 2018-04-16, with 0.3543-pixel RMS. The evidence,
-root cause and proposed constellation/relative-brightness work are recorded in
-[PLANET_CONSTELLATION_NOTES.md](PLANET_CONSTELLATION_NOTES.md). This is a design
-note, not a claim that the joint scoring change is already implemented.
+The v6 planet stage now repairs the under-classification exposed by Mars
+detection 22 and its plausible but poorer Gaia association. Two independently
+eligible planet matches may propose a third or later source inside the ordinary
+planet gate; the common epoch is then refitted, and a Gaia-associated proposal
+survives only when its final planet residual is smaller than its saved catalogue
+residual. The unchanged Espenak camera and detections recover the sole three-body
+candidate at 2018-04-16T07:37:57.194 TDB: Mars, Jupiter and Saturn with
+0.354307-pixel RMS. Mars is 0.099625 pixels from detection 22 versus the saved
+1.125722-pixel Gaia residual. The override and both residuals are retained in
+JSON and CSV. Isolated and two-body catalogue-competition gates are unchanged;
+the result remains conditional because no calibrated look-elsewhere probability
+has been implemented. See
+[PLANET_CONSTELLATION_NOTES.md](PLANET_CONSTELLATION_NOTES.md).
 
 ## RGB catalogue comparison page
 
