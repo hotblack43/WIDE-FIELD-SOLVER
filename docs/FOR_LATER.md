@@ -26,7 +26,9 @@ Historical references:
 ## Native dynamic range, FITS input and a results index
 
 Recorded 2026-09-16. The native-depth/FITS portion was implemented in v6 on
-2026-09-16. The results index remains deferred.
+2026-09-16. Automatic append-only SQLite storage is now implemented in the
+working v6 version; see `v6/docs/DATABASE.md`. Repeated-star extraction and
+duplicate elimination remain later analysis tasks.
 
 V6 now uses one native loader for detection, photometry, planet evidence,
 diagnostics and FITS export. It supports high-bit PNG/TIFF and 2-D, RGB and

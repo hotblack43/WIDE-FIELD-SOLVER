@@ -88,6 +88,12 @@ several minutes, especially when bootstrap or planetary searches need more work.
 For `go4.sh`, `go5.sh` and `go6.sh`, open **`report.pdf`** in the printed output folder; its parent run
 folder identifies the input image. Legacy `go.sh` retains its `report_*.pdf` name.
 
+The working v6 launcher also automatically appends every analysis to
+`results/stars.sqlite`. Repeated images and quality-flagged measurements all
+remain in the database; ordinary failures save their available partial results.
+See [database storage](v6/docs/DATABASE.md). This feature was added after the
+published v0.6.0 download; it is available in the updated checkout.
+
 For v5, [bright-planet absence checks](v5/docs/PLANET_NONDETECTIONS.md) explain
 how missing Mercury, Venus, Mars, Jupiter or Saturn can count against an epoch,
 and when the image is too uncertain to judge.

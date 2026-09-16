@@ -66,7 +66,8 @@ class V6LauncherTests(unittest.TestCase):
                 args = json.loads((run/'analysis/args.json').read_text())
                 self.assertEqual(args, [str(image), '--catalog',
                                        str(root/'v6/data/stars_gaia_dr3_g75.csv'),
-                                       '--epoch-mode', 'fit', '--output', str(run/'analysis')])
+                                       '--epoch-mode', 'fit', '--output', str(run/'analysis'),
+                                       '--database', str(root/'results/stars.sqlite')])
                 self.assertTrue((run/'analysis/report.pdf').exists())
                 self.assertTrue((run/'run.log').exists())
 

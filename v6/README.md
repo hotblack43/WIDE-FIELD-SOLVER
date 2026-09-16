@@ -8,6 +8,13 @@ repository root. This directory contains v0.6.0 and its local Python modules,
 Gaia catalogue, provenance, dependency lockfile, tests and scientific status.
 No development worktree is required.
 
+In the working v6 version, every `go6.sh` / `go_v0.6.0.sh` analysis automatically
+appends its available data to `results/stars.sqlite` at the repository root.
+Every rerun creates another entry, even for the same image. No duplicates or
+quality-flagged measurements are removed. Failed analyses retain their available
+partial products and error. See [database storage](docs/DATABASE.md).
+This addition is newer than the published `v0.6.0` archive.
+
 V6 accepts native-depth grayscale/RGB PNG and TIFF plus 2-D, RGB and
 `R/G1/G2/B` FITS images. Three- and four-plane FITS stacks may be plane-first or
 plane-last; named `R/G1/G2/B` and long-form colour extensions are also accepted.

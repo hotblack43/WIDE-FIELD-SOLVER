@@ -29,6 +29,8 @@ def parser():
     p.add_argument('image', type=Path, help='JPEG, PNG, TIFF or FITS all-sky image')
     p.add_argument('--output', type=Path, required=True, help='New output directory (protected by default)')
     p.add_argument('--overwrite', action='store_true', help='Explicitly replace an existing output directory')
+    p.add_argument('--database', type=Path,
+                   help='Append all available results to SQLite, including reruns and failed analyses')
     p.add_argument('--epoch-mode', choices=('fit', 'fixed', 'catalog'), default='fit')
     p.add_argument('--epoch-year', type=float, help='Julian year required for fixed epoch mode')
     p.add_argument('--epoch-limits', type=float, nargs=2, default=(1850., 2036.), help='Requested Julian-year range; blind upper bound is capped at the current run time')
@@ -57,6 +59,25 @@ def main():
         p.error('--epoch-year is required exactly when --epoch-mode fixed is used')
     if (args.latitude is None) != (args.longitude is None):
         p.error('--latitude and --longitude must be supplied together')
+    if args.database and (args.database.resolve() == args.output.resolve()
+                         or args.output.resolve() in args.database.resolve().parents):
+        p.error('--database must be outside --output')
+    exit_code, error = 0, None
+    try:
+        analyse(args)
+    except BaseException as exc:
+        exit_code, error = 1, f'{type(exc).__name__}: {exc}'
+        raise
+    finally:
+        if args.database:
+            from point_star_database import append_run
+            run_id = append_run(args.database, args.output, args.image,
+                                exit_code=exit_code, error=error)
+            print(f'Database: {args.database.resolve()} (run {run_id})', flush=True)
+
+
+def analyse(args):
+    """Finish scientific outputs before the caller records them in the database."""
     result = run(args.image, args.output, args.catalog, label_count=args.labels,
                  names_cache=args.names_cache, offline=args.offline,
                  observation_time=args.observation_time, latitude=args.latitude,

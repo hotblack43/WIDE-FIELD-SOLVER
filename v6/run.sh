@@ -11,6 +11,7 @@ usage() {
     echo "  --channel-order RGB|RGGB|RG1G2B"
     echo "  --saturation-level VALUE_OR_CHANNEL_MAP"
     echo "Runs solver $expected_version with Gaia; outputs go under $repo/results/runs/."
+    echo "Every analysis appends its available data to $repo/results/stars.sqlite (including reruns)."
 }
 
 if [[ $# -lt 1 ]]; then
@@ -76,6 +77,7 @@ echo "Log: $run_dir/run.log"
 
 if ! OPENBLAS_NUM_THREADS=1 "$solver/analyse.sh" "$image" \
         --catalog "$catalogue" --epoch-mode fit --output "$output" \
+        --database "$repo/results/stars.sqlite" \
         "${solver_args[@]}" \
         2>&1 | tee "$run_dir/run.log"; then
     echo "Analysis failed. Its output and log are preserved at $run_dir" >&2
