@@ -11,34 +11,49 @@ import json
 from pathlib import Path
 
 import numpy as np
-from PIL import Image
 from scipy.ndimage import gaussian_filter, label, maximum_filter
 
 from point_star_footprint import infer_sky_footprint
+from point_star_image import load_scientific_image
 from point_star_plotting import save_png
 
 
-def detect_stars(image, detection_sigma=6., background_sigma=10., *, valid_mask=None):
-    source_pixels = np.asarray(image)
-    if valid_mask is None:
-        valid_mask, footprint = infer_sky_footprint(source_pixels)
-    else:
-        valid_mask = np.asarray(valid_mask, dtype=bool)
-        if valid_mask.shape != source_pixels.shape[:2]:
-            raise ValueError('Sky-footprint mask shape differs from image')
-        footprint = dict(status='supplied_mask', method='caller_supplied_boolean_mask',
-                         valid_pixel_fraction=float(valid_mask.mean()),
-                         reason='Caller supplied the image-domain validity mask',
-                         metadata_used=False, ocr_used=False)
+def detect_stars(image, detection_sigma=6., background_sigma=10., *, valid_mask=None,
+                 saturated_mask=None, saturation_known=True):
     pixels = np.asarray(image, dtype=float)
-    saturated_pixels = pixels >= 250
+    default_saturated = pixels >= 250
     if pixels.ndim == 3 and pixels.shape[2] >= 3:
-        saturated_pixels = np.any(pixels[..., :3] >= 250, axis=2)
+        default_saturated = np.any(pixels[..., :3] >= 250, axis=2)
         pixels = pixels[..., :3] @ np.array([.2126, .7152, .0722])
-    if pixels.ndim != 2 or min(pixels.shape) < 15 or not np.isfinite(pixels).all():
-        raise ValueError('A finite greyscale or RGB image at least 15 pixels wide is required')
+    if pixels.ndim != 2 or min(pixels.shape) < 15:
+        raise ValueError('A greyscale or RGB image at least 15 pixels wide is required')
+    finite = np.isfinite(pixels)
+    if valid_mask is None:
+        supplied = finite
+    else:
+        supplied = np.asarray(valid_mask, dtype=bool)
+        if supplied.shape != pixels.shape:
+            raise ValueError('Validity mask shape differs from image')
+        supplied &= finite
+    if not supplied.any():
+        raise ValueError('Image contains no finite valid scientific pixels')
+    footprint_pixels = np.where(supplied, pixels, np.median(pixels[supplied]))
+    footprint_mask, footprint = infer_sky_footprint(footprint_pixels)
+    valid_mask = footprint_mask & supplied
+    invalid_count = int((~supplied).sum())
+    if invalid_count:
+        footprint['method'] += '_with_invalid_pixel_mask'
+        footprint['invalid_pixel_count'] = invalid_count
+        footprint['valid_pixel_fraction'] = float(valid_mask.mean())
+    pixels = footprint_pixels
     if detection_sigma <= 0 or background_sigma <= 0:
         raise ValueError('Detection and background scales must be positive')
+    if saturated_mask is None:
+        saturated_pixels = default_saturated
+    else:
+        saturated_pixels = np.asarray(saturated_mask, dtype=bool)
+        if saturated_pixels.shape != pixels.shape:
+            raise ValueError('Saturation mask shape differs from image')
     background = gaussian_filter(pixels, background_sigma)
     signal = pixels-background
     global_noise = max(float(1.4826*np.median(abs(signal-np.median(signal)))), .05)
@@ -102,6 +117,7 @@ def detect_stars(image, detection_sigma=6., background_sigma=10., *, valid_mask=
                     flux_above_background=flux, peak_above_background=peak,
                     peak_snr=float(peak/noise[y, x]), area_px=area,
                     major_sigma_px=width, axis_ratio=ratio, saturated=saturated,
+                    saturation_known=bool(saturation_known),
                     source_class='compact' if half == 4 else 'broad_blob',
                     measurement_half_window_px=half))
                 reason = None
@@ -141,7 +157,8 @@ def detect_stars(image, detection_sigma=6., background_sigma=10., *, valid_mask=
                       footprint=footprint, frame_sources_rejected=len(outside))
 
 
-def write_products(image_path, output, detection_sigma=6., background_sigma=10.):
+def write_products(image_path, output, detection_sigma=6., background_sigma=10., *,
+                   fits_hdu=None, channel_order=None, saturation_level=None):
     import matplotlib
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
@@ -149,12 +166,28 @@ def write_products(image_path, output, detection_sigma=6., background_sigma=10.)
     output = Path(output)
     if output.exists():
         raise FileExistsError(f'Refusing to overwrite output directory: {output}')
-    rgb = np.asarray(Image.open(image_path).convert('RGB'))
-    stars, audit = detect_stars(rgb, detection_sigma, background_sigma)
+    scientific = load_scientific_image(
+        image_path, fits_hdu=fits_hdu, channel_order=channel_order,
+        saturation_level=saturation_level)
+    rgb = scientific.display_rgb
+    valid_mask = None if scientific.valid_mask.all() else scientific.valid_mask
+    stars, audit = detect_stars(
+        scientific.luminance, detection_sigma, background_sigma,
+        valid_mask=valid_mask, saturated_mask=scientific.saturated_mask,
+        saturation_known=scientific.provenance()['saturation_known'])
+    for star in stars:
+        x, y = round(star['x_px']), round(star['y_px'])
+        half = int(star['measurement_half_window_px'])
+        channels = [name for name, mask in scientific.plane_saturated_masks.items()
+                    if np.any(mask[y-half:y+half+1, x-half:x+half+1])]
+        star['saturated_channels'] = ','.join(channels)
     output.mkdir(parents=True)
+    provenance = scientific.provenance()
+    (output/'input_image.json').write_text(json.dumps(provenance, indent=2)+'\n')
     fields = ['detection_id', 'x_px', 'y_px', 'flux_above_background',
               'peak_above_background', 'peak_snr', 'area_px', 'major_sigma_px',
-              'axis_ratio', 'saturated', 'source_class', 'measurement_half_window_px']
+              'axis_ratio', 'saturated', 'saturation_known', 'saturated_channels',
+              'source_class', 'measurement_half_window_px']
     with (output/'star_candidates.csv').open('w') as handle:
         writer = csv.DictWriter(handle, fieldnames=fields)
         writer.writeheader()
@@ -173,6 +206,7 @@ def write_products(image_path, output, detection_sigma=6., background_sigma=10.)
         local_maxima=audit['local_maxima_count'], rejected=len(audit['rejected']),
         detection_sigma=detection_sigma, background_sigma_px=background_sigma,
         global_noise_adu=audit['global_noise'], source_resized=False,
+        input_image=provenance,
         footprint_status=audit['footprint']['status'],
         footprint_method=audit['footprint']['method'],
         sky_footprint=audit['footprint'],
@@ -186,7 +220,7 @@ def write_products(image_path, output, detection_sigma=6., background_sigma=10.)
                    'obstruction recognition is attempted, and text inside the field is unsupported. '
                    'Measured candidates are not verified stars or planets; foreground lights can survive. '
                    'Close blends, strongly distorted stars and faint stars may be omitted. '
-                   'Flux is a thresholded JPEG intensity diagnostic, not calibrated photometry.')
+                   'Flux is a thresholded input-ADU diagnostic, not calibrated photometry.')
     (output/'detection.json').write_text(json.dumps(summary, indent=2)+'\n')
     fig, ax = plt.subplots(figsize=(12, 11))
     ax.imshow(rgb)

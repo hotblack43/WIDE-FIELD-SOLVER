@@ -8,6 +8,21 @@ repository root. This directory contains v0.6.0 and its local Python modules,
 Gaia catalogue, provenance, dependency lockfile, tests and scientific status.
 No development worktree is required.
 
+V6 accepts native-depth grayscale/RGB PNG and TIFF plus 2-D, RGB and
+`R/G1/G2/B` FITS images. Three- and four-plane FITS stacks may be plane-first or
+plane-last; named `R/G1/G2/B` and long-form colour extensions are also accepted.
+For ambiguous FITS files use, for example:
+
+```sh
+./go6.sh /path/to/image.fits --fits-hdu SCI --channel-order RG1G2B \
+  --saturation-level R=4095,G1=4095,G2=4095,B=4095
+```
+
+The last three options are needed only when the file does not describe itself
+unambiguously. Scientific samples retain native depth. The 8-bit rendering in
+plots is a display-only stretch; `analysis/dots/input_image.json` records the
+exact loading, channel and saturation policy.
+
 The root `go.sh` remains the preserved Tycho-2/Hipparcos workflow. `go4.sh` and
 `go_v0.4.3.sh` keep the preserved Gaia v0.4.3 package under `v4/`. Each runtime
 has separate modules and a lockfile. For the implemented science and remaining

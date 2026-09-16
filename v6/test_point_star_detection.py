@@ -6,6 +6,7 @@ import tempfile
 from pathlib import Path
 
 import numpy as np
+from astropy.io import fits
 from PIL import Image
 
 from point_star_detection import detect_stars, write_products
@@ -99,6 +100,48 @@ class PointStarDetectionTests(unittest.TestCase):
                              sum(r['reason'] == 'outside_sky_footprint' for r in rejected))
             self.assertEqual(disk_summary['footprint_status'], 'framed_footprint')
             self.assertIsNotNone(disk_summary['sky_footprint']['threshold_adu'])
+
+    def test_native_gain_changes_flux_not_centroid_or_candidate_count(self):
+        scene = self.framed_sources()
+        base, _ = detect_stars(scene, saturated_mask=scene >= 250)
+        for gain in (16, 64, 257):  # representative 12-, 14- and 16-bit encodings
+            with self.subTest(gain=gain):
+                gained, _ = detect_stars(scene*gain, saturated_mask=scene >= 250)
+                self.assertEqual(len(gained), len(base))
+                np.testing.assert_allclose(
+                    [[row['x_px'], row['y_px']] for row in gained],
+                    [[row['x_px'], row['y_px']] for row in base], atol=.02)
+                np.testing.assert_allclose(
+                    [row['flux_above_background'] for row in gained],
+                    np.array([row['flux_above_background'] for row in base])*gain, rtol=2e-5)
+
+    def test_write_products_accepts_four_plane_fits_and_records_native_provenance(self):
+        mono = self.framed_sources().astype(np.uint16)*16
+        planes = np.stack([mono, mono*2, mono*4, mono*3])
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            source = root/'stack.fits'
+            fits.PrimaryHDU(planes).writeto(source)
+            summary = write_products(source, root/'dots', saturation_level=4095)
+            provenance = json.loads((root/'dots/input_image.json').read_text())
+        self.assertGreater(summary['candidates'], 0)
+        self.assertEqual(provenance['plane_names'], ['R', 'G1', 'G2', 'B'])
+        self.assertEqual(provenance['channel_derivation']['G'], '(G1 + G2) / 2')
+        self.assertTrue(provenance['native_depth_preserved'])
+
+    def test_nonfinite_fits_pixels_are_masked_without_poisoning_detection(self):
+        pixels = self.framed_sources().astype(np.float32)
+        pixels[:4, :7] = np.nan
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            source = root/'invalid.fits'
+            fits.PrimaryHDU(pixels).writeto(source)
+            summary = write_products(source, root/'dots')
+            with np.load(root/'dots/sky_footprint.npz') as saved:
+                mask = saved['valid_mask']
+        self.assertGreater(summary['candidates'], 0)
+        self.assertEqual(summary['input_image']['invalid_pixel_count'], 28)
+        self.assertFalse(mask[:4, :7].any())
 
 
 if __name__ == '__main__':

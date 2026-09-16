@@ -17,13 +17,13 @@ import shutil
 import time
 
 import numpy as np
-from PIL import Image
 from scipy.optimize import least_squares
 from scipy.spatial import cKDTree
 
 from barghini_model import (
     BarghiniParameters, detector_to_horizontal, horizontal_to_detector, radial_du_dr)
 from point_star_detection import write_products
+from point_star_image import load_recorded_image, load_scientific_image
 from point_star_plotting import save_png
 from point_star_time_bounds import capture_time_ceiling, limit_epoch_range
 
@@ -203,7 +203,7 @@ def annotate_stars(image_path, records, output, count=40, *, names_cache=None, o
     import matplotlib
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
-    rgb = np.asarray(Image.open(image_path).convert('RGB'))
+    rgb = load_recorded_image(image_path, output).display_rgb
     from point_star_names import plot_label, resolve_names
     selected = [dict(r) for r in select_labels(records, count)]
     names = resolve_names([r['star_id'] for r in selected],
@@ -263,7 +263,8 @@ def run(image_path, output, catalog_path, *, label_count=40, names_cache=None, o
         overwrite=False, observation_time=None, latitude=None, longitude=None,
         elevation_m=0., pressure_hpa=None, temperature_c=10., relative_humidity=.5,
         extinction_mag_per_airmass=None, epoch_mode='fit', epoch_year=None,
-        epoch_limits=(1850., 2036.)):
+        epoch_limits=(1850., 2036.), fits_hdu=None, channel_order=None,
+        saturation_level=None):
     if epoch_mode not in ('fit', 'fixed', 'catalog'):
         raise ValueError('Unknown epoch mode')
     if (epoch_mode == 'fixed') != (epoch_year is not None):
@@ -284,8 +285,15 @@ def run(image_path, output, catalog_path, *, label_count=40, names_cache=None, o
                    Path(names_cache).expanduser().resolve() if names_cache else None):
         if source is not None and (source == destination or destination in source.parents):
             raise ValueError(f'Output would remove an input file: {source}')
+    # Validate the scientific layout before creating or replacing any result directory.
+    if image_path.is_file():
+        load_scientific_image(image_path, fits_hdu=fits_hdu, channel_order=channel_order,
+                              saturation_level=saturation_level)
     output = prepare_output(output, overwrite=overwrite)
-    detection = write_products(image_path, output/'dots')
+    image_options = {key:value for key,value in {
+        'fits_hdu':fits_hdu, 'channel_order':channel_order,
+        'saturation_level':saturation_level}.items() if value is not None}
+    detection = write_products(image_path, output/'dots', **image_options)
     with (output/'dots/star_candidates.csv').open() as handle:
         rows = list(csv.DictReader(handle))
     xy = np.array([[float(r['x_px']), float(r['y_px'])] for r in rows])
@@ -357,6 +365,7 @@ def run(image_path, output, catalog_path, *, label_count=40, names_cache=None, o
     accepted = final_fit['success'] and camera.is_monotonic()
     result = dict(status='point_star_fit_converged' if accepted else 'point_star_fit_not_converged',
         source=str(image_path), source_sha256=detection['source_sha256'],
+        input_image=detection.get('input_image'),
         model='Barghini_2019_O_Z_FET', metadata_used=False, trails_used=False,
         catalogue_sha256=hashlib.sha256(Path(catalog_path).read_bytes()).hexdigest(),
         camera=camera.serialise(), stages=stages, final_fit=final_fit,
@@ -429,6 +438,7 @@ def run(image_path, output, catalog_path, *, label_count=40, names_cache=None, o
     result['broad_or_saturated_without_star_match'] = sum(not r['catalogue_star_id'] for r in blobs)
     result['code_sha256'] = {name:hashlib.sha256((Path(__file__).parent/name).read_bytes()).hexdigest()
         for name in ['point_star_detection.py', 'point_star_footprint.py',
+                     'point_star_image.py',
                      'point_star_barghini.py', 'barghini_model.py',
                      'point_star_names.py', 'point_star_diagnostics.py', 'point_star_report.py',
                      'point_star_epoch.py', 'point_star_zenith.py', 'point_star_science.py',

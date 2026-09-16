@@ -22,3 +22,26 @@ also produce RGB files. Do not derive the bound from hidden exposure metadata.
 Historical references:
 - [National Science and Media Museum: Autochrome history](https://blog.scienceandmediamuseum.org.uk/autochromes-the-dawn-of-colour-photography/)
 - [Kodak: Exploring the Color Image](https://www.kodak.com/content/products-brochures/Film/Exploring-the-Color-Image.pdf)
+
+## Native dynamic range, FITS input and a results index
+
+Recorded 2026-09-16. The native-depth/FITS portion was implemented in v6 on
+2026-09-16. The results index remains deferred.
+
+V6 now uses one native loader for detection, photometry, planet evidence,
+diagnostics and FITS export. It supports high-bit PNG/TIFF and 2-D, RGB and
+`R/G1/G2/B` FITS stacks, masks invalid samples, records scaling/channel/
+saturation provenance and keeps 8-bit stretches display-only. Tests cover
+samples above 255, representative 12/14/16-bit gains, stacked-plane semantics,
+centroid invariance, flux scaling and native-plane FITS round trips. RAW/Bayer
+demosaicing remains outside the solver; users should convert those files into
+rendered planes first.
+
+Keep immutable per-run JSON/CSV/FITS products as the canonical evidence. For
+cross-run work, add a rebuildable local SQLite index rather than making a
+database the sole record. Index image hashes and pixel provenance, run/code and
+catalogue versions, detections, catalogue associations, aperture fluxes,
+instrumental magnitudes, planet candidates and separately labelled metadata.
+Cached identities or earlier solutions must never seed a blind solve, and
+metadata revealed after fitting must remain distinguishable from values actually
+used by a fit.

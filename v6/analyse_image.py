@@ -26,7 +26,7 @@ def fits_export_messages(output, exported):
 def parser():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--version', action='version', version=f'%(prog)s {SOLVER_VERSION}')
-    p.add_argument('image', type=Path, help='JPEG, PNG or TIFF all-sky image')
+    p.add_argument('image', type=Path, help='JPEG, PNG, TIFF or FITS all-sky image')
     p.add_argument('--output', type=Path, required=True, help='New output directory (protected by default)')
     p.add_argument('--overwrite', action='store_true', help='Explicitly replace an existing output directory')
     p.add_argument('--epoch-mode', choices=('fit', 'fixed', 'catalog'), default='fit')
@@ -36,6 +36,11 @@ def parser():
     p.add_argument('--labels', type=int, default=40)
     p.add_argument('--names-cache', type=Path)
     p.add_argument('--offline', action='store_true', help='Disable display-name network queries')
+    p.add_argument('--fits-hdu', help='FITS image HDU name or zero-based index when selection is ambiguous')
+    p.add_argument('--channel-order', choices=('RGB', 'RGGB', 'RG1G2B'),
+                   help='Explicit order for an unlabelled three/four-plane stack')
+    p.add_argument('--saturation-level',
+                   help='One threshold for all planes or channel mapping such as R=4095,G1=4095,G2=4095,B=4095')
     p.add_argument('--compare-metadata', action='store_true',
                    help='Reveal metadata only after all blind fits, for a separate comparison')
     p.add_argument('--observation-time', help='UTC metadata for optional post-fit comparison; never used to fit the blind epoch')
@@ -57,7 +62,9 @@ def main():
                  observation_time=args.observation_time, latitude=args.latitude,
                  longitude=args.longitude, elevation_m=args.elevation_m,
                  overwrite=args.overwrite, epoch_mode=args.epoch_mode,
-                 epoch_year=args.epoch_year, epoch_limits=args.epoch_limits)
+                 epoch_year=args.epoch_year, epoch_limits=args.epoch_limits,
+                 fits_hdu=args.fits_hdu, channel_order=args.channel_order,
+                 saturation_level=args.saturation_level)
     science = analyse_existing(args.image.resolve(), args.output, result, args.catalog)
     result['fits_export'] = write_fits(args.image.resolve(), args.output, result, science)
     if args.compare_metadata:

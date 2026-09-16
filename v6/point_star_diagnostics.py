@@ -9,7 +9,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import numpy as np
-from PIL import Image
+from point_star_image import load_recorded_image
 
 from point_star_plotting import save_png
 
@@ -75,7 +75,7 @@ def create_overlay(rgb, measured, predicted, *, unmatched=None):
 
 def write_diagnostics(image_path, measured, predicted, output, *, unmatched=None):
     output = Path(output)
-    rgb = np.asarray(Image.open(image_path).convert('RGB'))
+    rgb = load_recorded_image(image_path, output).display_rgb
     measured, predicted = np.asarray(measured), np.asarray(predicted)
     report = radial_statistics(measured, predicted, rgb.shape[:2])
     report['unmatched_detections_shown'] = len(unmatched) if unmatched is not None else 0

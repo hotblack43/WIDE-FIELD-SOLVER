@@ -6,11 +6,14 @@ repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 expected_version='0.6.0'
 
 usage() {
-    echo "Usage: $0 /full/path/to/image.jpg"
+    echo "Usage: $0 /full/path/to/image.{jpg,png,tiff,fits} [native-input options]"
+    echo "  --fits-hdu NAME_OR_INDEX"
+    echo "  --channel-order RGB|RGGB|RG1G2B"
+    echo "  --saturation-level VALUE_OR_CHANNEL_MAP"
     echo "Runs solver $expected_version with Gaia; outputs go under $repo/results/runs/."
 }
 
-if [[ $# -ne 1 ]]; then
+if [[ $# -lt 1 ]]; then
     usage >&2
     exit 2
 fi
@@ -18,11 +21,31 @@ case "$1" in
     -h|--help) usage; exit 0 ;;
     --version) echo "Wide-field go $expected_version (requires solver $expected_version)"; exit 0 ;;
 esac
-if [[ ! -f "$1" ]]; then
-    echo "Image file does not exist: $1" >&2
+input="$1"
+shift
+solver_args=()
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --fits-hdu|--channel-order|--saturation-level)
+            if [[ $# -lt 2 ]]; then
+                echo "Missing value for $1" >&2
+                exit 2
+            fi
+            solver_args+=("$1" "$2")
+            shift 2
+            ;;
+        *)
+            echo "Unsupported go6 option: $1" >&2
+            usage >&2
+            exit 2
+            ;;
+    esac
+done
+if [[ ! -f "$input" ]]; then
+    echo "Image file does not exist: $input" >&2
     exit 2
 fi
-image="$(realpath -- "$1")"
+image="$(realpath -- "$input")"
 
 # Resolve every runtime dependency inside the committed v6 directory.
 solver="$repo/v6"
@@ -53,6 +76,7 @@ echo "Log: $run_dir/run.log"
 
 if ! OPENBLAS_NUM_THREADS=1 "$solver/analyse.sh" "$image" \
         --catalog "$catalogue" --epoch-mode fit --output "$output" \
+        "${solver_args[@]}" \
         2>&1 | tee "$run_dir/run.log"; then
     echo "Analysis failed. Its output and log are preserved at $run_dir" >&2
     exit 1

@@ -10,11 +10,11 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import numpy as np
-from PIL import Image
 from scipy.optimize import minimize_scalar
 from scipy.spatial import cKDTree
 
 from point_star_barghini import vectors
+from point_star_image import load_recorded_image
 from point_star_plotting import save_png
 from point_star_refraction import fit_atmospheric_refraction
 from point_star_report import _camera_from_result, observation_metadata
@@ -59,11 +59,15 @@ def fit_refraction(solution, result, catalogue_path, stellar_epoch):
 
 
 
-def classify_image_colour(image_path):
+def classify_image_colour(image_path, solution=None):
     """Classify independent RGB information separately from the file's stored mode."""
-    with Image.open(image_path) as image:
-        stored_mode = image.mode
-        rgb = np.asarray(image.convert('RGB'), dtype=float)
+    image = load_recorded_image(image_path, solution or Path(image_path).parent)
+    stored_mode = '/'.join(image.provenance()['plane_names'])
+    if image.rgb is None:
+        mono = image.luminance
+        rgb = np.repeat(mono[..., None], 3, axis=2)
+    else:
+        rgb = image.rgb
     step = max(1, int(math.sqrt(rgb.shape[0]*rgb.shape[1]/500_000.)))
     sample = rgb[::step, ::step]
     differences = {
@@ -75,7 +79,7 @@ def classify_image_colour(image_path):
         (sample[..., 0] == sample[..., 1]) & (sample[..., 1] == sample[..., 2])))
     luminance = sample.mean(axis=2)
     chroma_rms = max(differences.values())
-    independent = (stored_mode not in {'1', 'L', 'I', 'F'}
+    independent = (image.rgb is not None
                    and equal_fraction < .995
                    and chroma_rms >= max(.75, .03*float(np.std(luminance))))
     return dict(stored_mode=stored_mode,
@@ -161,15 +165,28 @@ def _full_horizon_geometric_zenith(solution, camera):
 def measure_photometry(image_path, solution, result, refraction):
     """Measure RGB aperture fluxes and fit catalogue-relative extinction."""
     solution = Path(solution)
-    colour = classify_image_colour(image_path)
-    rgb = np.asarray(Image.open(image_path).convert('RGB'), dtype=float)
+    scientific = load_recorded_image(image_path, solution)
+    colour = classify_image_colour(image_path, solution)
+    if scientific.rgb is None:
+        channels_data = {name: scientific.luminance for name in 'RGB'}
+    else:
+        channels_data = {name: scientific.rgb[..., index]
+                         for index, name in enumerate('RGB')}
+    for name in ('G1', 'G2'):
+        if name in scientific.planes:
+            channels_data[name] = scientific.planes[name].astype(float)
+    rgb = np.stack([channels_data[name] for name in 'RGB'], axis=-1)
     coordinates = {row['detection_id']: row for row in _read(solution/'star_coordinates.csv')}
     detections = {row['detection_id']: row for row in _read(solution/'dots/star_candidates.csv')}
     fields = ['detection_id', 'star_id', 'catalogue_magnitude', 'saturated',
+              'saturation_known', 'saturated_channels',
               'source_class', 'R_flux', 'G_flux', 'B_flux', 'R_mag', 'G_mag', 'B_mag',
               'altitude_deg', 'airmass',
               'R_minus_catalogue_mag', 'G_minus_catalogue_mag', 'B_minus_catalogue_mag',
               'R_used_for_extinction', 'G_used_for_extinction', 'B_used_for_extinction']
+    native_extra = [name for name in ('G1', 'G2') if name in channels_data]
+    for name in native_extra:
+        fields.extend([f'{name}_flux', f'{name}_mag', f'{name}_saturated'])
     records = []
     camera = _camera_from_result(result)
     for identity, coordinate in coordinates.items():
@@ -183,9 +200,16 @@ def measure_photometry(image_path, solution, result, refraction):
         local_y, local_x = np.indices((y1-y0, x1-x0))
         radius = np.hypot(local_x+x0-x, local_y+y0-y)
         cut = rgb[y0:y1, x0:x1]
+        valid = scientific.valid_mask[y0:y1, x0:x1]
         aperture = radius <= aperture_radius
         annulus = (radius >= inner) & (radius <= outer)
-        fluxes = cut[aperture].sum(axis=0)-np.median(cut[annulus], axis=0)*aperture.sum()
+        use_aperture = aperture & valid
+        use_annulus = annulus & valid
+        if use_aperture.any() and use_annulus.sum() >= 3:
+            fluxes = (cut[use_aperture].sum(axis=0)
+                      - np.median(cut[use_annulus], axis=0)*use_aperture.sum())
+        else:
+            fluxes = np.full(3, np.nan)
         mags = np.full(3, np.nan)
         positive = (fluxes > 0) & np.isfinite(fluxes)
         if str(detection['saturated']).lower() == 'true':
@@ -197,12 +221,29 @@ def measure_photometry(image_path, solution, result, refraction):
         record = dict(detection_id=identity, star_id=coordinate['star_id'],
                       catalogue_magnitude=catalogue_magnitude,
                       saturated=detection['saturated'], source_class=detection['source_class'],
+                      saturation_known=detection.get('saturation_known', True),
+                      saturated_channels=detection.get('saturated_channels', ''),
                       altitude_deg=altitude, airmass=airmass)
         for channel, flux, magnitude in zip('RGB', fluxes, mags):
             record[f'{channel}_flux'] = float(flux)
             record[f'{channel}_mag'] = float(magnitude)
             record[f'{channel}_minus_catalogue_mag'] = float(magnitude-catalogue_magnitude)
             record[f'{channel}_used_for_extinction'] = False
+        for channel in native_extra:
+            native_cut = channels_data[channel][y0:y1, x0:x1]
+            if use_aperture.any() and use_annulus.sum() >= 3:
+                flux = (native_cut[use_aperture].sum()
+                        - np.median(native_cut[use_annulus])*use_aperture.sum())
+            else:
+                flux = float('nan')
+            channel_mask = scientific.plane_saturated_masks[channel][y0:y1, x0:x1]
+            saturated = bool(np.any(channel_mask[aperture]))
+            magnitude = (-2.5*np.log10(flux)
+                         if flux > 0 and np.isfinite(flux)
+                         and str(detection['saturated']).lower() != 'true' else float('nan'))
+            record[f'{channel}_flux'] = float(flux)
+            record[f'{channel}_mag'] = float(magnitude)
+            record[f'{channel}_saturated'] = saturated
         records.append(record)
 
     from point_star_zenith import fit_photometric_zenith, write_zenith_products
@@ -338,6 +379,8 @@ def measure_photometry(image_path, solution, result, refraction):
                    usable_photometric_stars=len(usable),
                    usable_unsaturated_compact_stars=sum(r['source_class'] == 'compact' for r in usable),
                    saturated_stars_excluded=sum(str(r['saturated']).lower() == 'true' for r in records),
+                   saturation_known=bool(scientific.provenance()['saturation_known']),
+                   saturation_policy=scientific.provenance()['saturation'],
                    calibrated=False,
                    image_colour=colour, channels_fitted=channels,
                    extinction=representative,
@@ -350,7 +393,9 @@ def measure_photometry(image_path, solution, result, refraction):
                                    else 'blind_photometric_zenith'),
                    photometric_zenith=zenith,
                    limitation=('Each channel is compared with the same catalogue magnitude. '
-                     'Passband mismatch, JPEG response, colour terms and vignetting add scatter.'))
+                     'Passband mismatch, image response, colour terms and vignetting add scatter.'
+                     + ('' if scientific.provenance()['saturation_known'] else
+                        ' Saturation is unknown for this input, so clipping could not be excluded.')))
     (solution/'photometry_summary.json').write_text(json.dumps(summary, indent=2)+'\n')
     return summary
 
@@ -487,7 +532,7 @@ def fit_planet_epoch(image_path, solution, result, stellar_epoch, search_days=36
     (solution/'planet_epoch.json').write_text(json.dumps(output, indent=2)+'\n')
     with (solution/'planet_matches.csv').open('w', newline='') as handle:
         writer=csv.DictWriter(handle, fieldnames=list(matches[0])); writer.writeheader(); writer.writerows(matches)
-    rgb=np.asarray(Image.open(image_path).convert('RGB')); fig,ax=plt.subplots(figsize=(11,10));ax.imshow(rgb)
+    rgb=load_recorded_image(image_path, solution).display_rgb; fig,ax=plt.subplots(figsize=(11,10));ax.imshow(rgb)
     for match in matches:
         ax.plot(match['measured_x_px'],match['measured_y_px'],'o',ms=14,mfc='none',mec='cyan',mew=1.5)
         ax.annotate(f"{match['planet']} #{match['detection_id']}",(match['measured_x_px'],match['measured_y_px']),

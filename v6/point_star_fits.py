@@ -17,10 +17,10 @@ import numpy as np
 from numpy.polynomial import Chebyshev, Polynomial
 from astropy.io import fits
 from astropy.wcs import WCS
-from PIL import Image
 
 from barghini_model import radial_u, radial_du_dr
 from point_star_barghini import BarghiniCamera, vectors
+from point_star_image import load_recorded_image
 from point_star_names import plot_label
 
 LIMIT_PX = .05
@@ -285,34 +285,38 @@ def write_fits(image_path, output, result, science):
             raise ValueError('Original image checksum differs from the saved astrometric input')
         c=result['camera']
         camera=BarghiniCamera(tuple(c['shape']),np.array(c['reference_rotation']),np.array(c['normalised_parameters']))
-        with Image.open(image_path) as image:
-            if image.mode in ('P','RGBA','LA'):
-                raise ValueError('Palette/alpha images require an explicit lossless export policy')
-            pixels=np.asarray(image).copy()
+        scientific=load_recorded_image(image_path,output)
+        planes={name:np.asarray(values).copy() for name,values in scientific.planes.items()}
+        if scientific.shape!=camera.shape:
+            raise ValueError('Original image dimensions do not match the saved camera')
+        for name,pixels in list(planes.items()):
             if pixels.dtype == np.bool_:
-                pixels = pixels.astype(np.uint8)  # FITS has no Boolean image BITPIX; preserve 0/1 samples.
-        if pixels.shape[:2]!=camera.shape or pixels.ndim not in (2,3) or (pixels.ndim==3 and pixels.shape[2]!=3):
-            raise ValueError('Original image dimensions or channels do not match the saved camera')
+                planes[name] = pixels.astype(np.uint8)
         header,validation=validated_header(camera)
         rows=collect_overlays(output,camera,science)
         region,text,layout=overlay_products(rows,camera.shape)
-        rgb=pixels.ndim==3
-        compatible=fits.PrimaryHDU(plain_pixels(pixels),header)
-        compatible.header['WFSORIG']='RGB' if rgb else 'MONO'
-        compatible.header['WFSMODE']='LUMINANCE' if rgb else 'ORIGINAL'
+        rgb=len(planes)>1
+        plain=np.asarray(scientific.luminance,dtype=np.float64) if rgb else next(iter(planes.values()))
+        plain_mode='derived_luminance' if rgb else 'original_mono'
+        compatible=fits.PrimaryHDU(plain,header)
+        compatible.header['WFSORIG']=''.join(planes) if rgb else 'MONO'
+        compatible.header['WFSMODE']='DERIVED_LUMINANCE' if rgb else 'ORIGINAL'
         compatible.header['COMMENT']='2-D primary image for solve-field; overlays are in solution_annotated.fits'
-        primary=fits.PrimaryHDU() if rgb else fits.PrimaryHDU(pixels,header)
+        primary=fits.PrimaryHDU() if rgb else fits.PrimaryHDU(plain,header)
         primary.header['WFSRGB']=rgb
         primary.header['WFSREG']='DS9TEXT'
         primary.header['COMMENT']='For full labels/styles: v5/view_fits.sh solution_annotated.fits'
         annotated_hdus=[primary]
         if rgb:
-            annotated_hdus.extend(fits.ImageHDU(pixels[:,:,i],header,name=n) for i,n in enumerate(('RED','GREEN','BLUE')))
+            extension_names={'R':'RED','G':'GREEN','G1':'GREEN1','G2':'GREEN2','B':'BLUE'}
+            annotated_hdus.extend(fits.ImageHDU(values,header,name=extension_names[name])
+                                  for name,values in planes.items())
         info=dict(camera=c,source_sha256=source_hash,
                   exporter_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
                   wcs_validation=validation,overlays=rows,label_layout=layout,
-                  plain_file=target.name,plain_pixel_mode='luminance' if rgb else 'original_mono',
+                  plain_file=target.name,plain_pixel_mode=plain_mode,
                   annotated_file=annotated_target.name,
+                  input_image=scientific.provenance(),
                   planet_status=(science.get('planets') or {}).get('status'),
                   planet_epoch_tdb=(science.get('planets') or {}).get('best_candidate_epoch_tdb'),
                   pixel_convention='Stored arrays retain input row order; overlay records zero-based; REGION/DS9TEXT one-based',
@@ -334,7 +338,7 @@ def write_fits(image_path, output, result, science):
             temporary.unlink(missing_ok=True)
             annotated_temporary.unlink(missing_ok=True)
         record=dict(status='exported',file=target.name,annotated_file=annotated_target.name,
-                    rgb=rgb,plain_pixel_mode='luminance' if rgb else 'original_mono',
+                    rgb=rgb,plain_pixel_mode=plain_mode,
                     overlays=len(rows),**validation)
         if previous: record['previous_file'] = previous
         if previous_annotated: record['previous_annotated_file'] = previous_annotated

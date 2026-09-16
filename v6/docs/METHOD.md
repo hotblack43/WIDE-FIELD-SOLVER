@@ -10,8 +10,27 @@ are preserved.
 
 ## Pixel measurements and initial identification
 
-`point_star_detection.py` converts RGB to luminance, subtracts a Gaussian local
-background and finds significant local maxima. Thresholded intensity moments
+`point_star_image.py` is the authoritative v6 decoder. It preserves native
+samples for integer PNG/TIFF through 16 bits and for FITS physical values after
+standard `BITPIX`, `BSCALE` and `BZERO` handling. FITS may be 2-D monochrome,
+three-plane RGB, or four-plane `R,G1,G2,B`, stored plane-first, plane-last or in
+named extensions. Both native green planes are retained; the existing RGB path
+uses the floating derived plane `G=(G1+G2)/2`. NaN and infinite pixels form an
+invalid-pixel mask rather than becoming black sky. Camera RAW/Bayer mosaics are
+not decoded here.
+
+The loader saves `dots/input_image.json` with the source checksum, decoder,
+native dtype/shape, effective-bit-depth evidence, FITS HDU/scaling, channel
+mapping, invalid-pixel count, black-level status and per-channel saturation
+authority. An explicit `--saturation-level` has priority, then FITS `SATURATE`,
+an observed standard clipping ceiling, and finally an explicitly labelled
+datatype-ceiling assumption. Floating input without a trustworthy level records
+unknown saturation. Existing 8-bit rendered images retain the historical
+`>=250` v6 rule. Every later science stage reloads with this recorded policy and
+verifies the checksum.
+
+`point_star_detection.py` derives floating luminance directly from those native
+samples, subtracts a Gaussian local background and finds significant local maxima. Thresholded intensity moments
 measure centroids and shapes. Growing windows retain broad and saturated
 objects; duplicate peaks on saturation plateaux are suppressed. Finite windows,
 blends, edges and shape cuts limit completeness.
@@ -29,9 +48,13 @@ The Boolean footprint is saved in `dots/sky_footprint.npz` and displayed in
 `dots/sky_footprint.png`. Frame detections are retained in the rejection audit as
 `outside_sky_footprint`; they do not reach bootstrap or fitting. No NaN pixels,
 OCR, metadata, catalogue coordinates or fitted zenith enter this step. Text or
-graphics inside the accepted field are unsupported. The original decoded image
-is unchanged in reports and FITS export. Planet non-detection evidence reuses the
-mask, treating its exterior as unobserved rather than empty sky.
+graphics inside the accepted field are unsupported. Scientific arrays never
+pass through a display conversion. Reports use a separate deterministic 8-bit
+percentile stretch and label it as display-only. Annotated FITS exports retain
+every native source plane; the astrometry.net primary is a labelled
+two-dimensional derived luminance image for colour input. Planet non-detection
+evidence reuses the mask, treating its exterior as unobserved rather than empty
+sky.
 
 In v6, a stricter second use of that saved mask recognises only a closed, broad,
 circular footprint centred on the detector. It requires a low-residual boundary

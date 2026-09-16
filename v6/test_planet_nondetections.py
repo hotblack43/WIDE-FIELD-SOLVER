@@ -96,6 +96,31 @@ class NonDetectionTests(unittest.TestCase):
             row = self.checker(valid_mask=loaded).assess('jupiter', [160,120], -2.)
         self.assertEqual(row['status'], 'inconclusive_mask_or_edge')
 
+    def test_candidate_absence_reads_signal_above_255_in_native_fits(self):
+        import tempfile
+        from pathlib import Path
+        from astropy.io import fits
+        from point_star_barghini import BarghiniCamera
+        from point_star_planet_nondetections import check_candidate_absences
+        camera = BarghiniCamera.initial(self.pixels.shape, 180., np.eye(3))
+        answer = RankingTests().answer()
+        answer['visibility'].update(zenith_unit_vector=[0., 0., 1.])
+        answer['searched_planets'] = ['jupiter']
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder)/'native.fits'
+            native = self.pixels*16
+            yy, xx = np.indices(native.shape)
+            native += 70*16*np.exp(-((xx-163)**2+(yy-120)**2)/(2*.9**2))
+            planes = np.stack([native, native, native]).astype(np.uint16)
+            fits.PrimaryHDU(planes).writeto(path)
+            after = check_candidate_absences(
+                path, answer, camera, self.detections, self.stars,
+                lambda name, dates: camera.to_sky(np.tile([160., 120.], (len(dates), 1))),
+                magnitude_function=lambda name, dates: np.full(len(dates), -2.))
+        statuses = [candidate['non_detection_evidence'][0]['status']
+                    for candidate in after['candidates']]
+        self.assertEqual(statuses, ['pixel_signal_present', 'pixel_signal_present'])
+
     def test_each_candidate_uses_its_own_epoch_and_regenerates_visible_predictions(self):
         import tempfile, json, copy
         from pathlib import Path

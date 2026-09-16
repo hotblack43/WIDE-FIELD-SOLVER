@@ -10,8 +10,8 @@ import json
 from pathlib import Path
 import numpy as np
 from scipy.spatial import cKDTree
-from PIL import Image
 from point_star_planet_brightness import BRIGHT_PLANETS, SOURCE, planet_brightness
+from point_star_image import load_recorded_image
 
 
 def _true(value):
@@ -198,16 +198,18 @@ def apply_evidence(answer,evidence_rows):
     return out
 
 
-def check_candidate_absences(image_path,answer,camera,detections,stars,vector_function,*,magnitude_function=planet_brightness,valid_mask=None):
+def check_candidate_absences(image_path,answer,camera,detections,stars,vector_function,*,magnitude_function=planet_brightness,valid_mask=None,solution=None):
     """Evaluate all saved positional trials at their own epoch before final selection."""
     from point_star_planets import _visible_projection
     candidates=answer.get('candidates') or []
     if not candidates:
         return apply_evidence(answer,[])
-    with Image.open(image_path) as image:
-        pixels=np.asarray(image.convert('RGB'),dtype=float)
-    if tuple(pixels.shape[:2])!=tuple(camera.shape):
+    image=load_recorded_image(image_path,solution or Path(image_path).parent)
+    pixels=image.luminance
+    if tuple(pixels.shape)!=tuple(camera.shape):
         raise ValueError('Image shape differs from the fixed camera')
+    native_mask=image.valid_mask
+    valid_mask=native_mask if valid_mask is None else np.asarray(valid_mask,bool)&native_mask
     local=LocalDetectability(pixels,detections,stars,gate_px=answer.get('gate_px',3.),valid_mask=valid_mask)
     dates=np.array([c['jd_tdb'] for c in candidates])
     zenith=np.asarray(answer['visibility']['zenith_unit_vector'],float)

@@ -1,6 +1,6 @@
 # FITS image, ZPN coordinates and selectable DS9 overlays
 
-`go5.sh` writes two FITS products after the scientific fits are fixed:
+`go6.sh` writes two FITS products after the scientific fits are fixed:
 
 - `solution.fits` is a conventional two-dimensional primary image with the
   validated ZPN WCS. It is intended for Astrometry.net `solve-field` and other
@@ -9,17 +9,17 @@
   and embeds the selectable annotations and solver evidence for the supplied
   viewer.
 
-No stars are refitted and image geometry is not resampled. RGB pixels are
-converted to luminance only in the compatible `solution.fits`; the annotated
-file retains all three original channels. Legacy `go.sh` and its dependencies
-are unchanged.
+No stars are refitted and image geometry is not resampled. Colour pixels are
+converted to floating Rec. 709 luminance only in the compatible
+`solution.fits`; the annotated file retains every original `R/G/B` or
+`R/G1/G2/B` plane. Legacy, v4 and v5 runtimes are unchanged.
 
 ## Open the image with full overlays
 
 From the repository:
 
 ```sh
-./v5/view_fits.sh /path/to/analysis/solution_annotated.fits
+./v6/view_fits.sh /path/to/analysis/solution_annotated.fits
 ```
 
 In DS9, use **Region → Show** to switch the overlays off/on and **Region → Show
@@ -43,7 +43,8 @@ autoload path. Use the helper for full, consistent mono/RGB overlays.
 ## File contents
 
 `solution.fits` has exactly one two-dimensional primary HDU. Monochrome input
-pixels are retained; RGB input uses rounded Rec. 709 luminance. The primary
+pixels are retained; colour input uses floating Rec. 709 luminance without
+rounding back into an integer container. The primary
 header contains the ZPN WCS and records whether the pixels are original mono or
 derived luminance. There are no annotation extensions in this compatibility
 product.
@@ -51,12 +52,14 @@ product.
 `solution_annotated.fits` contains:
 
 - Monochrome input in the primary HDU, or an empty primary followed by `RED`,
-  `GREEN`, `BLUE` image extensions for RGB input. Each image has the same WCS;
-  pixel values and original row order are preserved.
+  `GREEN`, `BLUE` image extensions for RGB input and `RED`, `GREEN1`, `GREEN2`,
+  `BLUE` for four-plane input. Each image has the same WCS; pixel values and
+  original row order are preserved.
 - `REGION`: basic shapes in a FITS binary table, with one-based pixel positions.
 - `DS9TEXT`: UTF-8 bytes of styled DS9 regions, including labels and leader lines.
-- `WFSINFO`: UTF-8 JSON containing the fixed camera, overlay positions,
-  candidate status/epoch, label layout, product names and WCS validation evidence.
+- `WFSINFO`: UTF-8 JSON containing the fixed camera, native input provenance,
+  overlay positions, candidate status/epoch, label layout, product names and
+  WCS validation evidence.
 
 The old single-file RGB layout placed no image in the primary HDU. Astrometry.net
 0.93 consequently stopped at `NAXIS = 0` unless explicitly told to read the

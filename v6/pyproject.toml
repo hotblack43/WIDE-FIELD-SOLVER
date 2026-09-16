@@ -9,8 +9,10 @@ dependencies = [
     "matplotlib==3.11.1",
     "numpy==2.4.4",
     "pillow==12.2.0",
+    "pypng==0.20220715.0",
     "scipy==1.17.1",
     "tetra3",
+    "tifffile==2026.3.3",
 ]
 
 [tool.uv]

@@ -17,6 +17,7 @@ import numpy as np
 
 from point_star_plotting import save_png
 from point_star_names import plot_label
+from point_star_image import load_recorded_image
 
 
 OMR_FEEDS = {'murdoc', 'gtc1', 'gtc2', 'liverpool', 'magic', 'warwick'}
@@ -295,7 +296,7 @@ def table_rows(result, science):
     else:
         extinction_value = '--'
     image_kind = (photometry.get('image_colour') or {}).get('classification', '--')
-    return [
+    rows = [
         ('Catalogue', catalogue_label(result)),
         ('Astrometry', f"{fit['count']}/{result['detection_count']} associations/detections; "
                        f"RMS {_fmt(fit['rms_px'])} px"),
@@ -311,6 +312,15 @@ def table_rows(result, science):
         ('Extinction', extinction_value),
         ('Planet epoch', planet_value),
     ]
+    image = result.get('input_image') or {}
+    if image:
+        dtypes = image.get('decoded_dtype') or {}
+        dtype_text = ', '.join(f'{name}:{dtype}' for name, dtype in dtypes.items())
+        saturation = ('known' if image.get('saturation_known') else 'unknown')
+        rows.insert(1, ('Input pixels',
+                        f"native-depth {image.get('format', '--')}; {dtype_text}; "
+                        f"planes {','.join(image.get('plane_names') or [])}; saturation {saturation}"))
+    return rows
 
 
 def _show_image(ax, path, title):
@@ -390,7 +400,8 @@ def write_report_sky_overlay(output, result, science, maximum_labels=24):
         target.write_bytes(fallback.read_bytes())
         return target
     image_path = source
-    rgb = mpimg.imread(image_path)
+    loaded = load_recorded_image(image_path, output)
+    rgb = loaded.display_rgb
     labelled_path = output/'labelled_stars.json'
     labelled = json.loads(labelled_path.read_text()).get('stars', []) if labelled_path.is_file() else []
     labelled = labelled[:maximum_labels]
@@ -398,6 +409,10 @@ def write_report_sky_overlay(output, result, science, maximum_labels=24):
 
     fig, ax = plt.subplots(figsize=(8, 8))
     ax.imshow(rgb)
+    if loaded.provenance().get('display_method') != 'native_uint8_rgb':
+        ax.text(.99, .01, 'Display stretch only — native samples retained for science',
+                transform=ax.transAxes, ha='right', va='bottom', color='white', fontsize=6.5,
+                bbox=dict(boxstyle='round,pad=.2', fc='black', ec='none', alpha=.65))
     height, width = rgb.shape[:2]
     for index, row in enumerate(labelled):
         x, y = float(row['x_px']), float(row['y_px'])

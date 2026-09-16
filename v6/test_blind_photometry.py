@@ -7,13 +7,49 @@ import unittest
 from unittest.mock import patch
 
 import numpy as np
+from astropy.io import fits
 from PIL import Image
 
 from point_star_barghini import BarghiniCamera
 from point_star_science import measure_photometry, fit_planet_epoch
+from point_star_image import load_scientific_image
 
 
 class BlindPhotometryTests(unittest.TestCase):
+    def test_four_plane_fits_keeps_g1_g2_and_uses_their_mean_for_green(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root/'dots').mkdir()
+            planes = np.full((4, 400, 400), 10, dtype=np.uint16)
+            x = y = 200
+            planes[:, y-1:y+2, x-1:x+2] = np.array([100, 200, 400, 800])[:, None, None]
+            source = root/'stack.fits'
+            fits.PrimaryHDU(planes).writeto(source)
+            loaded = load_scientific_image(source, saturation_level=4095)
+            (root/'dots/input_image.json').write_text(json.dumps(loaded.provenance()))
+            camera = BarghiniCamera.initial((400, 400), 130, np.eye(3))
+            coordinate = dict(detection_id='1', star_id='1', x_px=x, y_px=y,
+                              magnitude=5., residual_px=.1)
+            detection = dict(detection_id='1', saturated='False', saturation_known='True',
+                             saturated_channels='', source_class='compact', major_sigma_px=1.)
+            for path, rows in ((root/'star_coordinates.csv', [coordinate]),
+                               (root/'dots/star_candidates.csv', [detection])):
+                with path.open('w') as handle:
+                    writer = csv.DictWriter(handle, fieldnames=list(rows[0]))
+                    writer.writeheader(); writer.writerows(rows)
+            unresolved = dict(status='not_identifiable', zenith_unit_vector=None,
+                              reason='Too few sources', fitted_count=1)
+            with patch('point_star_zenith.fit_photometric_zenith', return_value=unresolved):
+                measure_photometry(source, root, {'camera': camera.serialise()}, {})
+            with (root/'stellar_photometry.csv').open() as handle:
+                row = next(csv.DictReader(handle))
+        self.assertAlmostEqual(float(row['G1_flux']), 9*(200-10))
+        self.assertAlmostEqual(float(row['G2_flux']), 9*(400-10))
+        self.assertAlmostEqual(float(row['G_flux']),
+                               (float(row['G1_flux'])+float(row['G2_flux']))/2.)
+        self.assertEqual(row['saturation_known'], 'True')
+        self.assertIn('G1_saturated', row)
+
     def test_photometry_does_not_read_site_or_time(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

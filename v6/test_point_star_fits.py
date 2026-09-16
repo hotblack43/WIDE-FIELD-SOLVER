@@ -12,6 +12,7 @@ from astropy.io import fits
 from astropy.wcs import WCS
 from PIL import Image
 from point_star_barghini import BarghiniCamera, vectors
+from point_star_image import load_scientific_image
 
 
 class FitsExportTests(unittest.TestCase):
@@ -75,14 +76,37 @@ class FitsExportTests(unittest.TestCase):
         pixels,path=self.export(rgb=True)
         self.assertEqual(path.name,'solution.fits')
         self.assertEqual(self.last_record['annotated_file'],'solution_annotated.fits')
-        expected=np.rint(pixels.astype(float)@np.array([.2126,.7152,.0722])).astype('uint8')
+        expected=pixels.astype(float)@np.array([.2126,.7152,.0722])
         with fits.open(path) as hdus:
             self.assertEqual([hdu.name for hdu in hdus],['PRIMARY'])
-            np.testing.assert_array_equal(hdus[0].data,expected)
+            np.testing.assert_allclose(hdus[0].data,expected,atol=0,rtol=0)
+            self.assertTrue(np.issubdtype(hdus[0].data.dtype,np.floating))
+            self.assertEqual(hdus[0].header['WFSMODE'],'DERIVED_LUMINANCE')
             self.assertEqual(hdus[0].header['CTYPE1'],'RA---ZPN')
         with fits.open(self.out/self.last_record['annotated_file']) as hdus:
             self.assertIn('DS9TEXT',hdus)
             self.assertIn('WFSINFO',hdus)
+
+    def test_four_plane_uint16_fits_round_trips_native_planes(self):
+        planes = np.stack([np.full((180, 240), value, dtype=np.uint16)
+                           for value in (256, 4095, 16383, 32768)])
+        image = self.out/'native.fits'
+        fits.PrimaryHDU(planes).writeto(image)
+        (self.out/'dots').mkdir()
+        loaded = load_scientific_image(image, saturation_level=65535)
+        (self.out/'dots/input_image.json').write_text(json.dumps(loaded.provenance()))
+        record = self.api.write_fits(image, self.out, self.result, self.science)
+        self.assertEqual(record['status'], 'exported')
+        with fits.open(self.out/record['annotated_file']) as hdus:
+            for index, name in enumerate(('RED', 'GREEN1', 'GREEN2', 'BLUE')):
+                np.testing.assert_array_equal(hdus[name].data, planes[index])
+                self.assertEqual(hdus[name].header['CTYPE1'], 'RA---ZPN')
+            info = json.loads(bytes(hdus['WFSINFO'].data).decode('utf8'))
+            self.assertEqual(info['input_image']['plane_names'], ['R', 'G1', 'G2', 'B'])
+        with fits.open(self.out/record['file']) as hdus:
+            self.assertEqual(hdus[0].data.ndim, 2)
+            self.assertTrue(np.issubdtype(hdus[0].data.dtype, np.floating))
+            self.assertEqual(hdus[0].header['WFSMODE'], 'DERIVED_LUMINANCE')
 
     @unittest.skipUnless(shutil.which('solve-field'),'astrometry.net solve-field is not installed')
     def test_solve_field_accepts_plain_rgb_export_without_extension_flag(self):

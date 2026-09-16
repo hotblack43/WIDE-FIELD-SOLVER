@@ -697,7 +697,7 @@ def fit_blind_planet_epoch(image_path, solution, result, *, epoch_limits=(1850.,
     solar_seconds = time.perf_counter()-solar_started
     answer = check_candidate_absences(image_path, answer, _camera_from_result(result),
                                      detections, list(used.values()), counted_planet_vectors,
-                                     valid_mask=_load_sky_footprint(output))
+                                     valid_mask=_load_sky_footprint(output), solution=output)
     evidence_seconds = time.perf_counter()-evidence_started-solar_seconds
     write_evidence(output, answer)
     write_solar_evidence(output, answer)
@@ -787,11 +787,11 @@ def fit_blind_planet_epoch(image_path, solution, result, *, epoch_limits=(1850.,
 
 
 def _plot_candidates(image_path, output, answer):
-    from PIL import Image
     import matplotlib.pyplot as plt
+    from point_star_image import load_recorded_image
     from point_star_plotting import save_png
     fig, ax = plt.subplots(figsize=(10, 9))
-    ax.imshow(Image.open(image_path))
+    ax.imshow(load_recorded_image(image_path, output).display_rgb)
     for row in answer['matches']:
         x, y = row['measured_x_px'], row['measured_y_px']
         ax.plot(x, y, '*', mfc='none', mec='magenta', mew=1.4, ms=12)

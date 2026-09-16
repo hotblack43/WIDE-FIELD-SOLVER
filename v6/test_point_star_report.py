@@ -7,6 +7,7 @@ import unittest
 from unittest.mock import patch
 
 import numpy as np
+from astropy.io import fits
 
 import matplotlib
 matplotlib.use('Agg')
@@ -16,6 +17,22 @@ from point_star_report import formula_page, observation_metadata, report_section
 
 
 class ReportTests(unittest.TestCase):
+    def test_sky_overlay_accepts_four_plane_high_bit_fits(self):
+        from point_star_report import write_report_sky_overlay
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            planes = np.stack([np.full((100, 120), value, dtype=np.uint16)
+                               for value in (256, 4095, 16383, 32768)])
+            source = root/'source.fits'
+            fits.PrimaryHDU(planes).writeto(source)
+            science = {'photometry': {'photometric_zenith': {
+                'status': 'not_identifiable', 'zenith_unit_vector': None}}}
+            with patch('point_star_report.save_png') as save:
+                write_report_sky_overlay(root, {'source': str(source)}, science)
+            shown = np.asarray(save.call_args.args[0].axes[0].images[0].get_array())
+        self.assertEqual(shown.shape, (100, 120, 3))
+        self.assertEqual(shown.dtype, np.uint8)
+
     def sample_result(self):
         return {
             'source': '/data/example.jpeg',
