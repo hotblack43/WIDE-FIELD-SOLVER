@@ -460,6 +460,54 @@ def search_planet_epochs(camera, detections, jd_grid, sky_grid, vector_function,
     candidates = []
     brightness_order = sorted(range(len(detections)), key=lambda i: float(detections[i].get('flux_above_background', 0)), reverse=True)
     rank = {source: i+1 for i, source in enumerate(brightness_order)}
+
+    def retain_candidate(assignments, date):
+        if any(not assignment_is_valid(name, source, date)
+               for name, source in assignments):
+            return
+        matches, speed_squared = [], 0.
+        for name, source in assignments:
+            predicted = prediction(name, date)
+            # The local derivative is geometric, even at a visibility boundary.
+            nearby = _project(camera, vector_function(name, [date-.001, date+.001]))
+            speed = (nearby[1]-nearby[0])/.002
+            speed_squared += float(speed@speed)
+            row = detections[source]
+            matches.append(dict(planet=name.title(), detection_id=int(row['detection_id']),
+                measured_x_px=float(xy[source, 0]), measured_y_px=float(xy[source, 1]),
+                predicted_x_px=float(predicted[0]), predicted_y_px=float(predicted[1]),
+                separation_px=float(np.linalg.norm(predicted-xy[source])),
+                saturated=str(row.get('saturated', False)).lower() == 'true',
+                source_class=row.get('source_class', 'unknown'),
+                measured_altitude_deg=float(max(0., measured_altitudes[source])),
+                predicted_altitude_deg=float(max(0., _altitudes(vector_function(name, [date]), zenith)[0])),
+                catalogue_star_id=row.get('catalogue_star_id'),
+                catalogue_residual_px=(float(star_residual[source]) if np.isfinite(star_residual[source]) else None),
+                improvement_over_star_chi2=(float((star_residual[source]**2-np.sum((predicted-xy[source])**2))/positional_sigma_px**2)
+                                            if np.isfinite(star_residual[source]) else None),
+                constellation_override=bool(not eligible[source]),
+                unused_brightness_rank=rank[source],
+                flux_above_background=float(row.get('flux_above_background', 0))))
+        if not matches:
+            return
+        cost = sum(match['separation_px']**2 for match in matches)
+        candidate = dict(jd_tdb=float(date), epoch_tdb=_date_text(date), matches=matches,
+                         match_count=len(matches), cost_px2=cost,
+                         constellation_override_count=sum(match['constellation_override'] for match in matches),
+                         rms_px=float(np.sqrt(cost/len(matches))),
+                         conditional_time_sigma_minutes=(float(1440*positional_sigma_px/np.sqrt(speed_squared))
+                                                         if speed_squared > 1e-16 else None),
+                         boundary_limited=bool(date-jd[0] < 1e-5 or jd[-1]-date < 1e-5))
+        identity = {(match['planet'], match['detection_id']) for match in matches}
+        duplicate = next((existing for existing in candidates
+                          if abs(existing['jd_tdb']-date) < 1e-4 and
+                          {(match['planet'], match['detection_id'])
+                           for match in existing['matches']} == identity), None)
+        if duplicate is None:
+            candidates.append(candidate)
+        elif cost < duplicate['cost_px2']:
+            duplicate.update(candidate)
+
     seeds = [(date, ((name, source),), interval) for date, name, source, _, interval in passages]
     # Every intersection of acceptance windows is sampled, even when no single
     # planet's closest approach lies in that intersection. Force each participating
@@ -477,6 +525,7 @@ def search_planet_epochs(camera, detections, jd_grid, sky_grid, vector_function,
         assignments = assign(date, forced)
         if not assignments:
             continue
+        expansions = []
         if len(assignments) > 1:
             # Keep the returned date optimal for the actual returned membership.
             # Reassociate only between refits; never swap membership after the
@@ -504,64 +553,16 @@ def search_planet_epochs(camera, detections, jd_grid, sky_grid, vector_function,
                 start, stop = common_interval(assignments, date)
             else:
                 date, _ = refine(assignments, start, stop)
-            best_expansion = None
-            best_expansion_key = None
             for expanded in recruit_constellation(date, assignments):
                 expanded_date, _ = refine(expanded, start, stop)
                 if any(not assignment_is_valid(n, i, expanded_date) for n, i in expanded):
                     continue
-                residual2 = sum(float(np.sum((prediction(n, expanded_date)-xy[i])**2))
-                                for n, i in expanded)
-                expansion_key = (-len(expanded), residual2, tuple(expanded))
-                if best_expansion_key is None or expansion_key < best_expansion_key:
-                    best_expansion = expanded, expanded_date
-                    best_expansion_key = expansion_key
-            if best_expansion is not None:
-                assignments, date = best_expansion
+                expansions.append((expanded, expanded_date))
         if (trial_index+1) % 100 == 0:
             print(f'Blind planets: {trial_index+1}/{len(seeds)} joint date trials', flush=True)
-        if any(not assignment_is_valid(n, i, date) for n, i in assignments):
-            continue
-        matches, speed_squared = [], 0.
-        for name, source in assignments:
-            predicted = prediction(name, date)
-            # The local derivative is geometric, even at a visibility boundary.
-            nearby = _project(camera, vector_function(name, [date-.001, date+.001]))
-            speed = (nearby[1]-nearby[0])/.002
-            speed_squared += float(speed@speed)
-            row = detections[source]
-            matches.append(dict(planet=name.title(), detection_id=int(row['detection_id']),
-                measured_x_px=float(xy[source, 0]), measured_y_px=float(xy[source, 1]),
-                predicted_x_px=float(predicted[0]), predicted_y_px=float(predicted[1]),
-                separation_px=float(np.linalg.norm(predicted-xy[source])),
-                saturated=str(row.get('saturated', False)).lower() == 'true',
-                source_class=row.get('source_class', 'unknown'),
-                measured_altitude_deg=float(max(0., measured_altitudes[source])),
-                predicted_altitude_deg=float(max(0., _altitudes(vector_function(name, [date]), zenith)[0])),
-                catalogue_star_id=row.get('catalogue_star_id'),
-                catalogue_residual_px=(float(star_residual[source]) if np.isfinite(star_residual[source]) else None),
-                improvement_over_star_chi2=(float((star_residual[source]**2-np.sum((predicted-xy[source])**2))/positional_sigma_px**2)
-                                            if np.isfinite(star_residual[source]) else None),
-                constellation_override=bool(not eligible[source]),
-                unused_brightness_rank=rank[source],
-                flux_above_background=float(row.get('flux_above_background', 0))))
-        if not matches:
-            continue
-        cost = sum(m['separation_px']**2 for m in matches)
-        candidate = dict(jd_tdb=float(date), epoch_tdb=_date_text(date), matches=matches,
-                         match_count=len(matches), cost_px2=cost,
-                         constellation_override_count=sum(m['constellation_override'] for m in matches),
-                         rms_px=float(np.sqrt(cost/len(matches))),
-                         conditional_time_sigma_minutes=(float(1440*positional_sigma_px/np.sqrt(speed_squared))
-                                                         if speed_squared > 1e-16 else None),
-                         boundary_limited=bool(date-jd[0] < 1e-5 or jd[-1]-date < 1e-5))
-        identity = {(m['planet'], m['detection_id']) for m in matches}
-        duplicate = next((c for c in candidates if abs(c['jd_tdb']-date) < 1e-4 and
-                          {(m['planet'], m['detection_id']) for m in c['matches']} == identity), None)
-        if duplicate is None:
-            candidates.append(candidate)
-        elif cost < duplicate['cost_px2']:
-            duplicate.update(candidate)
+        retain_candidate(assignments, date)
+        for expanded, expanded_date in expansions:
+            retain_candidate(expanded, expanded_date)
     candidates.sort(key=lambda c: (-c['match_count'], c['cost_px2'], c['jd_tdb']))
     if not candidates:
         record_performance(time.perf_counter()-joint_started)

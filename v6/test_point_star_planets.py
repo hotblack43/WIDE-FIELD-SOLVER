@@ -64,14 +64,14 @@ class PlanetSearchTests(unittest.TestCase):
             self.camera, sources, dates, grid, vectors, gate_px=1.,
             positional_sigma_px=.2, zenith_unit_vector=[0, 0, 1])
 
-    def search_catalogue_case(self, tracks, sources):
+    def search_catalogue_case(self, tracks, sources, gate_px=1.):
         from point_star_planets import search_planet_epochs
         dates = self.origin + np.arange(11.)
         def vectors(name, jd):
             return self.camera.to_sky(tracks[name](np.atleast_1d(jd)-self.origin))
         grid = {name: vectors(name, dates) for name in tracks}
         return search_planet_epochs(
-            self.camera, sources, dates, grid, vectors, gate_px=1.,
+            self.camera, sources, dates, grid, vectors, gate_px=gate_px,
             positional_sigma_px=.2, zenith_unit_vector=[0, 0, 1],
             latest_jd_tdb=self.origin+100.)
 
@@ -311,6 +311,29 @@ class PlanetSearchTests(unittest.TestCase):
         self.assertEqual({(row['planet'], row['detection_id']) for row in result['matches']},
                          {('Saturn', 1), ('Jupiter', 2), ('Mars', 4)})
 
+    def test_valid_override_identities_remain_auditable_and_ambiguous(self):
+        tracks = {
+            'saturn': lambda t: np.c_[120+2*(t-4.3), np.full(len(t), 100.)],
+            'jupiter': lambda t: np.c_[np.full(len(t), 270.), 170+3*(t-4.3)],
+            'mars': lambda t: np.c_[220+20*(t-4.3), np.full(len(t), 210.)],
+        }
+        sources = [
+            dict(detection_id='1', x_px=120., y_px=100.),
+            dict(detection_id='2', x_px=270., y_px=170.),
+            dict(detection_id='3', x_px=222.9, y_px=210.,
+                 catalogue_star_id='later-gaia', catalogue_residual_px=.59),
+            dict(detection_id='4', x_px=217.1, y_px=210.,
+                 catalogue_star_id='earlier-gaia', catalogue_residual_px=.59),
+        ]
+        result = self.search_catalogue_case(tracks, sources, gate_px=3.)
+        three_body = [candidate for candidate in result['candidates']
+                      if candidate['match_count'] == 3]
+        self.assertEqual({next(row['detection_id'] for row in candidate['matches']
+                               if row['planet'] == 'Mars')
+                          for candidate in three_body}, {3, 4})
+        self.assertEqual(result['status'], 'planet_epoch_ambiguous')
+        self.assertEqual(result['competing_candidates'], 1)
+
     def test_two_planet_constellation_can_recruit_uranus(self):
         tracks = {
             'saturn': lambda t: np.c_[120+2*(t-4.3), np.full(len(t), 100.)],
@@ -356,6 +379,8 @@ class PlanetSearchTests(unittest.TestCase):
                  source_class='compact', flux_above_background=90.),
             dict(detection_id='3', x_px=220.1, y_px=210., saturated='False',
                  source_class='compact', flux_above_background=80.),
+            dict(detection_id='4', x_px=219.9, y_px=210., saturated='False',
+                 source_class='compact', flux_above_background=70.),
         ]
         with tempfile.TemporaryDirectory() as temporary:
             output = Path(temporary)
@@ -364,7 +389,9 @@ class PlanetSearchTests(unittest.TestCase):
                 writer = csv.DictWriter(handle, fieldnames=list(rows[0]))
                 writer.writeheader(); writer.writerows(rows)
             (output/'star_coordinates.csv').write_text(
-                'detection_id,star_id,residual_px\n3,chance-gaia-star,0.6\n')
+                'detection_id,star_id,residual_px\n'
+                '3,chance-gaia-star,0.6\n'
+                '4,other-chance-gaia-star,0.6\n')
             (output/'photometric_zenith.json').write_text(
                 '{"status": "conditional_zenith", "zenith_unit_vector": [0,0,1]}')
             source = output/'image.png'
@@ -382,6 +409,8 @@ class PlanetSearchTests(unittest.TestCase):
             mars = next(row for row in answer['matches'] if row['planet'] == 'Mars')
             self.assertTrue(mars['constellation_override'])
             self.assertEqual(answer['source_identity_alternatives']['3'], ['Mars'])
+            self.assertEqual(answer['source_identity_alternatives']['4'], ['Mars'])
+            self.assertEqual(answer['status'], 'planet_epoch_ambiguous')
             self.assertIn('coherent three-or-more-planet constellation',
                           answer['candidate_selection'])
             saved = json.loads((output/'planet_epoch.json').read_text())
@@ -389,7 +418,9 @@ class PlanetSearchTests(unittest.TestCase):
                                  if row['planet'] == 'Mars')['constellation_override'])
             with (output/'planet_candidates.csv').open() as handle:
                 csv_rows = list(csv.DictReader(handle))
-            saved_mars = next(row for row in csv_rows if row['planet'] == 'Mars')
+            saved_mars_rows = [row for row in csv_rows if row['planet'] == 'Mars']
+            self.assertEqual({row['detection_id'] for row in saved_mars_rows}, {'3', '4'})
+            saved_mars = saved_mars_rows[0]
             self.assertEqual(saved_mars['constellation_override'], 'True')
             self.assertEqual(saved_mars['catalogue_star_id'], 'chance-gaia-star')
 
