@@ -82,7 +82,8 @@ def _record_empty_performance(output, search_started, requested_workers):
 
 def search_planet_epochs(camera, detections, jd_grid, sky_grid, vector_function, *,
                          gate_px=3., positional_sigma_px=.5, zenith_unit_vector=None,
-                         zenith_status='conditional_zenith', latest_jd_tdb=None,
+                         zenith_status='conditional_zenith', zenith_source='photometric_extinction',
+                         latest_jd_tdb=None,
                          planet_workers=1):
     """Search trajectory segments, refine dates and retain competing assignments.
 
@@ -127,14 +128,19 @@ def search_planet_epochs(camera, detections, jd_grid, sky_grid, vector_function,
                     for name, values in sky_grid.items()}
         jd = np.r_[jd[before], last_date]
     if zenith_unit_vector is None:
-        output.update(status='visibility_unresolved', reason='No image-derived photometric zenith; planet visibility cannot be checked')
+        output.update(status='visibility_unresolved',
+                      reason='No image-derived zenith; planet visibility cannot be checked')
         _record_empty_performance(output, search_started, planet_workers)
         return output
     zenith = np.asarray(zenith_unit_vector, dtype=float)
     if zenith.shape != (3,) or not np.isfinite(zenith).all() or np.linalg.norm(zenith) < 1e-12:
         raise ValueError('Planet visibility needs a finite nonzero zenith vector')
     zenith = zenith/np.linalg.norm(zenith)
-    output['visibility'] = dict(source='image-derived photometric zenith', zenith_status=zenith_status,
+    visibility_source = ('image-derived centred full-horizon geometry'
+                         if zenith_source == 'centred_full_horizon_geometry'
+                         else 'image-derived photometric extinction zenith')
+    output['visibility'] = dict(source=visibility_source, zenith_source=zenith_source,
+                                zenith_status=zenith_status,
                                 zenith_unit_vector=zenith.tolist(), minimum_altitude_deg=0.,
                                 horizon_roundoff_tolerance_deg=1e-7)
     if not detections or not names:
@@ -638,6 +644,7 @@ def fit_blind_planet_epoch(image_path, solution, result, *, epoch_limits=(1850.,
                                  gate_px=gate_px, positional_sigma_px=max(float(result['fit']['rms_px']), .5),
                                  zenith_unit_vector=photometric_zenith.get('zenith_unit_vector'),
                                  zenith_status=photometric_zenith.get('status', 'unresolved'),
+                                 zenith_source=photometric_zenith.get('zenith_source'),
                                  latest_jd_tdb=ceiling['jd_tdb'], planet_workers=workers)
     answer['causal_epoch_ceiling'] = ceiling
     answer['ephemeris'] = provenance

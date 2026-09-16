@@ -107,6 +107,21 @@ class ReportTests(unittest.TestCase):
         self.assertIn('image-centre geometric zenith', text)
         self.assertIn('extinction trial remains not identifiable', text)
 
+    def test_report_figure_caption_names_geometric_zenith(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name in ('astrometry_overlay.png', 'astrometry_residuals.png'):
+                plt.imsave(root/name, np.zeros((20, 20, 3)))
+            science = {'photometry': {'photometric_zenith': {
+                'status': 'not_identifiable', 'provisional': True,
+                'zenith_source': 'centred_full_horizon_geometry',
+                'zenith_unit_vector': [0., 0., 1.]}}}
+            with patch('point_star_report._show_image') as show, \
+                 patch('point_star_report.PdfPages'):
+                write_report(root, self.sample_result(), science=science)
+            self.assertIn('geometric zenith', show.call_args_list[0].args[2].lower())
+            self.assertNotIn('extinction zenith', show.call_args_list[0].args[2].lower())
+
     def test_predicted_planets_are_distinct_and_keep_saved_positions(self):
         from PIL import Image
         from point_star_report import write_report_sky_overlay

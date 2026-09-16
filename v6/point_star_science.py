@@ -126,6 +126,7 @@ def _robust_line(x, y):
 
 def _full_horizon_geometric_zenith(solution, camera):
     from point_star_footprint import centred_full_horizon
+    from scipy.ndimage import binary_erosion
     path = Path(solution)/'dots/sky_footprint.npz'
     if not path.is_file():
         return None, dict(status='not_available', reason='No saved sky footprint')
@@ -139,6 +140,22 @@ def _full_horizon_geometric_zenith(solution, camera):
     if evidence['status'] != 'centred_full_horizon':
         return None, evidence
     vector = camera.to_sky(np.asarray([evidence['centre_px']], dtype=float))[0]
+    boundary = mask & ~binary_erosion(mask)
+    yy, xx = np.nonzero(boundary)
+    boundary_rays = camera.to_sky(np.column_stack([xx, yy]))
+    angles = np.rad2deg(np.arccos(np.clip(boundary_rays@vector, -1., 1.)))
+    percentiles = np.percentile(angles, [5, 50, 95])
+    evidence['camera_boundary_zenith_angle_percentiles_deg'] = percentiles.tolist()
+    evidence['camera_horizon_angle_tolerance_deg'] = 10.
+    if not (percentiles[0] >= 80. and percentiles[2] <= 100.
+            and abs(percentiles[1]-90.) <= 5.):
+        evidence.update(
+            status='not_established',
+            reason=('Circular footprint boundary rays are not approximately 90 degrees '
+                    'from the image-centre ray in the fitted camera'))
+        return None, evidence
+    evidence['reason'] = ('Closed centred circular footprint and fitted-camera boundary rays '
+                          'establish a full horizon around the image-centre zenith')
     return vector, evidence
 
 def measure_photometry(image_path, solution, result, refraction):
@@ -291,14 +308,22 @@ def measure_photometry(image_path, solution, result, refraction):
                     color='black', linewidth=1.1)
             sigma = fitted['coefficient_sigma_mag_per_airmass']
             uncertainty = f" ± {sigma:.3f}" if sigma is not None else " (uncertainty unresolved)"
-            role = 'zenith objective' if channel == 'G' else 'post-fit diagnostic'
+            roles = {
+                'zenith_objective': 'zenith objective',
+                'adopted_geometric_zenith_diagnostic': 'adopted geometric-zenith diagnostic',
+                'post_fit_channel_diagnostic': 'post-fit diagnostic',
+            }
+            role = roles.get(fitted.get('fit_role'), fitted.get('fit_role', 'diagnostic'))
             ax.set_title(f"{channel}: k={fitted['coefficient_mag_per_airmass']:.3f}{uncertainty}\n{role}",
                          fontsize=9, color=colours[channel])
             ax.set_xlabel('Airmass', fontsize=8)
             ax.set_ylabel(r'$m_{machine}-m_{catalogue}$ [mag]', fontsize=8)
             ax.tick_params(labelsize=7)
             ax.grid(alpha=.2)
-        fig.suptitle(f"Blind photometric zenith: {zenith['status']} — regression by channel", fontsize=10)
+        heading = ('Geometric-zenith airmass diagnostic'
+                   if zenith.get('zenith_source') == 'centred_full_horizon_geometry'
+                   else 'Blind photometric zenith')
+        fig.suptitle(f"{heading}: {zenith['status']} — regression by channel", fontsize=10)
         fig.tight_layout()
         save_png(fig, solution/'extinction_fit.png', dpi=180)
         plt.close(fig)

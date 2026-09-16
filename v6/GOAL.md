@@ -139,11 +139,15 @@ bound is explicitly allowed; the image timestamp/site metadata still must not
 seed or constrain the blind fits. Explicit fixed-epoch controls remain controls.
 
 Planet candidates must have nonnegative measured and predicted altitude relative
-to the image-derived photometric zenith, and valid detector projections. The
-Barghini reference Z is not a substitute for that zenith. Keep the limit at the
-horizon, not 10 degrees. Record source altitudes and visibility rejection reasons.
-When no photometric zenith is available, report visibility as unresolved and do
-not present unchecked geometric matches as visible planet detections.
+to the adopted image-derived zenith, and valid detector projections. That zenith
+is the photometric result when the extinction evidence is identifiable; v6 may
+otherwise use the detector-centre ray only when a closed circular footprint and
+the fitted camera independently establish a full 90-degree horizon. The Barghini
+reference Z is not a substitute for that zenith. Keep the limit at the horizon,
+not 10 degrees. Record source altitudes, zenith provenance and visibility
+rejection reasons. When no adopted image-derived zenith is available, report
+visibility as unresolved and do not present unchecked matches as visible planet
+detections.
 
 The investigator-facing PDF must explicitly identify the stellar catalogue used
 by that solve (Gaia or Tycho-2/Hipparcos), including reports from both `go.sh`

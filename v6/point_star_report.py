@@ -318,12 +318,14 @@ def _draw_photometric_zenith(ax, result, science, *, native_image):
     if not zenith:
         return None
     vector = zenith.get('zenith_unit_vector')
-    note = 'Extinction zenith: no candidate'
+    geometric = zenith.get('zenith_source') == 'centred_full_horizon_geometry'
+    source_label = 'Geometric zenith' if geometric else 'Extinction zenith'
+    note = f'{source_label}: no candidate'
     if vector is not None:
         # A rendered fallback overlay has margins/scaling, not detector pixels.
         # Never project a detector coordinate onto that different image frame.
         if not native_image:
-            note = 'Extinction zenith: original image unavailable'
+            note = f'{source_label}: original image unavailable'
         else:
             vector = np.asarray(vector, dtype=float)
             if vector.shape == (3,) and np.all(np.isfinite(vector)) and np.linalg.norm(vector) > 0:
@@ -332,7 +334,6 @@ def _draw_photometric_zenith(ax, result, science, *, native_image):
                 height, width = camera.shape
                 if np.isfinite(x) and np.isfinite(y) and -.5 <= x < width-.5 and -.5 <= y < height-.5:
                     provisional = zenith.get('status') != 'conditional_zenith' or zenith.get('provisional', False)
-                    geometric = zenith.get('zenith_source') == 'centred_full_horizon_geometry'
                     label = ('Geometric zenith' if geometric else 'Extinction zenith')
                     label += ' — ' + ('provisional' if provisional else 'conditional')
                     marker, = ax.plot(x, y, marker='x', color='red', ms=13, mew=2.5,
@@ -344,9 +345,9 @@ def _draw_photometric_zenith(ax, result, science, *, native_image):
                                 ha='left' if x < .7*width else 'right', color='white', fontsize=8,
                                 bbox=dict(boxstyle='round,pad=.2', fc='black', ec='red', alpha=.8))
                     return marker
-                note = 'Extinction zenith: candidate outside image'
+                note = f'{source_label}: candidate outside image'
             else:
-                note = 'Extinction zenith: invalid candidate'
+                note = f'{source_label}: invalid candidate'
     ax.text(.02, .98, note, transform=ax.transAxes, va='top', color='white', fontsize=8,
             bbox=dict(boxstyle='round,pad=.2', fc='black', ec='red', alpha=.8))
     return None
@@ -660,8 +661,12 @@ def write_report(output, result, *, science=None, **unused):
                            left=.045, right=.97, top=.935, bottom=.035,
                            hspace=.24)
     ax1 = fig.add_subplot(grid[0])
+    zenith = (science.get('photometry') or {}).get('photometric_zenith') or {}
+    zenith_label = ('geometric zenith' if zenith.get('zenith_source') == 'centred_full_horizon_geometry'
+                    else 'extinction zenith')
     _show_image(ax1, sky_overlay,
-                'Figure 1. Stars (yellow), planets (magenta); extinction zenith (red X, status in legend)')
+                f'Figure 1. Stars (yellow), planets (magenta); {zenith_label} '
+                '(red X, status in legend)')
     ax2 = fig.add_subplot(grid[1])
     second = output/'extinction_fit.png'
     if second.is_file():

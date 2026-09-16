@@ -39,6 +39,20 @@ class PlanetSearchTests(unittest.TestCase):
         return search_planet_epochs(self.camera, sources, dates, grid, vectors,
                                     gate_px=1., positional_sigma_px=.2, zenith_unit_vector=[0, 0, 1])
 
+    def test_visibility_records_geometric_zenith_provenance(self):
+        from point_star_planets import search_planet_epochs
+        dates = self.origin + np.arange(2.)
+        vectors = lambda name, jd: self.camera.to_sky(
+            np.tile([150., 130.], (len(np.atleast_1d(jd)), 1)))
+        answer = search_planet_epochs(
+            self.camera, [], dates, {'mars': vectors('mars', dates)}, vectors,
+            zenith_unit_vector=[0., 0., 1.], zenith_status='not_identifiable',
+            zenith_source='centred_full_horizon_geometry', latest_jd_tdb=self.origin+10.)
+        self.assertEqual(answer['visibility']['zenith_source'],
+                         'centred_full_horizon_geometry')
+        self.assertEqual(answer['visibility']['source'],
+                         'image-derived centred full-horizon geometry')
+
     def search_catalogue_constellation(self, mars_offset=.9, mars_speed=20.,
                                        include_jupiter=True, include_uranus=False):
         from point_star_planets import search_planet_epochs

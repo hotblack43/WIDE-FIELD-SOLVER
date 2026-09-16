@@ -19,7 +19,9 @@ class BlindPhotometryTests(unittest.TestCase):
             root = Path(tmp)
             source = root/'warwick_20260101T000000Z.png'
             image = np.full((400, 400, 3), 10, dtype=np.uint8)
-            camera = BarghiniCamera.initial((400, 400), 210, np.eye(3))
+            # An equidistant 180-degree fisheye has its 90-degree horizon at
+            # radius pi/2 * scale: this mask is a physical horizon, not a vignette.
+            camera = BarghiniCamera.initial((400, 400), 195/(np.pi/2), np.eye(3))
             coordinates, detections = [], []
             for i, (x, y) in enumerate(( (x,y) for x in range(80, 321, 48) for y in range(80, 321, 48))):
                 image[y-1:y+2, x-1:x+2] = 50+i
@@ -58,6 +60,20 @@ class BlindPhotometryTests(unittest.TestCase):
             self.assertEqual(green['fitted_count'], len(zenith['fitted_detection_ids']))
             self.assertEqual(green['fit_role'], 'adopted_geometric_zenith_diagnostic')
             self.assertEqual((root/'one/stellar_photometry.csv').read_text(),(root/'two/stellar_photometry.csv').read_text())
+
+    def test_round_vignette_inside_a_narrower_camera_is_not_called_a_horizon(self):
+        from point_star_science import _full_horizon_geometric_zenith
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root/'dots').mkdir()
+            yy, xx = np.mgrid[:400, :400]
+            np.savez_compressed(root/'dots/sky_footprint.npz',
+                                valid_mask=(xx-199.5)**2+(yy-199.5)**2 <= 195**2)
+            camera = BarghiniCamera.initial((400, 400), 210, np.eye(3))
+            vector, evidence = _full_horizon_geometric_zenith(root, camera)
+            self.assertIsNone(vector)
+            self.assertEqual(evidence['status'], 'not_established')
+            self.assertIn('90 degrees', evidence['reason'])
 
     def test_unsaturated_identified_sources_enter_fixed_sample_with_explicit_flags(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -34,15 +34,18 @@ is unchanged in reports and FITS export. Planet non-detection evidence reuses th
 mask, treating its exterior as unobserved rather than empty sky.
 
 In v6, a stricter second use of that saved mask recognises only a closed, broad,
-near-circular footprint centred on the detector. Such a full-horizon geometry
-supplies the image-centre ray as a provisional physical zenith when the blind
-extinction search is not identifiable. The unconstrained photometric minimum is
-retained for audit, and the extinction regression is re-evaluated at the adopted
-centre so its saved airmasses and coefficients remain consistent. A photometric
-solution that passes the existing positive-extinction, angular-information,
-airmass-leverage, boundary and radial-response checks overrides the geometric
-fallback. Cropped, clipped, elliptical and off-centre masks establish no such
-centre prior.
+circular footprint centred on the detector. It requires a low-residual boundary
+circle fit, complete 72-bin azimuth coverage and fitted-camera boundary rays
+whose 5th--95th percentile angular distances from the centre ray lie within
+80--100 degrees (with median within 5 degrees of 90). Such a full-horizon
+geometry supplies the image-centre ray as a provisional physical zenith when the
+blind extinction search is not identifiable. The unconstrained photometric
+minimum is retained for audit, and the extinction regression is re-evaluated at
+the adopted centre so its saved airmasses and coefficients remain consistent. A
+photometric solution that passes the existing positive-extinction,
+angular-information, airmass-leverage, boundary and radial-response checks
+overrides the geometric fallback. Cropped, clipped, elliptical, off-centre and
+round but narrower-than-horizon masks establish no such centre prior.
 
 The bootstrap scans a small set of central patches at several sizes. tetra3's
 bundled database identifies a pattern using only the new measured centroids.

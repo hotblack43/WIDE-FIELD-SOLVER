@@ -19,7 +19,7 @@ must not describe a proposal as working merely because related products exist.
 | RGB-versus-catalogue report diagnostics | Preserved from final v0.5.0 | Third PDF page compares camera R/G/B instrumental magnitudes with Gaia RP/G/BP for finite unsaturated Gaia matches; passband mismatch and lack of calibration are explicit |
 | Extinction as nuisance regression in blind zenith search | Added in 0.3.0 using robust regression | Fixed membership; no site/time-derived airmass; G plot uses the exact fitted line. The OLS reference specified in GOAL.md and its comparison remain unimplemented |
 | Zenith estimated by minimising photometric regression scatter | Added in 0.3.0; conditional component | Synthetic recovery and degeneracy tests; real example remains unresolved under the radial-response check |
-| Centred full-horizon geometric zenith | Added in v6 | A closed, broad, near-circular sky footprint centred on the detector supplies the provisional image-centre zenith when extinction is not identifiable; cropped/off-centre fields do not. A photometric zenith that passes the existing strong-evidence checks retains authority |
+| Centred full-horizon geometric zenith | Added in v6 | A closed, broad circular boundary must pass circle-residual, complete-azimuth and fitted-camera 90-degree horizon checks before supplying the provisional image-centre zenith when extinction is not identifiable; crops, ellipses and round vignettes do not qualify. A photometric zenith that passes the existing strong-evidence checks retains authority |
 | Zenith fitted through astrometric refraction residuals | Implemented downstream diagnostic | Different objective from photometric zenith; does not establish that photometric proposal works |
 | Joint photometric zenith/extinction and astrometric epoch constraint | **Not implemented** | Not part of the 0.3.0 proper-motion bugfix; must be designed and tested explicitly |
 | Blind planetary epoch | Candidate search implemented in 0.4.2 | Past-only positional search capped at recorded run time, with measured/predicted horizon checks; alternatives retained and single-planet results ambiguous |
@@ -88,7 +88,11 @@ blind replacement remains unfinished, so the normal launcher skips that search.
 The Subaru Maunakea 2026-09-16 image supplies the motivating v6 regression. Its
 saved footprint is closed, has bounding-box aspect ratio 0.997797 and circular
 fill fraction 0.778648, and its bounding-box centre is 15.81 pixels from the
-centre of the 3672-pixel square detector. The former unconstrained minimum lay
+centre of the 3672-pixel square detector. Its boundary circle has 0.01220-radius
+RMS residual and 0.02577-radius 95th-percentile absolute residual, with every
+azimuth bin populated; fitted-camera boundary angles have 5th, median and 95th
+percentiles 88.18, 91.47 and 92.65 degrees from the centre ray. The former
+unconstrained minimum lay
 about 416 pixels from image centre, placed one fitted star on the horizon, and
 gave k=0.011121±0.007939 mag/airmass with 0.378125-mag RMS. It remains
 `not_identifiable`. The adopted detector-centre ray projects to
@@ -194,7 +198,7 @@ The previous planet stage never received the fitted photometric zenith. In the
 candidates: sources 32 and 7 have measured altitudes -48.48 and -45.47 degrees.
 
 The planet stage now checks every measured source and every exact ephemeris
-prediction against the image-derived photometric zenith. Negative altitude,
+prediction against the adopted image-derived zenith. Negative altitude,
 outside-detector coordinates and non-invertible detector projections cannot
 count as planet matches. The minimum altitude is zero degrees, with only
 1e-7-degree numerical roundoff tolerance; no 10-degree cutoff is introduced.

@@ -7,6 +7,7 @@ from pathlib import Path
 import numpy as np
 from scipy.ndimage import (
     binary_closing,
+    binary_erosion,
     binary_fill_holes,
     gaussian_filter,
     label,
@@ -65,17 +66,46 @@ def centred_full_horizon(valid_mask):
     offset = float(np.linalg.norm(bbox_centre-image_centre))
     aspect = float(bbox_width/bbox_height)
     fill = float(mask.sum()/(bbox_width*bbox_height))
+    boundary = mask & ~binary_erosion(mask)
+    by, bx = np.nonzero(boundary)
+    design = np.column_stack([2.*bx, 2.*by, np.ones(len(bx))])
+    circle_x, circle_y, constant = np.linalg.lstsq(
+        design, bx.astype(float)**2+by.astype(float)**2, rcond=None)[0]
+    circle_radius = float(np.sqrt(max(0., constant+circle_x**2+circle_y**2)))
+    circle_distance = np.hypot(bx-circle_x, by-circle_y)
+    circle_residual = (circle_distance-circle_radius)/max(circle_radius, 1e-12)
+    circle_rms = float(np.sqrt(np.mean(circle_residual**2)))
+    circle_p95 = float(np.percentile(np.abs(circle_residual), 95))
+    bin_count = 72
+    azimuth = np.mod(np.arctan2(by-circle_y, bx-circle_x), 2*np.pi)
+    bins = np.minimum((azimuth/(2*np.pi)*bin_count).astype(int), bin_count-1)
+    populated_bins = int(len(np.unique(bins)))
+    circle_centre = np.array([circle_x, circle_y])
+    circle_offset = float(np.linalg.norm(circle_centre-image_centre))
     closed = not (mask[0].any() or mask[-1].any() or mask[:, 0].any() or mask[:, -1].any())
     broad = min(bbox_width, bbox_height) >= .7*min(h, w)
-    centred = offset <= .03*min(h, w)
-    round_enough = .9 <= aspect <= 1.1 and .68 <= fill <= .86
+    centred = circle_offset <= .03*min(h, w)
+    round_enough = (.9 <= aspect <= 1.1 and .68 <= fill <= .86
+                    and circle_radius >= .35*min(h, w)
+                    and circle_rms <= .02 and circle_p95 <= .04
+                    and populated_bins == bin_count)
     result.update(bounding_box_px=[x0, y0, x1, y1],
                   bounding_box_centre_px=bbox_centre.tolist(),
                   centre_offset_px=offset, bounding_box_aspect_ratio=aspect,
-                  bounding_box_fill_fraction=fill, boundary_closed=bool(closed))
+                  bounding_box_fill_fraction=fill, boundary_closed=bool(closed),
+                  fitted_circle_centre_px=circle_centre.tolist(),
+                  fitted_circle_centre_offset_px=circle_offset,
+                  fitted_circle_radius_px=circle_radius,
+                  circle_rms_fraction=circle_rms,
+                  circle_p95_absolute_residual_fraction=circle_p95,
+                  azimuth_bin_count=bin_count,
+                  populated_azimuth_bins=populated_bins)
     if closed and broad and centred and round_enough and mask[round(image_centre[1]), round(image_centre[0])]:
         result.update(status='centred_full_horizon',
                       reason='Closed near-circular sky footprint is centred on the detector')
+    elif closed and broad and mask[round(image_centre[1]), round(image_centre[0])]:
+        result['reason'] = ('Footprint boundary circle fit, centring, or azimuth coverage is '
+                            'inconsistent with a closed centred circular horizon')
     return result
 
 

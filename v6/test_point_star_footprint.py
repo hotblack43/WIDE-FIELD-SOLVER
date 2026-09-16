@@ -33,6 +33,22 @@ class SkyFootprintTests(unittest.TestCase):
         result = centred_full_horizon(mask)
         self.assertEqual(result['status'], 'centred_full_horizon')
         np.testing.assert_allclose(result['centre_px'], [119.5, 119.5])
+        self.assertLess(result['circle_rms_fraction'], .01)
+        self.assertEqual(result['populated_azimuth_bins'], result['azimuth_bin_count'])
+
+    def test_ellipse_cross_and_rounded_rectangle_are_not_circular_horizons(self):
+        yy, xx = np.mgrid[:240, :240]
+        ellipse = ((xx-119.5)/114)**2 + ((yy-119.5)/(114/1.10))**2 <= 1
+        circle = (xx-119.5)**2 + (yy-119.5)**2 <= 114**2
+        cross = circle & ((np.abs(xx-119.5) <= 70) | (np.abs(yy-119.5) <= 70))
+        rounded_rectangle = ((np.maximum(np.abs(xx-119.5)-82, 0))**2 +
+                             (np.maximum(np.abs(yy-119.5)-92, 0))**2 <= 22**2)
+        for name, mask in (('ellipse', ellipse), ('cross', cross),
+                           ('rounded rectangle', rounded_rectangle)):
+            with self.subTest(shape=name):
+                result = centred_full_horizon(mask)
+                self.assertEqual(result['status'], 'not_established')
+                self.assertIn('circular', result['reason'].lower())
 
     def test_off_centre_or_clipped_footprint_does_not_establish_centre_horizon(self):
         yy, xx = np.mgrid[:220, :260]

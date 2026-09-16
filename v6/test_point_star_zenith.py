@@ -117,6 +117,34 @@ class ZenithTests(unittest.TestCase):
         self.assertEqual(answer['zenith_source'], 'centred_full_horizon_geometry')
         np.testing.assert_allclose(answer['zenith_unit_vector'], geometric, atol=1e-12)
         self.assertIn('Fewer than 20', answer['reason'])
+        self.assertIn('extinction_mag_per_airmass', answer)
+
+    def test_insufficient_sources_reject_geometry_that_puts_a_sample_below_horizon(self):
+        from point_star_zenith import fit_photometric_zenith
+        rays, dimming, radial, geometric = photometric_field()
+        rays = rays[:8].copy()
+        rays[0] = -geometric
+        answer = fit_photometric_zenith(
+            rays, dimming[:8], radial[:8],
+            geometric_zenith_unit_vector=geometric,
+            geometric_evidence={'status': 'centred_full_horizon', 'centre_px': [99.5, 99.5]},
+        )
+        self.assertIsNone(answer['zenith_unit_vector'])
+        self.assertNotEqual(answer.get('zenith_source'), 'centred_full_horizon_geometry')
+        self.assertIn('below the geometric horizon', answer['geometric_fallback_rejected_reason'])
+
+    def test_degenerate_photometric_coverage_still_uses_valid_geometry(self):
+        from point_star_zenith import fit_photometric_zenith
+        azimuth = np.linspace(0, 2*np.pi, 24, endpoint=False)
+        rays = np.c_[np.cos(azimuth), np.sin(azimuth), np.zeros_like(azimuth)]
+        answer = fit_photometric_zenith(
+            rays, np.full(24, -9.), np.ones(24),
+            geometric_zenith_unit_vector=[0., 0., 1.],
+            geometric_evidence={'status': 'centred_full_horizon', 'centre_px': [99.5, 99.5]},
+        )
+        self.assertEqual(answer['zenith_source'], 'centred_full_horizon_geometry')
+        np.testing.assert_allclose(answer['zenith_unit_vector'], [0., 0., 1.])
+        self.assertIn('visible hemisphere', answer['reason'])
 
     def test_many_stars_with_no_spatial_coverage_are_unresolved(self):
         from point_star_zenith import fit_photometric_zenith

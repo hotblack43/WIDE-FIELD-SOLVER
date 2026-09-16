@@ -44,14 +44,6 @@ def fit_photometric_zenith(rays, dimming, radial_squared, *, loss_scale_mag=.1,
         if not geometric_evidence or geometric_evidence.get('status') != 'centred_full_horizon':
             raise ValueError('Geometric zenith requires an established centred full horizon')
         geometric = geometric/np.linalg.norm(geometric)
-    if nstars < 20:
-        record['reason'] = 'Fewer than 20 usable photometric sources'
-        if geometric is not None:
-            record.update(zenith_unit_vector=geometric.tolist(),
-                          zenith_source='centred_full_horizon_geometry', provisional=True,
-                          reason=record['reason'] + '; adopted image-centre zenith from closed circular horizon',
-                          method=record['method'] + '; geometric image-centre fallback')
-        return record
     if rays.shape != (nstars, 3) or radial.shape != y.shape or not all(
             np.isfinite(value).all() for value in (rays, y, radial)):
         raise ValueError('Zenith fit needs finite paired unit rays, magnitudes and radii')
@@ -59,24 +51,7 @@ def fit_photometric_zenith(rays, dimming, radial_squared, *, loss_scale_mag=.1,
     if np.any(norms < 1e-12) or loss_scale_mag <= 0:
         raise ValueError('Invalid rays or photometric loss scale')
     rays = rays/norms[:, None]
-    centre = rays.mean(axis=0)
-    if np.linalg.norm(centre) < 1e-6:
-        record['reason'] = 'Stellar rays do not define a visible hemisphere'
-        return record
-    centre /= np.linalg.norm(centre)
-    axis = np.eye(3)[np.argmin(np.abs(centre))]
-    east = np.cross(axis, centre); east /= np.linalg.norm(east)
-    north = np.cross(centre, east)
-    basis = np.column_stack([east, north])
     minimum_sine = 0.  # Include the horizon; never drop low-altitude stars.
-
-    def zenith(parameters):
-        vector = centre + basis@np.asarray(parameters)
-        return vector/np.linalg.norm(vector)
-
-    def trial_x(parameters):
-        sine = rays@zenith(parameters)
-        return airmass(np.rad2deg(np.arcsin(np.clip(sine, minimum_sine, 1))))
 
     def robust_cost(residual):
         square = (residual/loss_scale_mag)**2
@@ -123,6 +98,52 @@ def fit_photometric_zenith(rays, dimming, radial_squared, *, loss_scale_mag=.1,
                     search_boundary_limited=False, rms_mag=float(np.sqrt(np.mean(residual**2))),
                     airmass_range=[float(x.min()), float(x.max())],
                     minimum_altitude_deg=float(np.rad2deg(np.arcsin(np.min(sine)))))
+
+    def adopt_geometry(reason, photometric_trial=None):
+        """Apply the same audited geometric fallback to every weak-fit exit."""
+        record['reason'] = reason
+        if photometric_trial is not None:
+            record['photometric_trial'] = photometric_trial
+        if geometric is None:
+            if photometric_trial is not None:
+                record['zenith_source'] = 'unconstrained_photometric_trial'
+            return record
+        sine = rays@geometric
+        if len(sine) and np.min(sine) < minimum_sine-1e-9:
+            if photometric_trial is not None:
+                record['zenith_source'] = 'unconstrained_photometric_trial'
+            record['geometric_fallback_rejected_reason'] = (
+                'One or more fixed photometric-sample rays fall below the geometric horizon')
+            return record
+        if nstars >= 3:
+            record.update(fixed_zenith_fit(geometric))
+        else:
+            record['zenith_unit_vector'] = geometric.tolist()
+        record.update(
+            zenith_source='centred_full_horizon_geometry', provisional=True,
+            reason=reason + '; adopted image-centre zenith from closed circular horizon',
+            method=record['method'] + '; geometric image-centre fallback')
+        return record
+
+    if nstars < 20:
+        return adopt_geometry('Fewer than 20 usable photometric sources')
+
+    centre = rays.mean(axis=0)
+    if np.linalg.norm(centre) < 1e-6:
+        return adopt_geometry('Stellar rays do not define a visible hemisphere')
+    centre /= np.linalg.norm(centre)
+    axis = np.eye(3)[np.argmin(np.abs(centre))]
+    east = np.cross(axis, centre); east /= np.linalg.norm(east)
+    north = np.cross(centre, east)
+    basis = np.column_stack([east, north])
+
+    def zenith(parameters):
+        vector = centre + basis@np.asarray(parameters)
+        return vector/np.linalg.norm(vector)
+
+    def trial_x(parameters):
+        sine = rays@zenith(parameters)
+        return airmass(np.rad2deg(np.arcsin(np.clip(sine, minimum_sine, 1))))
 
     constraints = [{'type': 'ineq', 'fun': lambda p: rays@zenith(p)-minimum_sine}]
     # Geometric seeds only. The mean ray is not assumed to be the physical zenith.
@@ -178,8 +199,8 @@ def fit_photometric_zenith(rays, dimming, radial_squared, *, loss_scale_mag=.1,
     primary = optimise(False)
     sensitivity = optimise(True)
     if primary is None or sensitivity is None:
-        record['reason'] = 'No converged zenith keeps the fixed photometric sample at or above the horizon'
-        return record
+        return adopt_geometry(
+            'No converged zenith keeps the fixed photometric sample at or above the horizon')
     selected = primary
     angle = float(np.rad2deg(np.arccos(np.clip(np.dot(primary['zenith_unit_vector'], sensitivity['zenith_unit_vector']), -1, 1))))
     reasons = []
@@ -205,21 +226,10 @@ def fit_photometric_zenith(rays, dimming, radial_squared, *, loss_scale_mag=.1,
                   profile_centre_unit_vector=centre.tolist(), profile_basis=basis.tolist())
     if not reasons:
         record['zenith_source'] = 'photometric_extinction'
-    elif geometric is not None:
-        fixed = fixed_zenith_fit(geometric)
-        if fixed is not None:
-            record['photometric_trial'] = dict(
-                selected, status=trial_status, reason=trial_reason,
-                radial_response_check=sensitivity, radial_response_shift_deg=angle)
-            record.update(fixed, zenith_source='centred_full_horizon_geometry',
-                          reason=trial_reason + '; adopted image-centre zenith from closed circular horizon',
-                          method=record['method'] + '; geometric image-centre fallback')
-        else:
-            record['zenith_source'] = 'unconstrained_photometric_trial'
-            record['geometric_fallback_rejected_reason'] = (
-                'One or more fixed photometric-sample rays fall below the geometric horizon')
     else:
-        record['zenith_source'] = 'unconstrained_photometric_trial'
+        adopt_geometry(trial_reason, photometric_trial=dict(
+            selected, status=trial_status, reason=trial_reason,
+            radial_response_check=sensitivity, radial_response_shift_deg=angle))
     for x in np.linspace(-.6, .6, 21):
         for ytrial in np.linspace(-.6, .6, 21):
             point = np.array([x, ytrial])
