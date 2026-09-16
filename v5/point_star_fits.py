@@ -260,11 +260,23 @@ def archive_previous(target):
         index += 1
 
 
+def plain_pixels(pixels):
+    """Return a two-dimensional solve-field input without changing geometry."""
+    if pixels.ndim == 2:
+        return pixels
+    values = pixels.astype(float) @ np.array([.2126, .7152, .0722])
+    if np.issubdtype(pixels.dtype, np.integer):
+        limits = np.iinfo(pixels.dtype)
+        values = np.clip(np.rint(values), limits.min, limits.max)
+    return values.astype(pixels.dtype)
+
+
 def write_fits(image_path, output, result, science):
     """Export without modifying the solution or using observation metadata."""
     output=Path(output)
     output.mkdir(parents=True,exist_ok=True)
     target=output/'solution.fits'
+    annotated_target=output/'solution_annotated.fits'
     try:
         if not Path(image_path).is_file():
             raise ValueError('Original image unavailable; a rendered overlay is not a substitute')
@@ -285,36 +297,53 @@ def write_fits(image_path, output, result, science):
         rows=collect_overlays(output,camera,science)
         region,text,layout=overlay_products(rows,camera.shape)
         rgb=pixels.ndim==3
+        compatible=fits.PrimaryHDU(plain_pixels(pixels),header)
+        compatible.header['WFSORIG']='RGB' if rgb else 'MONO'
+        compatible.header['WFSMODE']='LUMINANCE' if rgb else 'ORIGINAL'
+        compatible.header['COMMENT']='2-D primary image for solve-field; overlays are in solution_annotated.fits'
         primary=fits.PrimaryHDU() if rgb else fits.PrimaryHDU(pixels,header)
         primary.header['WFSRGB']=rgb
         primary.header['WFSREG']='DS9TEXT'
-        primary.header['COMMENT']='For full labels/styles: v5/view_fits.sh solution.fits'
-        hdus=[primary]
+        primary.header['COMMENT']='For full labels/styles: v5/view_fits.sh solution_annotated.fits'
+        annotated_hdus=[primary]
         if rgb:
-            hdus.extend(fits.ImageHDU(pixels[:,:,i],header,name=n) for i,n in enumerate(('RED','GREEN','BLUE')))
+            annotated_hdus.extend(fits.ImageHDU(pixels[:,:,i],header,name=n) for i,n in enumerate(('RED','GREEN','BLUE')))
         info=dict(camera=c,source_sha256=source_hash,
                   exporter_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
                   wcs_validation=validation,overlays=rows,label_layout=layout,
+                  plain_file=target.name,plain_pixel_mode='luminance' if rgb else 'original_mono',
+                  annotated_file=annotated_target.name,
                   planet_status=(science.get('planets') or {}).get('status'),
                   planet_epoch_tdb=(science.get('planets') or {}).get('best_candidate_epoch_tdb'),
                   pixel_convention='Stored arrays retain input row order; overlay records zero-based; REGION/DS9TEXT one-based',
                   label_layout_viewport_px=VIEWPORT_PX)
-        hdus.extend([region,bytes_hdu(text,'DS9TEXT'),bytes_hdu(json.dumps(info,ensure_ascii=False,sort_keys=True),'WFSINFO')])
+        annotated_hdus.extend([region,bytes_hdu(text,'DS9TEXT'),bytes_hdu(json.dumps(info,ensure_ascii=False,sort_keys=True),'WFSINFO')])
         # Atomic publication; a failure never leaves a partially written FITS.
-        with tempfile.NamedTemporaryFile(dir=output,suffix='.fits',delete=False) as temp:
-            temporary=Path(temp.name)
+        with tempfile.NamedTemporaryFile(dir=output,suffix='.fits',delete=False) as temp_plain, \
+             tempfile.NamedTemporaryFile(dir=output,suffix='.fits',delete=False) as temp_annotated:
+            temporary=Path(temp_plain.name)
+            annotated_temporary=Path(temp_annotated.name)
         try:
-            fits.HDUList(hdus).writeto(temporary,overwrite=True,checksum=True)
+            fits.HDUList([compatible]).writeto(temporary,overwrite=True,checksum=True)
+            fits.HDUList(annotated_hdus).writeto(annotated_temporary,overwrite=True,checksum=True)
             previous = archive_previous(target)
+            previous_annotated = archive_previous(annotated_target)
+            os.replace(annotated_temporary,annotated_target)
             os.replace(temporary,target)
         finally:
             temporary.unlink(missing_ok=True)
-        record=dict(status='exported',file=target.name,rgb=rgb,overlays=len(rows),**validation)
+            annotated_temporary.unlink(missing_ok=True)
+        record=dict(status='exported',file=target.name,annotated_file=annotated_target.name,
+                    rgb=rgb,plain_pixel_mode='luminance' if rgb else 'original_mono',
+                    overlays=len(rows),**validation)
         if previous: record['previous_file'] = previous
+        if previous_annotated: record['previous_annotated_file'] = previous_annotated
     except ValueError as error:
         record=dict(status='unavailable',reason=str(error))
         previous = archive_previous(target)
+        previous_annotated = archive_previous(annotated_target)
         if previous: record['previous_file'] = previous
+        if previous_annotated: record['previous_annotated_file'] = previous_annotated
     (output/'fits_export.json').write_text(json.dumps(record,indent=2)+'\n')
     return record
 

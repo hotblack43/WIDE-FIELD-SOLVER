@@ -2,6 +2,8 @@
 import importlib.util
 import json
 from pathlib import Path
+import shutil
+import subprocess
 import tempfile
 import unittest
 
@@ -35,6 +37,7 @@ class FitsExportTests(unittest.TestCase):
         Image.fromarray(pixels).save(image)
         record = self.api.write_fits(image, self.out, self.result, self.science)
         self.assertEqual(record['status'], 'exported')
+        self.last_record = record
         return pixels, self.out/record['file']
 
     def test_one_bit_monochrome_pixels_are_preserved(self):
@@ -59,7 +62,8 @@ class FitsExportTests(unittest.TestCase):
         self.assertEqual(json.dumps(self.result,sort_keys=True),before)
 
     def test_rgb_keeps_three_channels_with_identical_wcs(self):
-        pixels,path=self.export(rgb=True)
+        pixels,_=self.export(rgb=True)
+        path=self.out/self.last_record['annotated_file']
         with fits.open(path) as hdus:
             self.assertIsNone(hdus[0].data)
             for i,name in enumerate(['RED','GREEN','BLUE']):
@@ -67,8 +71,40 @@ class FitsExportTests(unittest.TestCase):
                 self.assertEqual(hdus[name].header['CTYPE1'],'RA---ZPN')
                 self.assertEqual(hdus[name].header['CRPIX1'],hdus['RED'].header['CRPIX1'])
 
+    def test_rgb_plain_export_is_one_luminance_primary_hdu_with_wcs(self):
+        pixels,path=self.export(rgb=True)
+        self.assertEqual(path.name,'solution.fits')
+        self.assertEqual(self.last_record['annotated_file'],'solution_annotated.fits')
+        expected=np.rint(pixels.astype(float)@np.array([.2126,.7152,.0722])).astype('uint8')
+        with fits.open(path) as hdus:
+            self.assertEqual([hdu.name for hdu in hdus],['PRIMARY'])
+            np.testing.assert_array_equal(hdus[0].data,expected)
+            self.assertEqual(hdus[0].header['CTYPE1'],'RA---ZPN')
+        with fits.open(self.out/self.last_record['annotated_file']) as hdus:
+            self.assertIn('DS9TEXT',hdus)
+            self.assertIn('WFSINFO',hdus)
+
+    @unittest.skipUnless(shutil.which('solve-field'),'astrometry.net solve-field is not installed')
+    def test_solve_field_accepts_plain_rgb_export_without_extension_flag(self):
+        _,path=self.export(rgb=True)
+        solve_dir=self.out/'solve-field'
+        run=subprocess.run([shutil.which('solve-field'),'--overwrite','--no-plots','--just-augment',
+                            '--dir',str(solve_dir),str(path)],capture_output=True,text=True,timeout=30)
+        self.assertEqual(run.returncode,0,run.stdout+run.stderr)
+        self.assertTrue((solve_dir/'solution.axy').is_file())
+
+    def test_console_messages_distinguish_plain_and_annotated_exports(self):
+        from analyse_image import fits_export_messages
+        messages=fits_export_messages(self.out, {
+            'status':'exported', 'file':'solution.fits',
+            'annotated_file':'solution_annotated.fits'})
+        self.assertEqual(messages, [
+            f'FITS for solve-field: {self.out / "solution.fits"}',
+            f'FITS with overlays: {self.out / "solution_annotated.fits"}'])
+
     def test_overlays_keep_measured_and_predicted_positions_distinct(self):
-        _,path=self.export()
+        self.export()
+        path=self.out/self.last_record['annotated_file']
         with fits.open(path) as hdus:
             record=json.loads(bytes(hdus['WFSINFO'].data).decode('utf8'))
             rows={r['label']:r for r in record['overlays']}
@@ -86,7 +122,8 @@ class FitsExportTests(unittest.TestCase):
             self.assertAlmostEqual(hdus['REGION'].data['Y'][0][0],91.25)
 
     def test_colour_metadata_does_not_change_wcs_or_annotations(self):
-        _,path=self.export(rgb=True)
+        self.export(rgb=True)
+        path=self.out/self.last_record['annotated_file']
         with fits.open(path) as hdus:
             before=(WCS(hdus['RED'].header).to_header().tostring(), bytes(hdus['DS9TEXT'].data), bytes(hdus['WFSINFO'].data))
         self.result['metadata']={'date':'2099','latitude':89.9}
@@ -118,13 +155,18 @@ class FitsExportTests(unittest.TestCase):
     def test_refused_reexport_archives_previous_file(self):
         _,path=self.export()
         previous=path.read_bytes()
+        annotated=self.out/self.last_record['annotated_file']
+        previous_annotated=annotated.read_bytes()
         record=self.api.write_fits(self.out/'missing.png',self.out,self.result,self.science)
         self.assertEqual(record['status'],'unavailable')
         self.assertFalse(path.exists(), 'A refused export must not leave an old current FITS')
+        self.assertFalse(annotated.exists(), 'A refused export must not leave an old current annotated FITS')
         self.assertEqual((self.out/record['previous_file']).read_bytes(),previous)
+        self.assertEqual((self.out/record['previous_annotated_file']).read_bytes(),previous_annotated)
 
     def test_ambiguous_planet_is_visibly_qualified(self):
-        _,path=self.export()
+        self.export()
+        path=self.out/self.last_record['annotated_file']
         with fits.open(path) as hdus:
             text=bytes(hdus['DS9TEXT'].data).decode('utf8')
         self.assertIn('text={Mars (candidate)}',text)

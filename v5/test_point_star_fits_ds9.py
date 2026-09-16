@@ -71,7 +71,7 @@ exit
 ''' % (folder/'ds9.txt'))
                             run=subprocess.run([sys.executable,'-c',
                                 'from point_star_fits import view_fits; import sys; view_fits(sys.argv[1], extra_args=["-prefs","no","-xpa","no","-samp","no","-source",sys.argv[2]])',
-                                str(folder/'solution.fits'),str(script)],cwd=Path(__file__).parent,
+                                str(folder/record['annotated_file']),str(script)],cwd=Path(__file__).parent,
                                 env=env,capture_output=True,text=True,timeout=30)
                             self.assertEqual(run.returncode,0,run.stdout+run.stderr)
                             text=(folder/'ds9.txt').read_text()

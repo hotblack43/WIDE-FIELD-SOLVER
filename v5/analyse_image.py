@@ -14,6 +14,15 @@ from point_star_science import analyse_existing, compare_metadata
 ROOT = Path(__file__).resolve().parent
 
 
+def fits_export_messages(output, exported):
+    """Describe the distinct machine-readable and annotated FITS products."""
+    output = Path(output)
+    if exported['status'] == 'exported':
+        return [f"FITS for solve-field: {output / exported['file']}",
+                f"FITS with overlays: {output / exported['annotated_file']}"]
+    return [f"FITS export unavailable: {exported['reason']}"]
+
+
 def parser():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--version', action='version', version=f'%(prog)s {SOLVER_VERSION}')
@@ -61,10 +70,8 @@ def main():
     planets = science['planets']
     print(f"Report: {report}")
     exported = result['fits_export']
-    if exported['status'] == 'exported':
-        print(f"FITS with overlays: {args.output / exported['file']}")
-    else:
-        print(f"FITS export unavailable: {exported['reason']}")
+    for message in fits_export_messages(args.output, exported):
+        print(message)
     print(f"Stellar epoch: {science['stellar_epoch']['status']}")
     print(f"Refraction: {science['refraction']['status']}")
     print(f"Extinction: {science['photometry']['extinction_status']}")
