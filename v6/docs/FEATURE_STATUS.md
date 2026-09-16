@@ -6,6 +6,7 @@ must not describe a proposal as working merely because related products exist.
 
 | Capability | Implemented status | Evidence / limitation |
 |---|---|---|
+| Nighttime solar consistency for planetary dates | Added in v6 | Accepted stellar field implies nighttime by investigator policy; local Sun ephemerides and a global enclosing region for stellar-horizon-compatible zeniths exclude daylight aliases. Twilight boundary refits and all rejected alternatives are audited. See [PLANET_SOLAR_CONSISTENCY.md](PLANET_SOLAR_CONSISTENCY.md). No photometric-loss penalty or classifier calibration is required |
 | Faster blind planetary epoch search | Added in v0.6.0 | Bundled 1850--2036 proposal table, cubic proposal interpolation, batched exact refinement, deterministic per-planet workers and telemetry. Exact vectors retain final authority. See [PLANET_SEARCH_PERFORMANCE.md](PLANET_SEARCH_PERFORMANCE.md) |
 | Bright-planet absence evidence | Integrated in v0.5.0 | Candidate-specific local pixel/witness checks for Mercury through Saturn; faint planets neutral; conservative ranking, not calibrated odds. See [PLANET_NONDETECTIONS.md](PLANET_NONDETECTIONS.md) |
 | Lossless PNG output speedup | Preserved | Compression level 1; decoded pixels unchanged; report PDFs retain native PNG resolution |

@@ -155,22 +155,25 @@ def apply_evidence(answer,evidence_rows):
         candidate['non_detection_evidence']=rows
         candidate['missing_bright_planets']=[r['planet'] for r in rows if r['status']=='missing_bright_planet']
         candidate['absence_penalty']=len(candidate['missing_bright_planets'])
-    candidates.sort(key=lambda c:(bool(c['absence_penalty']),c['absence_penalty'],-c['match_count'],c['cost_px2'],c['jd_tdb']))
+    def solar_rejected(candidate):
+        evidence = candidate.get('solar_evidence', {})
+        return evidence.get('status') == 'solar_inconsistent' or evidence.get('requires_date_refinement', False)
+    candidates.sort(key=lambda c:(solar_rejected(c),bool(c['absence_penalty']),c['absence_penalty'],-c['match_count'],c['cost_px2'],c['jd_tdb']))
     out['negative_evidence']=dict(method='conservative bright-planet consistency screen',
         brightness_model=SOURCE,assessed_planets=list(BRIGHT_PLANETS),
         faint_planets_not_penalised=['uranus','neptune'],
         contradicted_candidates=sum(c['absence_penalty']>0 for c in candidates),
-        ranking='uncontradicted first, missing bright count, matched count descending, positional cost',
+        ranking='solar-compatible or unresolved first, uncontradicted first, missing bright count, matched count descending, positional cost',
         limitation='Heuristic, not calibrated odds; local star/background support is not a complete cloud or obstruction mask.')
     if not candidates:
         return out
     best=candidates[0]
-    if best['absence_penalty']:
+    if best['absence_penalty'] or solar_rejected(best):
         out.update(status='planet_epoch_inconsistent',confidence='all_candidates_contradicted',matches=[],match_count=0,
             best_candidate_jd_tdb=None,best_candidate_epoch_tdb=None,rms_px=None,conditional_time_sigma_minutes=None,
-            competing_candidates=0,reason='All positional candidates predict an absent bright planet in locally supported sky')
+            competing_candidates=0,reason='All positional candidates are contradicted by solar geometry or bright-planet absence')
         return out
-    single_count=sum(c['match_count']==1 for c in candidates)
+    single_count=sum(c['match_count']==1 and not solar_rejected(c) for c in candidates)
     if best['match_count']<2:
         out.update(status='planet_epoch_not_identifiable',confidence='single_planet_aliases',matches=[],match_count=0,
             best_candidate_jd_tdb=None,best_candidate_epoch_tdb=None,rms_px=None,conditional_time_sigma_minutes=None,
@@ -178,13 +181,14 @@ def apply_evidence(answer,evidence_rows):
             reason=f'Planetary epoch not identifiable: {single_count} single-planet aliases retained; no multi-planet solution')
         return out
     sigma=out.get('positional_sigma_px',.5)
-    peers=[c for c in candidates if not c['absence_penalty'] and c['match_count']==best['match_count']
+    peers=[c for c in candidates if not solar_rejected(c) and not c['absence_penalty'] and c['match_count']==best['match_count']
            and c['cost_px2']<=best['cost_px2']+9*sigma*sigma]
     # Negative evidence must not turn an already ambiguous search into a claimed date.
     ambiguous=(original_status=='planet_epoch_ambiguous' or best['match_count']<2 or len(peers)>1
                or best.get('boundary_limited',False)
                or min((m.get('predicted_altitude_deg',90.) for m in best['matches']),default=0.)<.01
-               or (out.get('visibility') or {}).get('zenith_status')!='conditional_zenith')
+               or (out.get('visibility') or {}).get('zenith_status')!='conditional_zenith'
+               or best.get('solar_evidence', {}).get('status')=='solar_unresolved')
     out.update(status='planet_epoch_ambiguous' if ambiguous else 'conditional_planet_epoch',
         confidence='ambiguous_candidates_with_absence_checks' if ambiguous else 'conditional_multiple_planets',
         matches=best['matches'],match_count=best['match_count'],best_candidate_jd_tdb=best['jd_tdb'],

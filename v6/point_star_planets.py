@@ -84,7 +84,7 @@ def search_planet_epochs(camera, detections, jd_grid, sky_grid, vector_function,
                          gate_px=3., positional_sigma_px=.5, zenith_unit_vector=None,
                          zenith_status='conditional_zenith', zenith_source='photometric_extinction',
                          latest_jd_tdb=None,
-                         planet_workers=1):
+                         planet_workers=1, solar_constraint=None):
     """Search trajectory segments, refine dates and retain competing assignments.
 
     Inputs are measured detections, a fitted camera and reference ephemerides only.
@@ -467,7 +467,7 @@ def search_planet_epochs(camera, detections, jd_grid, sky_grid, vector_function,
     brightness_order = sorted(range(len(detections)), key=lambda i: float(detections[i].get('flux_above_background', 0)), reverse=True)
     rank = {source: i+1 for i, source in enumerate(brightness_order)}
 
-    def retain_candidate(assignments, date):
+    def retain_candidate(assignments, date, *, solar_boundary_refinement=False):
         if any(not assignment_is_valid(name, source, date)
                for name, source in assignments):
             return
@@ -497,7 +497,19 @@ def search_planet_epochs(camera, detections, jd_grid, sky_grid, vector_function,
         if not matches:
             return
         cost = sum(match['separation_px']**2 for match in matches)
+        # An enclosing interval for this connected positional hypothesis. Every
+        # independently eligible anchor must remain inside its acceptance span;
+        # recruited overrides can only shrink this interval, never enlarge it.
+        spans = []
+        for name, source in assignments:
+            connected = [span for _, n, i, _, span in passages
+                         if n == name and i == source and span[0]-1e-7 <= date <= span[1]+1e-7]
+            if connected:
+                spans.append((min(s[0] for s in connected), max(s[1] for s in connected)))
+        interval = [min(date, max(s[0] for s in spans)), max(date, min(s[1] for s in spans))] if spans else [float(jd[0]), float(jd[-1])]
         candidate = dict(jd_tdb=float(date), epoch_tdb=_date_text(date), matches=matches,
+                         positional_interval_jd_tdb=list(map(float, interval)),
+                         solar_boundary_refinement=solar_boundary_refinement,
                          match_count=len(matches), cost_px2=cost,
                          constellation_override_count=sum(match['constellation_override'] for match in matches),
                          rms_px=float(np.sqrt(cost/len(matches))),
@@ -569,6 +581,18 @@ def search_planet_epochs(camera, detections, jd_grid, sky_grid, vector_function,
         retain_candidate(assignments, date)
         for expanded, expanded_date in expansions:
             retain_candidate(expanded, expanded_date)
+    if solar_constraint is not None and solar_constraint.active:
+        source_indices = {int(row['detection_id']): i for i, row in enumerate(detections)}
+        for candidate in list(candidates):
+            evidence = solar_constraint.assess(candidate['jd_tdb'], candidate['positional_interval_jd_tdb'])
+            if not evidence['requires_date_refinement']:
+                continue
+            assignments = [(m['planet'].lower(), source_indices[m['detection_id']]) for m in candidate['matches']]
+            for first, last in solar_constraint.possible_intervals(candidate['positional_interval_jd_tdb']):
+                for date, _ in refine(assignments, first, last, all_options=True):
+                    exact = solar_constraint.assess(date)
+                    if exact['status'] != 'solar_inconsistent':
+                        retain_candidate(assignments, date, solar_boundary_refinement=True)
     candidates.sort(key=lambda c: (-c['match_count'], c['cost_px2'], c['jd_tdb']))
     if not candidates:
         record_performance(time.perf_counter()-joint_started)
@@ -636,6 +660,17 @@ def fit_blind_planet_epoch(image_path, solution, result, *, epoch_limits=(1850.,
     zenith_path = output/'photometric_zenith.json'
     photometric_zenith = json.loads(zenith_path.read_text()) if zenith_path.is_file() else {}
     jd, grid, provenance = load_ephemeris(*epoch_limits)
+    from point_star_planet_solar import (
+        classify_night, zenith_envelope, SolarConstraint, annotate_candidates, write_solar_evidence)
+    fixed_ids = {str(identity) for identity in photometric_zenith.get('fitted_detection_ids', [])}
+    fixed_rows = [row for identity, row in used.items() if str(identity) in fixed_ids]
+    camera = _camera_from_result(result)
+    if fixed_rows and len(fixed_rows) == len(fixed_ids):
+        fixed_rays = camera.to_sky([[float(row['x_px']), float(row['y_px'])] for row in fixed_rows])
+    else:
+        fixed_rays = np.empty((0, 3))
+    solar = SolarConstraint(classify_night(result, len(used)), zenith_envelope(fixed_rays),
+                            zenith_unit_vector=photometric_zenith.get('zenith_unit_vector'))
     # Patched/local callables used by tests and embedders stay on the serial
     # reference path; the shipped module function is safe for process workers.
     parallel_safe = getattr(planet_vectors, '__module__', '') == 'point_star_planet_ephemeris'
@@ -645,7 +680,8 @@ def fit_blind_planet_epoch(image_path, solution, result, *, epoch_limits=(1850.,
                                  zenith_unit_vector=photometric_zenith.get('zenith_unit_vector'),
                                  zenith_status=photometric_zenith.get('status', 'unresolved'),
                                  zenith_source=photometric_zenith.get('zenith_source'),
-                                 latest_jd_tdb=ceiling['jd_tdb'], planet_workers=workers)
+                                 latest_jd_tdb=ceiling['jd_tdb'], planet_workers=workers,
+                                 solar_constraint=solar)
     answer['causal_epoch_ceiling'] = ceiling
     answer['ephemeris'] = provenance
     from point_star_planet_nondetections import check_candidate_absences, write_evidence
@@ -656,11 +692,15 @@ def fit_blind_planet_epoch(image_path, solution, result, *, epoch_limits=(1850.,
         post_search_counts['exact_calls'] += 1
         post_search_counts['exact_dates'] += len(values)
         return planet_vectors(name, values)
+    solar_started = time.perf_counter()
+    answer = annotate_candidates(answer, solar, camera, counted_planet_vectors)
+    solar_seconds = time.perf_counter()-solar_started
     answer = check_candidate_absences(image_path, answer, _camera_from_result(result),
                                      detections, list(used.values()), counted_planet_vectors,
                                      valid_mask=_load_sky_footprint(output))
-    evidence_seconds = time.perf_counter()-evidence_started
+    evidence_seconds = time.perf_counter()-evidence_started-solar_seconds
     write_evidence(output, answer)
+    write_solar_evidence(output, answer)
     answer['predicted_planets'] = predict_other_planets(
         _camera_from_result(result), answer, counted_planet_vectors)
     identities = {}
@@ -670,10 +710,19 @@ def fit_blind_planet_epoch(image_path, solution, result, *, epoch_limits=(1850.,
         for match in candidate['matches']:
             identities.setdefault(match['detection_id'], set()).add(match['planet'])
     answer['source_identity_alternatives'] = {str(key): sorted(value) for key, value in identities.items()}
+    surviving, rejected = {}, {}
+    for candidate in answer['candidates']:
+        target = surviving if candidate['solar_evidence']['selection_eligible'] else rejected
+        for match in candidate['matches']:
+            target.setdefault(str(match['detection_id']), set()).add(match['planet'])
+    answer['surviving_source_identity_alternatives'] = {key: sorted(value) for key, value in surviving.items()}
+    answer['solar_rejected_source_identity_alternatives'] = {key: sorted(value) for key, value in rejected.items()}
     answer['candidate_selection'] = ('nonnegative measured/predicted altitude relative to photometric zenith and valid detector projection; '
         'all measured detections considered; an isolated matched star may be challenged only with positional delta chi-square >=9; '
         'a coherent three-or-more-planet constellation anchored by two independently eligible planets may recruit a matched star '
-        'inside the ordinary planet gate only when the planet residual is smaller than the catalogue residual; saturated/broad sources retained')
+        'inside the ordinary planet gate only when the planet residual is smaller than the catalogue residual; saturated/broad sources retained; '
+        'accepted stellar field implies nighttime; candidates requiring daylight throughout their positional interval '
+        'for all zeniths in the fixed stellar-horizon envelope are excluded from selection')
     performance = answer.get('planet_search_performance')
     if performance is not None:
         for key, value in post_search_counts.items():
@@ -687,6 +736,8 @@ def fit_blind_planet_epoch(image_path, solution, result, *, epoch_limits=(1850.,
         }
         performance['seconds']['cache_load'] = float(provenance.get('cache_load_seconds', 0.))
         performance['seconds']['negative_evidence'] = float(evidence_seconds)
+        performance['seconds']['solar_evidence'] = float(solar_seconds)
+        performance['providers']['solar_exact_dates'] = len(solar._cache)
         performance['seconds']['total_planet_stage'] = float(time.perf_counter()-planet_stage_started)
         provider_counts = performance['providers']
         seconds = performance['seconds']
@@ -701,7 +752,10 @@ def fit_blind_planet_epoch(image_path, solution, result, *, epoch_limits=(1850.,
     if performance is not None:
         (output/'planet_search_performance.json').write_text(
             json.dumps(performance, indent=2, allow_nan=False)+'\n')
-    fields = ['candidate_rank', 'positional_rank', 'missing_bright_planets', 'epoch_tdb', 'match_count', 'rms_px', 'planet', 'detection_id',
+    fields = ['candidate_rank', 'positional_rank', 'missing_bright_planets', 'solar_status', 'solar_reason',
+              'solar_selection_eligible', 'solar_boundary_refinement',
+              'sun_altitude_deg', 'sun_minimum_altitude_deg', 'sun_maximum_altitude_deg',
+              'epoch_tdb', 'match_count', 'rms_px', 'planet', 'detection_id',
               'measured_x_px', 'measured_y_px', 'predicted_x_px', 'predicted_y_px', 'separation_px',
               'saturated', 'source_class', 'unused_brightness_rank', 'flux_above_background',
               'catalogue_star_id', 'catalogue_residual_px', 'improvement_over_star_chi2',
@@ -710,8 +764,15 @@ def fit_blind_planet_epoch(image_path, solution, result, *, epoch_limits=(1850.,
         writer = csv.DictWriter(handle, fieldnames=fields); writer.writeheader()
         for rank, candidate in enumerate(answer['candidates'], 1):
             for match in candidate['matches']:
+                solar_row = candidate['solar_evidence']
                 writer.writerow(dict(candidate_rank=rank, positional_rank=candidate['positional_rank'],
                                      missing_bright_planets=';'.join(candidate['missing_bright_planets']),
+                                     solar_status=solar_row['status'], solar_reason=solar_row['reason'],
+                                     solar_selection_eligible=solar_row['selection_eligible'],
+                                     solar_boundary_refinement=candidate['solar_boundary_refinement'],
+                                     sun_altitude_deg=solar_row.get('adopted_zenith_solar_altitude_deg'),
+                                     sun_minimum_altitude_deg=solar_row.get('minimum_solar_altitude_deg'),
+                                     sun_maximum_altitude_deg=solar_row.get('maximum_solar_altitude_deg'),
                                      epoch_tdb=candidate['epoch_tdb'],
                                      match_count=candidate['match_count'], rms_px=candidate['rms_px'], **match))
     with (output/'planet_source_candidates.csv').open('w') as handle:
@@ -754,7 +815,7 @@ def write_epoch_diagnostics(output, answer):
     output = Path(output)
     candidates = answer.get('candidates', [])
     lines = [f"Blind planetary epoch candidates: {len(candidates)} ({answer['status']})",
-             'Fit rank | Candidate epoch (TDB)       | Planet/source                   | RMS px | local sigma (h) | Missing bright planets']
+             'Fit rank | Candidate epoch (TDB)       | Planet/source                   | RMS px | local sigma (h) | Missing bright planets | Solar status']
     if answer.get('visibility'):
         visible = answer['visibility']
         lines.insert(1, f"Visibility: altitude >=0 degrees using {visible['source']} ({visible['zenith_status']}); {visible.get('rejected_below_horizon_count', 0)} below-horizon detections rejected.")
@@ -765,9 +826,17 @@ def write_epoch_diagnostics(output, answer):
         bodies = ', '.join(f"{m['planet']} #{m['detection_id']}" for m in candidate['matches'])
         sigma = candidate.get('conditional_time_sigma_minutes')
         sigma_text = f'{sigma/60:.2f}' if sigma is not None else 'unresolved'
-        lines.append(f"{rank:8d} | {candidate['epoch_tdb']:27s} | {bodies:31s} | {candidate['rms_px']:6.3f} | {sigma_text} | {', '.join(candidate.get('missing_bright_planets', [])) or '--'}")
+        solar_status = candidate.get('solar_evidence', {}).get('status', 'not_checked')
+        if candidate.get('solar_evidence', {}).get('requires_date_refinement'):
+            solar_status += ' (epoch needs refit)'
+        lines.append(f"{rank:8d} | {candidate['epoch_tdb']:27s} | {bodies:31s} | {candidate['rms_px']:6.3f} | {sigma_text} | {', '.join(candidate.get('missing_bright_planets', [])) or '--'} | {solar_status}")
     if answer.get('negative_evidence'):
         lines.append('Candidates with missing bright planets rank below uncontradicted trials; unknown detectability is neutral. See planet_non_detections.json.')
+    if answer.get('solar_evidence'):
+        solar = answer['solar_evidence']
+        lines.append(f"Solar consistency: {solar['rejected_candidates']} rejected, {solar['unresolved_candidates']} unresolved, "
+                     f"{solar['consistent_candidates']} consistent. Night classification: {answer['night_classification']['status']}. "
+                     'Rejected epochs remain in the audit; see planet_solar_evidence.json.')
     lines.append('Local sigma excludes alternative dates and model systematics; smallest residual is not an identification.')
     text = '\n'.join(lines)+'\n'
     (output/'planet_epoch_candidates.txt').write_text(text)

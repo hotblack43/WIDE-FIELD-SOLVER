@@ -190,6 +190,8 @@ def report_sections(result, science=None, **legacy):
         atmosphere += ' The image lacks a usable airmass-based extinction fit.'
 
     matches = planets.get('matches') or []
+    identity_alternatives = planets.get('surviving_source_identity_alternatives',
+                                       planets.get('source_identity_alternatives', {}))
     if matches:
         descriptions = [
             f"{row['planet']} at source #{row['detection_id']} "
@@ -200,8 +202,8 @@ def report_sections(result, science=None, **legacy):
         if planets.get('status') in ('planet_epoch_ambiguous', 'conditional_planet_epoch'):
             planet_text = (
                 f"Blind positional candidates: {'; '.join(descriptions)}. "
-                + (f"Alternative identities: {', '.join(sorted({name for values in planets.get('source_identity_alternatives', {}).values() for name in values}))}. "
-                   if planets.get('source_identity_alternatives') else '') +
+                + (f"Alternative identities: {', '.join(sorted({name for values in identity_alternatives.values() for name in values}))}. "
+                   if identity_alternatives else '') +
                 f"Best candidate: {planets.get('best_candidate_epoch_tdb', '--')}. "
                 f"{planets.get('candidate_count', 0)} date/identity solutions retained. "
                 f"Status: {planets['status'].replace('_', ' ')}. "
@@ -227,6 +229,14 @@ def report_sections(result, science=None, **legacy):
     if evidence.get('contradicted_candidates'):
         planet_text += (f" Bright-planet absence checks contradict {evidence['contradicted_candidates']} positional candidates; "
                         'details in planet_non_detections.json. This is a local consistency check, not calibrated odds.')
+    solar = planets.get('solar_evidence') or {}
+    if solar:
+        night = (planets.get('night_classification') or {}).get('status')
+        planet_text += (' Identified stellar field treated as nighttime. ' if night == 'night_supported'
+                        else ' Nighttime condition unresolved. ')
+        planet_text += (f"Solar geometry excludes {solar['rejected_candidates']} candidate dates; "
+                        f"{solar['unresolved_candidates']} remain solar-unresolved. "
+                        'See planet_solar_evidence.json.')
     return dict(lens=lens, astrometry=astrometry, atmosphere=atmosphere, planets=planet_text)
 
 

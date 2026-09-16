@@ -54,6 +54,15 @@ def planet_vectors(name: str, jd_tdb) -> np.ndarray:
     """
     if name not in PLANETS:
         raise ValueError(f'Unsupported planet: {name!r}')
+    return _body_vectors(name, jd_tdb)
+
+
+def sun_vectors(jd_tdb) -> np.ndarray:
+    """Sun in the same local apparent geocentric GCRS convention as planets."""
+    return _body_vectors('sun', jd_tdb)
+
+
+def _body_vectors(name, jd_tdb):
     jd = np.asarray(jd_tdb, dtype=np.float64)
     if jd.ndim > 1 or not np.isfinite(jd).all():
         raise ValueError('jd_tdb must be finite scalar or one-dimensional Julian dates')
