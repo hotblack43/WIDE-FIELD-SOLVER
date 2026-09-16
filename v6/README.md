@@ -30,8 +30,10 @@ Bright-planet evidence, numerical rules and limitations: [docs/PLANET_NONDETECTI
 V6 can conservatively recover a third or later planet that was initially
 assigned to Gaia when two independently eligible planets anchor a common date.
 The full constellation is refitted before the planet and Gaia residuals are
-compared; isolated and two-body gates remain unchanged. JSON and CSV retain the
-displaced catalogue identity and a `constellation_override` flag. See
+compared. Every compatible one-to-one override alternative inside the ordinary
+gate is tested, so a rejected nearer source or extra planet cannot mask a valid
+Mars or Uranus match; isolated and two-body gates remain unchanged. JSON and CSV
+retain the displaced catalogue identity and a `constellation_override` flag. See
 [the verified Mars/Jupiter/Saturn case](docs/PLANET_CONSTELLATION_NOTES.md).
 
 The v6 blind planet search ships a validated 1850--2036 daily proposal table,

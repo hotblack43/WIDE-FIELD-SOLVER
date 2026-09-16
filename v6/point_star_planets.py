@@ -405,9 +405,9 @@ def search_planet_epochs(camera, detections, jd_grid, sky_grid, vector_function,
                 if s < len(xy) and distance2[p, s] <= source_gate2[s]*(1+1e-8)]
 
     def recruit_constellation(date, anchors):
-        """Add Gaia-associated sources only behind a two-planet date anchor."""
+        """Enumerate compatible Gaia overrides behind a two-planet date anchor."""
         if len(anchors) < 2:
-            return list(anchors)
+            return []
         anchored_planets = {name for name, _ in anchors}
         anchored_sources = {source for _, source in anchors}
         remaining_planets = [name for name in names if name not in anchored_planets]
@@ -415,7 +415,7 @@ def search_planet_epochs(camera, detections, jd_grid, sky_grid, vector_function,
                             if source not in anchored_sources and visible[source]
                             and not eligible[source] and np.isfinite(star_residual[source])]
         if not remaining_planets or not override_sources:
-            return list(anchors)
+            return []
         predictions = np.array([prediction(name, date) for name in remaining_planets])
         distance2 = np.sum((predictions[:, None, :]-xy[override_sources][None, :, :])**2, axis=2)
         # The anchor-only date can place a faster third planet farther from its
@@ -423,16 +423,27 @@ def search_planet_epochs(camera, detections, jd_grid, sky_grid, vector_function,
         # assignment_is_valid applies the Gaia comparison after the common epoch
         # has been refitted with the complete constellation.
         valid = distance2 <= gate_px**2
-        # Dummy columns leave a planet unmatched. Every valid real assignment is
-        # cheaper than a dummy; invalid assignments can never be selected.
-        costs = np.ones((len(remaining_planets), len(override_sources)+len(remaining_planets)))
-        costs[:, :len(override_sources)] = np.where(
-            valid, distance2/((len(names)+1)*gate_px**2), 1e6)
-        planet_rows, source_columns = linear_sum_assignment(costs)
-        additions = [(remaining_planets[row], override_sources[column])
-                     for row, column in zip(planet_rows, source_columns)
-                     if column < len(override_sources) and valid[row, column]]
-        return list(anchors)+additions
+        choices = [[override_sources[column] for column in np.flatnonzero(valid[row])]
+                   for row in range(len(remaining_planets))]
+        memberships = []
+
+        def enumerate_compatible(row, additions, used_sources):
+            if row == len(remaining_planets):
+                if additions:
+                    memberships.append(list(anchors)+list(additions))
+                return
+            # A planet may remain unmatched. Exhaustive alternatives matter:
+            # the closest source at the anchor-only date need not beat Gaia
+            # after the common epoch is refitted.
+            enumerate_compatible(row+1, additions, used_sources)
+            name = remaining_planets[row]
+            for source in choices[row]:
+                if source not in used_sources:
+                    enumerate_compatible(
+                        row+1, additions+[(name, source)], used_sources | {source})
+
+        enumerate_compatible(0, [], set(anchored_sources))
+        return memberships
 
     def assignment_is_valid(name, source, date):
         predicted = prediction(name, date)
@@ -493,22 +504,20 @@ def search_planet_epochs(camera, detections, jd_grid, sky_grid, vector_function,
                 start, stop = common_interval(assignments, date)
             else:
                 date, _ = refine(assignments, start, stop)
-            expanded = recruit_constellation(date, assignments)
-            while len(expanded) > len(assignments):
+            best_expansion = None
+            best_expansion_key = None
+            for expanded in recruit_constellation(date, assignments):
                 expanded_date, _ = refine(expanded, start, stop)
-                if any(not assignment_is_valid(n, i, expanded_date)
-                       for n, i in assignments):
-                    break
-                survivors = list(assignments)+[
-                    (name, source) for name, source in expanded[len(assignments):]
-                    if assignment_is_valid(name, source, expanded_date)]
-                if len(survivors) == len(assignments):
-                    break
-                if len(survivors) == len(expanded):
-                    assignments = expanded
-                    date = expanded_date
-                    break
-                expanded = survivors
+                if any(not assignment_is_valid(n, i, expanded_date) for n, i in expanded):
+                    continue
+                residual2 = sum(float(np.sum((prediction(n, expanded_date)-xy[i])**2))
+                                for n, i in expanded)
+                expansion_key = (-len(expanded), residual2, tuple(expanded))
+                if best_expansion_key is None or expansion_key < best_expansion_key:
+                    best_expansion = expanded, expanded_date
+                    best_expansion_key = expansion_key
+            if best_expansion is not None:
+                assignments, date = best_expansion
         if (trial_index+1) % 100 == 0:
             print(f'Blind planets: {trial_index+1}/{len(seeds)} joint date trials', flush=True)
         if any(not assignment_is_valid(n, i, date) for n, i in assignments):

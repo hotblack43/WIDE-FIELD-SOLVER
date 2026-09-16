@@ -64,6 +64,17 @@ class PlanetSearchTests(unittest.TestCase):
             self.camera, sources, dates, grid, vectors, gate_px=1.,
             positional_sigma_px=.2, zenith_unit_vector=[0, 0, 1])
 
+    def search_catalogue_case(self, tracks, sources):
+        from point_star_planets import search_planet_epochs
+        dates = self.origin + np.arange(11.)
+        def vectors(name, jd):
+            return self.camera.to_sky(tracks[name](np.atleast_1d(jd)-self.origin))
+        grid = {name: vectors(name, dates) for name in tracks}
+        return search_planet_epochs(
+            self.camera, sources, dates, grid, vectors, gate_px=1.,
+            positional_sigma_px=.2, zenith_unit_vector=[0, 0, 1],
+            latest_jd_tdb=self.origin+100.)
+
     def test_other_planets_use_fixed_epoch_and_visibility_without_changing_fit(self):
         from copy import deepcopy
         from point_star_planets import predict_other_planets
@@ -263,10 +274,60 @@ class PlanetSearchTests(unittest.TestCase):
                          {'Jupiter', 'Saturn'})
 
     def test_invalid_fourth_override_does_not_hide_valid_third_planet(self):
-        result = self.search_catalogue_constellation(include_uranus=True)
+        tracks = {
+            'saturn': lambda t: np.c_[120+2*(t-4.3), np.full(len(t), 100.)],
+            'jupiter': lambda t: np.c_[np.full(len(t), 270.), 170+3*(t-4.3)],
+            'mars': lambda t: np.c_[220+1*(t-4.3), np.full(len(t), 210.)],
+            'uranus': lambda t: np.c_[250+20*(t-4.3), np.full(len(t), 250.)],
+        }
+        sources = [
+            dict(detection_id='1', x_px=120., y_px=100.),
+            dict(detection_id='2', x_px=270., y_px=170.),
+            dict(detection_id='3', x_px=220.5, y_px=210.,
+                 catalogue_star_id='mars-gaia', catalogue_residual_px=.49),
+            dict(detection_id='4', x_px=249.7, y_px=250.,
+                 catalogue_star_id='uranus-gaia', catalogue_residual_px=.005),
+        ]
+        result = self.search_catalogue_case(tracks, sources)
         self.assertEqual(result['match_count'], 3)
         self.assertEqual({row['planet'] for row in result['matches']},
                          {'Mars', 'Jupiter', 'Saturn'})
+
+    def test_rejected_nearer_source_does_not_hide_valid_planet_source(self):
+        tracks = {
+            'saturn': lambda t: np.c_[120+2*(t-4.3), np.full(len(t), 100.)],
+            'jupiter': lambda t: np.c_[np.full(len(t), 270.), 170+3*(t-4.3)],
+            'mars': lambda t: np.c_[220+1*(t-4.3), np.full(len(t), 210.)],
+        }
+        sources = [
+            dict(detection_id='1', x_px=120., y_px=100.),
+            dict(detection_id='2', x_px=270., y_px=170.),
+            dict(detection_id='3', x_px=220.2, y_px=210.,
+                 catalogue_star_id='tight-gaia', catalogue_residual_px=.10),
+            dict(detection_id='4', x_px=220.5, y_px=210.,
+                 catalogue_star_id='valid-gaia', catalogue_residual_px=.59),
+        ]
+        result = self.search_catalogue_case(tracks, sources)
+        self.assertEqual({(row['planet'], row['detection_id']) for row in result['matches']},
+                         {('Saturn', 1), ('Jupiter', 2), ('Mars', 4)})
+
+    def test_two_planet_constellation_can_recruit_uranus(self):
+        tracks = {
+            'saturn': lambda t: np.c_[120+2*(t-4.3), np.full(len(t), 100.)],
+            'jupiter': lambda t: np.c_[np.full(len(t), 270.), 170+3*(t-4.3)],
+            'uranus': lambda t: np.c_[250+20*(t-4.3), np.full(len(t), 250.)],
+        }
+        sources = [
+            dict(detection_id='1', x_px=120., y_px=100.),
+            dict(detection_id='2', x_px=270., y_px=170.),
+            dict(detection_id='3', x_px=250.9, y_px=250.,
+                 catalogue_star_id='chance-gaia-star', catalogue_residual_px=.6),
+        ]
+        result = self.search_catalogue_case(tracks, sources)
+        self.assertEqual(result['match_count'], 3)
+        uranus = next(row for row in result['matches'] if row['planet'] == 'Uranus')
+        self.assertTrue(uranus['constellation_override'])
+        self.assertLess(uranus['separation_px'], uranus['catalogue_residual_px'])
 
     def test_one_planet_anchor_cannot_unlock_a_catalogue_override(self):
         result = self.search_catalogue_constellation(include_jupiter=False)

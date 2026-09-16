@@ -53,7 +53,10 @@ later planet when the source lies inside the ordinary planet gate at the anchor
 date. The epoch is then refitted against the full constellation. The recruitment
 survives only when every anchor remains inside its original gate and the added
 planet is both inside the ordinary gate and closer to the measured centroid than
-the saved Gaia prediction. Planet and source assignments remain one-to-one.
+the saved Gaia prediction. Planet and source assignments remain one-to-one. All
+compatible override combinations are evaluated: a rejected extra planet cannot
+shift the joint date and hide a valid third match, and a nearer rejected source
+cannot hide a farther source that beats its own Gaia residual after refitting.
 
 This ordering matters: Mars can be farther from the centroid than Gaia at the
 Jupiter/Saturn-only epoch, yet become the better explanation after its faster
