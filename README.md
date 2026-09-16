@@ -4,21 +4,21 @@ by Peter Thejll and Chris Flynn
 
 Find stars in a wide-field image, identify them against a catalogue, fit the
 Barghini fish-eye lens model, and produce an annotated scientific report.
-This guide covers **`go.sh`, `go4.sh` and `go5.sh`**.
+This guide covers **`go.sh`, `go4.sh`, `go5.sh` and `go6.sh`**.
 
 ## 1. Choose a version
 
-| | `go.sh` — legacy | `go4.sh` — preserved v4 | `go5.sh` — v5 |
-|---|---|---|---|
-| Use it for | Reproducing the established Tycho workflow | Reproducing Gaia v0.4.3 | New analyses with v0.5.0 |
-| Stellar catalogue | Tycho-2/Hipparcos | Gaia DR3 with a bright-star supplement | Gaia DR3 with the same supplement |
-| Planet analysis | Historical metadata-assisted diagnostics | Blind positional search with visibility checks | Blind search with bright-planet detection evidence; see the feature status |
-| Repeated runs | Replace the same image's previous output | Create a separate folder for every run | Create a separate folder for every run |
+| | `go.sh` — legacy | `go4.sh` — preserved v4 | `go5.sh` — preserved v5 | `go6.sh` — v6 |
+|---|---|---|---|---|
+| Use it for | Reproducing the established Tycho workflow | Reproducing Gaia v0.4.3 | Reproducing v0.5.0 | New analyses with v0.6.0 |
+| Stellar catalogue | Tycho-2/Hipparcos | Gaia DR3 plus bright supplement | Gaia DR3 plus bright supplement | Gaia DR3 plus bright supplement |
+| Planet analysis | Historical metadata-assisted diagnostics | Blind positional search | Blind search with absence evidence | Same exact search, bundled reference and batched/parallel refinement |
+| Repeated runs | Replace previous output | New folder per run | New folder per run | New folder per run |
 
-All three versions are included and accept monochrome and RGB images. You do not
+All four versions are included and accept monochrome and RGB images. You do not
 need to switch branches or edit code. `go_v0.4.3.sh` selects the preserved v4
-release; `go_v0.5.0.sh` selects the v5 release. The `v4/` and `v5/` packages each
-contain their own modules, catalogues and pinned dependencies.
+release; `go_v0.5.0.sh` selects v5 and `go_v0.6.0.sh` selects v6. The versioned
+packages each contain their own modules, catalogues and pinned dependencies.
 
 ## 2. Install
 
@@ -33,6 +33,7 @@ cd WIDE-FIELD-SOLVER
 uv sync --frozen
 uv sync --project v4 --frozen
 uv sync --project v5 --frozen
+uv sync --project v6 --frozen
 ```
 
 The first setup needs internet access to download dependencies. The stellar
@@ -64,6 +65,12 @@ Run **one** of these commands from the repository root. Quote paths containing s
 ./go5.sh "/full/path/to/image.jpg"
 ```
 
+**Gaia v0.6.0 (faster planetary search):**
+
+```sh
+./go6.sh "/full/path/to/image.jpg"
+```
+
 Each command prints the PDF report location when finished. The Gaia launchers
 also print their run folder and log location at startup. A complete run can take
 several minutes, especially when bootstrap or planetary searches need more work.
@@ -75,20 +82,27 @@ several minutes, especially when bootstrap or planetary searches need more work.
 | `go.sh` | `results/IMAGE_STEM/` | The folder is replaced |
 | `go4.sh` | `results/runs/IMAGE-v0.4.3-TIMESTAMP-UNIQUE/analysis/` | A new folder is created; the run log is alongside `analysis/` |
 | `go5.sh` | `results/runs/IMAGE-v0.5.0-TIMESTAMP-UNIQUE/analysis/` | A new folder is created; the run log is alongside `analysis/` |
+| `go6.sh` | `results/runs/IMAGE-v0.6.0-TIMESTAMP-UNIQUE/analysis/` | A new folder is created; the run log is alongside `analysis/` |
 
 `IMAGE_STEM` means the input filename without its extension.
-For `go4.sh` and `go5.sh`, open **`report.pdf`** in the printed output folder; its parent run
+For `go4.sh`, `go5.sh` and `go6.sh`, open **`report.pdf`** in the printed output folder; its parent run
 folder identifies the input image. Legacy `go.sh` retains its `report_*.pdf` name.
 
 For v5, [bright-planet absence checks](v5/docs/PLANET_NONDETECTIONS.md) explain
 how missing Mercury, Venus, Mars, Jupiter or Saturn can count against an epoch,
 and when the image is too uncertain to judge.
+V6 preserves those rules and adds a bundled 1850--2036 reference, batched exact
+refinement and up to four planet workers. Its controlled benchmark measured a
+[3.09x median planetary-stage speedup](v6/docs/PLANET_SEARCH_PERFORMANCE.md).
 
 Other useful products include:
 
 - `result.json`: fitted camera, residuals and provenance.
 - `star_coordinates.csv`: measured positions, model predictions and catalogue identities.
 - `stellar_photometry.csv`: instrumental fluxes, magnitudes and quality flags.
+- In v5/v6 `report.pdf`, page 3 compares camera R/G/B instrumental magnitudes
+  with Gaia RP/G/BP in one row. Both magnitude axes put brighter stars toward
+  the upper right; the displayed fit is ordinary least squares, with no 1:1 line.
 - In Gaia results, `solution.fits`: image, ZPN coordinates and embedded overlays.
   Open with `./v4/view_fits.sh /path/to/solution.fits`; use DS9 **Region → Show**
   to toggle overlays, or use `./v5/view_fits.sh` for v5. See
@@ -104,15 +118,15 @@ fit. Thinner hollow stars labelled “predicted” show the other planets expect
 in view at that same candidate epoch; they are not measured identifications.
 Other date/identity alternatives remain in the numerical records.
 
-`go4.sh` and `go5.sh` fit from the image and reference catalogues. Observing time and site
+`go4.sh`, `go5.sh` and `go6.sh` fit from the image and reference catalogues. Observing time and site
 are reserved for a separately requested comparison after the blind fits.
 The legacy analyser's metadata-assisted diagnostics retain their historical
 behaviour. Instrumental image photometry is not automatically calibrated
 astronomical photometry.
 
-See [v4 capabilities and limitations](v4/docs/FEATURE_STATUS.md) and
-[v5 capabilities and limitations](v5/docs/FEATURE_STATUS.md) for each version’s
-scientific status.
+See [v4 capabilities and limitations](v4/docs/FEATURE_STATUS.md),
+[v5 capabilities and limitations](v5/docs/FEATURE_STATUS.md), and
+[v6 status](v6/docs/FEATURE_STATUS.md) for each version's scientific status.
 
 ## Try the included example
 
@@ -129,10 +143,11 @@ To run the same historical regression through either Gaia-capable implementation
 ```sh
 ./v4/demo.sh --output results/example-check-v4
 ./v5/demo.sh --output results/example-check-v5
+./v6/demo.sh --output results/example-check-v6
 ```
 
 All demo commands deliberately use the historical Tycho catalogue for comparison;
-use `go4.sh` or `go5.sh` for the corresponding Gaia analysis.
+use `go4.sh`, `go5.sh` or `go6.sh` for the corresponding Gaia analysis.
 
 ![Preserved Milky Way example with 40 named stars](examples/milky_way/reference/identified_40_stars.png)
 
@@ -145,6 +160,7 @@ options belong to the corresponding analyser:
 ./analyse.sh --help       # legacy Tycho workflow
 ./v4/analyse.sh --help    # preserved Gaia v4 workflow
 ./v5/analyse.sh --help    # Gaia v5 workflow
+./v6/analyse.sh --help    # Gaia v6 workflow
 ```
 
 For an advanced Gaia run, select its catalogue explicitly:
@@ -169,6 +185,6 @@ command above for the preserved release.
 - [Attribution and redistribution notice](NOTICE.md)
 
 The original `v0.1.0` tag and historical reference products are preserved.
-New v5 changes stay in `v5/`. The legacy Tycho code and v0.4.3 runtime and
-launchers remain preserved; [the v4 hash manifest](docs/v4-runtime.json) records
-the release checkpoint.
+New changes stay in `v6/`. The legacy Tycho, v0.4.3 and v0.5.0 runtimes and
+launchers remain preserved; the [v4](docs/v4-runtime.json) and
+[v5](docs/v5-runtime.json) hash manifests record those checkpoints.

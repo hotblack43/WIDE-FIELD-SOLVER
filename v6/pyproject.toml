@@ -1,0 +1,20 @@
+[project]
+name = "wide-field-solver"
+version = "0.6.0"
+description = "Point-star fisheye astrometry with the Barghini O/Z FET model"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "astropy==7.2.0",
+    "astroquery==0.4.11",
+    "matplotlib==3.11.1",
+    "numpy==2.4.4",
+    "pillow==12.2.0",
+    "scipy==1.17.1",
+    "tetra3",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+tetra3 = { git = "https://github.com/esa/tetra3.git", rev = "f9fa2eb9a32a5efc529e2d86f0b59f35b1e9028d" }
