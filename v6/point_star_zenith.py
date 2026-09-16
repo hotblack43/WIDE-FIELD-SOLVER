@@ -199,8 +199,15 @@ def fit_photometric_zenith(rays, dimming, radial_squared, *, loss_scale_mag=.1,
     primary = optimise(False)
     sensitivity = optimise(True)
     if primary is None or sensitivity is None:
-        return adopt_geometry(
-            'No converged zenith keeps the fixed photometric sample at or above the horizon')
+        reason = 'No converged zenith keeps the fixed photometric sample at or above the horizon'
+        partial_trial = None
+        if primary is not None:
+            reason = ('Radial-response sensitivity fit did not converge; '
+                      'photometric zenith is not identifiable')
+            partial_trial = dict(
+                primary, status='not_identifiable', reason=reason,
+                radial_response_check=None, radial_response_shift_deg=None)
+        return adopt_geometry(reason, photometric_trial=partial_trial)
     selected = primary
     angle = float(np.rad2deg(np.arccos(np.clip(np.dot(primary['zenith_unit_vector'], sensitivity['zenith_unit_vector']), -1, 1))))
     reasons = []

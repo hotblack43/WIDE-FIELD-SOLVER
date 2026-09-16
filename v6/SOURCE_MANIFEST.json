@@ -83,7 +83,7 @@
     "point_star_report.py": "496d731ff2feccc4a0f0ddd9b25af0311cb78add1b26c605646992599ee399ca",
     "point_star_science.py": "43bf5105466a7ff82727df4d142ff31c9ef851fa5f248ddeb0ad576529618030",
     "point_star_time_bounds.py": "ba233c34f1656b4555962fcc9e1eb6ada17d746f532eb2abb345c6f0c419b5a3",
-    "point_star_zenith.py": "c8e4b8055ef6934a549baa779becbc595c51496cf7d2f32e6761188f93c016b2",
+    "point_star_zenith.py": "b0617a53a6dfaad67e16d0c64058bc53b8a2e94d1377150a536c15a34ddd77bf",
     "pyproject.toml": "db441580067e5c9109abf573d8a08299cffb147370be401a0d99f224b3584a2c",
     "run.sh": "5c51ebef16a4a2e62ae9b62f9f8110582f0b0e16f823fbb51dceb48dfcfb390e",
     "scripts/benchmark_planet_search.py": "77f0d28d860e7ccdfb027751aed4890f3f95dcff7b3ede297a864845fe126dd4",
@@ -118,7 +118,7 @@
     "test_point_star_report.py": "54a3a20f61f2cb2f1f78758a563d9fd4acb863e82dc909c8a83d6ca2c8b1bec9",
     "test_point_star_science.py": "c2fefdc8eb542caec6bdce5f7a6b54b930275400a09febc636acee19f2dda3ab",
     "test_point_star_time_bounds.py": "f4883bea1712726bab4d135cf4d0eb6457effb6d8e3c3bc2cbe9e52180658b7c",
-    "test_point_star_zenith.py": "888da7d96688ae8e3e631057bd991d2c01bf1ac8d1b92f10b0510cb28828bfa7",
+    "test_point_star_zenith.py": "17bd1349dfc4308da824a95f3c0f3bd632224dc8d008724815e7a3516b8c494b",
     "tests/fixtures/bootstrap_pixels.json": "6b665b19610d9c188025b1dc3eaa487ac51502ec58971f80391e8cd09bb422fe",
     "uv.lock": "5ac1a1b3346fc572b111c79cccd7fc8f8ad1019c4e13b0287ccd39852a99cd12",
     "view_fits.sh": "b9cd5aa92b0ad599dbab4f859beba0a0c0e9b713c13bf93d9a71d0a941593e15"

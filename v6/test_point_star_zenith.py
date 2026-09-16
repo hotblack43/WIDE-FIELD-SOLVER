@@ -1,6 +1,7 @@
 """Known photometric zenith and failure cases without location or date inputs."""
 import unittest
 import numpy as np
+from unittest.mock import patch
 
 
 def photometric_field(extinction=.23, noise=.015, vignette=0.):
@@ -145,6 +146,32 @@ class ZenithTests(unittest.TestCase):
         self.assertEqual(answer['zenith_source'], 'centred_full_horizon_geometry')
         np.testing.assert_allclose(answer['zenith_unit_vector'], [0., 0., 1.])
         self.assertIn('visible hemisphere', answer['reason'])
+
+    def test_primary_minimum_is_audited_when_radial_sensitivity_does_not_converge(self):
+        import point_star_zenith
+        from scipy.optimize import OptimizeResult
+        rays, dimming, radial, geometric = photometric_field()
+        real_minimize = point_star_zenith.minimize
+        calls = 0
+
+        def fail_second_optimisation(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            if calls <= 9:
+                return real_minimize(*args, **kwargs)
+            return OptimizeResult(success=False, message='injected sensitivity failure')
+
+        with patch('point_star_zenith.minimize', side_effect=fail_second_optimisation):
+            answer = point_star_zenith.fit_photometric_zenith(
+                rays, dimming, radial,
+                geometric_zenith_unit_vector=geometric,
+                geometric_evidence={'status': 'centred_full_horizon',
+                                    'centre_px': [99.5, 99.5]},
+            )
+        self.assertEqual(answer['zenith_source'], 'centred_full_horizon_geometry')
+        self.assertEqual(answer['photometric_trial']['status'], 'not_identifiable')
+        self.assertIn('sensitivity', answer['photometric_trial']['reason'])
+        self.assertIn('cost', answer['photometric_trial'])
 
     def test_many_stars_with_no_spatial_coverage_are_unresolved(self):
         from point_star_zenith import fit_photometric_zenith
