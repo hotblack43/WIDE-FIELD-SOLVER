@@ -15,6 +15,7 @@ must not describe a proposal as working merely because related products exist.
 | Proper-motion propagation in the final astrometric solution | Added in 0.3.0 | Shared catalogue propagation, synthetic recovery and exported-coordinate checks |
 | Stellar epoch fitted with all associations; final camera saved | Added in 0.3.0 | All-star robust profile; conditional or provisional date status |
 | RGB instrumental photometry | Implemented | Aperture fluxes and flags retained in stellar_photometry.csv |
+| RGB-versus-catalogue report diagnostics | Integrated in v0.5.0 development | Third PDF page compares camera R/G/B instrumental magnitudes with Gaia RP/G/BP for finite unsaturated Gaia matches; passband mismatch and lack of calibration are explicit |
 | Extinction as nuisance regression in blind zenith search | Added in 0.3.0 using robust regression | Fixed membership; no site/time-derived airmass; G plot uses the exact fitted line. The OLS reference specified in GOAL.md and its comparison remain unimplemented |
 | Zenith estimated by minimising photometric regression scatter | Added in 0.3.0; conditional component | Synthetic recovery and degeneracy tests; real example remains unresolved under the radial-response check |
 | Zenith fitted through astrometric refraction residuals | Implemented downstream diagnostic | Different objective from photometric zenith; does not establish that photometric proposal works |
@@ -290,6 +291,24 @@ Mars, Jupiter and Saturn on 2018-04-16, with 0.3543-pixel RMS. The evidence,
 root cause and proposed constellation/relative-brightness work are recorded in
 [PLANET_CONSTELLATION_NOTES.md](PLANET_CONSTELLATION_NOTES.md). This is a design
 note, not a claim that the joint scoring change is already implemented.
+
+## v0.5.0 development: RGB catalogue comparison page
+
+The investigator PDF now has a third page comparing instrumental camera R, G
+and B magnitudes with the nearest available Gaia DR3 catalogue passbands: RP, G
+and BP respectively. The plots retain every finite unsaturated Gaia/channel
+pair, including photometric outliers, and show an ordinary least-squares
+diagnostic line without a potentially misleading one-to-one reference line.
+The three channels share one landscape row. Both magnitude axes are inverted,
+so brighter (numerically smaller) magnitudes appear toward the upper right.
+Bright Tycho-2/Hipparcos supplements without Gaia BP/RP measurements are not
+silently assigned invented colours.
+
+The page is explicitly diagnostic rather than a photometric calibration. Gaia
+and camera/JPEG passbands differ, and colour terms, extinction, vignetting and
+the encoded camera response remain unmodelled. This report-only addition does
+not change detections, associations, the photometric-zenith sample, astrometry
+or saved coordinates.
 
 Single-planet date/identity aliases no longer select or display an epoch after
 the absence-evidence stage. They remain intact in the JSON and CSV candidate

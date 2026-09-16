@@ -198,6 +198,61 @@ class ReportTests(unittest.TestCase):
         self.assertNotIn('0.225', text)
         self.assertNotIn('2026-09-14', text)
 
+    def test_rgb_photometry_uses_gaia_rp_g_bp_and_keeps_finite_unsaturated_rows(self):
+        from point_star_report import photometry_comparisons
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root/'stellar_photometry.csv').write_text(
+                'detection_id,star_id,saturated,R_mag,G_mag,B_mag\n'
+                '1,Gaia DR3 101,False,-5.0,-5.1,-5.2\n'
+                '2,Gaia DR3 102,True,-6.0,-6.1,-6.2\n'
+                '3,HIP 000001,False,-7.0,-7.1,-7.2\n'
+                '4,Gaia DR3 103,False,-8.0,nan,-8.2\n')
+            catalogue = root/'gaia-source.csv'
+            catalogue.write_text(
+                'source_id,phot_g_mean_mag,phot_bp_mean_mag,phot_rp_mean_mag\n'
+                '101,6.0,6.5,5.5\n'
+                '102,7.0,7.5,6.5\n'
+                '103,8.0,8.5,7.5\n')
+
+            comparisons = photometry_comparisons(root, catalogue_path=catalogue)
+
+            np.testing.assert_allclose(comparisons['R']['catalogue_mag'], [5.5, 7.5])
+            np.testing.assert_allclose(comparisons['R']['machine_mag'], [-5.0, -8.0])
+            np.testing.assert_allclose(comparisons['G']['catalogue_mag'], [6.0])
+            np.testing.assert_allclose(comparisons['G']['machine_mag'], [-5.1])
+            np.testing.assert_allclose(comparisons['B']['catalogue_mag'], [6.5, 8.5])
+            np.testing.assert_allclose(comparisons['B']['machine_mag'], [-5.2, -8.2])
+            self.assertEqual(comparisons['R']['catalogue_band'], 'Gaia RP')
+            self.assertEqual(comparisons['G']['catalogue_band'], 'Gaia G')
+            self.assertEqual(comparisons['B']['catalogue_band'], 'Gaia BP')
+
+    def test_rgb_photometry_plots_put_brighter_magnitudes_upper_right_without_unit_line(self):
+        from point_star_report import photometry_page
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root/'stellar_photometry.csv').write_text(
+                'detection_id,star_id,saturated,R_mag,G_mag,B_mag\n'
+                '1,Gaia DR3 132667245587072,False,-5.0,-5.1,-5.2\n'
+                '2,Gaia DR3 219563023736832,False,-6.0,-6.1,-6.2\n')
+
+            figure = photometry_page(root)
+
+            positions = [axis.get_position() for axis in figure.axes]
+            self.assertEqual(len(positions), 3)
+            self.assertLess(max(box.y0 for box in positions)-min(box.y0 for box in positions), .01)
+            self.assertLess(positions[0].x0, positions[1].x0)
+            self.assertLess(positions[1].x0, positions[2].x0)
+            self.assertGreater(figure.get_figwidth(), figure.get_figheight())
+            for axis in figure.axes:
+                self.assertTrue(axis.yaxis_inverted())
+                self.assertTrue(axis.xaxis_inverted())
+                self.assertIn('brighter →', axis.get_xlabel().lower())
+                self.assertIn('brighter', axis.get_ylabel().lower())
+                self.assertEqual([line.get_label() for line in axis.lines],
+                                 ['ordinary least-squares line'])
+            plt.close(figure)
+
     def test_pdf_preserves_embedded_png_resolution(self):
         from PIL import Image
         with tempfile.TemporaryDirectory() as directory:
@@ -226,7 +281,7 @@ class ReportTests(unittest.TestCase):
             self.assertEqual(saved[0].args[0]._suptitle.get_text(),
                              'Wide-field image solution: example.jpeg')
 
-    def test_write_report_stays_two_pages_when_epoch_diagnostic_exists(self):
+    def test_write_report_has_results_formulae_and_rgb_photometry_pages(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             for name in ('astrometry_overlay.png', 'astrometry_residuals.png',
@@ -243,7 +298,7 @@ class ReportTests(unittest.TestCase):
             self.assertEqual(report.name, 'report.pdf')
             payload = report.read_bytes()
             self.assertTrue(payload.startswith(b'%PDF'))
-            self.assertEqual(len(re.findall(rb'/Type\s*/Page\b', payload)), 2)
+            self.assertEqual(len(re.findall(rb'/Type\s*/Page\b', payload)), 3)
             media = re.search(rb'/MediaBox\s*\[\s*0\s+0\s+([0-9.]+)\s+([0-9.]+)', payload)
             self.assertIsNotNone(media)
             self.assertLess(float(media.group(1)), float(media.group(2)))

@@ -59,4 +59,5 @@ change; fitted coordinates and numerical results remain unchanged. This preserve
 extra resolution, with a larger PDF as the expected trade-off.
 
 A regression test reads the PDF image dictionaries and checks that each embedded
-image has the dimensions of its source PNG. The two-page report layout remains.
+image has the dimensions of its source PNG. The original results and formulae
+pages retain their layout; the RGB catalogue comparison is a separate third page.

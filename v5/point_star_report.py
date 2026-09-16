@@ -1,6 +1,7 @@
-"""One-page scientific PDF for a completed point-source Barghini analysis."""
+"""Scientific PDF for a completed point-source Barghini analysis."""
 from __future__ import annotations
 
+import csv
 import hashlib
 import json
 from pathlib import Path
@@ -533,8 +534,113 @@ def formula_page():
     return fig
 
 
+def photometry_comparisons(output, *, catalogue_path=None):
+    """Pair finite unsaturated camera RGB magnitudes with Gaia RP/G/BP."""
+    output = Path(output)
+    catalogue_path = (Path(catalogue_path) if catalogue_path is not None else
+                      Path(__file__).parent/'data'/'stars_gaia_dr3_g75.gaia-source.csv')
+    bands = {
+        'R': ('phot_rp_mean_mag', 'Gaia RP'),
+        'G': ('phot_g_mean_mag', 'Gaia G'),
+        'B': ('phot_bp_mean_mag', 'Gaia BP'),
+    }
+    answer = {
+        channel: dict(catalogue_band=label, catalogue_mag=[], machine_mag=[])
+        for channel, (_, label) in bands.items()
+    }
+    measurements_path = output/'stellar_photometry.csv'
+    if not measurements_path.is_file() or not catalogue_path.is_file():
+        return {channel: {**values,
+                          'catalogue_mag': np.asarray(values['catalogue_mag'], dtype=float),
+                          'machine_mag': np.asarray(values['machine_mag'], dtype=float)}
+                for channel, values in answer.items()}
+
+    with catalogue_path.open(newline='') as handle:
+        catalogue = {row['source_id']: row for row in csv.DictReader(handle)}
+    with measurements_path.open(newline='') as handle:
+        measurements = list(csv.DictReader(handle))
+    for row in measurements:
+        if str(row.get('saturated', '')).strip().lower() == 'true':
+            continue
+        star_id = str(row.get('star_id', ''))
+        if not star_id.startswith('Gaia DR3 '):
+            continue
+        catalogue_row = catalogue.get(star_id.removeprefix('Gaia DR3 '))
+        if catalogue_row is None:
+            continue
+        for channel, (catalogue_field, _) in bands.items():
+            try:
+                catalogue_mag = float(catalogue_row[catalogue_field])
+                machine_mag = float(row[f'{channel}_mag'])
+            except (KeyError, TypeError, ValueError):
+                continue
+            if not (np.isfinite(catalogue_mag) and np.isfinite(machine_mag)):
+                continue
+            answer[channel]['catalogue_mag'].append(catalogue_mag)
+            answer[channel]['machine_mag'].append(machine_mag)
+    for values in answer.values():
+        values['catalogue_mag'] = np.asarray(values['catalogue_mag'], dtype=float)
+        values['machine_mag'] = np.asarray(values['machine_mag'], dtype=float)
+    return answer
+
+
+def photometry_page(output):
+    """Draw camera RGB instrumental magnitudes against the nearest Gaia bands."""
+    comparisons = photometry_comparisons(output)
+    fig, axes = plt.subplots(1, 3, figsize=(11.69, 8.27), facecolor='white')
+    fig.subplots_adjust(left=.07, right=.975, top=.82, bottom=.18, wspace=.32)
+    fig.suptitle('RGB instrumental photometry versus Gaia DR3',
+                 y=.965, fontsize=17, weight='bold')
+    fig.text(.5, .925,
+             'Unsaturated sources with finite channel and catalogue magnitudes; '
+             'instrumental zero points are arbitrary.',
+             ha='center', fontsize=9.5, color='.3')
+    colours = {'R': '#c53b37', 'G': '#238b45', 'B': '#2878b5'}
+    for ax, channel in zip(axes, 'RGB'):
+        values = comparisons[channel]
+        x = values['catalogue_mag']
+        y = values['machine_mag']
+        band = values['catalogue_band']
+        ax.set_title(f'Camera {channel} versus {band}', fontsize=11,
+                     color=colours[channel], weight='bold')
+        ax.set_xlabel(f'{band} catalogue magnitude [mag]\n(brighter →)', fontsize=9)
+        ax.set_ylabel(f'Camera {channel} instrumental magnitude [mag]\n(brighter ↑)', fontsize=9)
+        ax.grid(alpha=.2)
+        ax.tick_params(labelsize=8)
+        if len(x) == 0:
+            ax.text(.5, .5, 'No matching finite Gaia photometry',
+                    transform=ax.transAxes, ha='center', va='center', color='.4')
+            ax.invert_xaxis()
+            ax.invert_yaxis()
+            continue
+        ax.scatter(x, y, s=8, color=colours[channel], alpha=.42,
+                   linewidths=0, rasterized=True)
+        span = np.linspace(float(np.min(x)), float(np.max(x)), 100)
+        annotation = f'N={len(x):,}'
+        if len(x) >= 2 and float(np.ptp(x)) > 0:
+            slope, intercept = np.polyfit(x, y, 1)
+            fitted = intercept+slope*x
+            rms = float(np.sqrt(np.mean((y-fitted)**2)))
+            ax.plot(span, intercept+slope*span, color='black', linewidth=1.2,
+                    label='ordinary least-squares line')
+            annotation += (f'\nOLS: m(machine) = {intercept:.3f} + '
+                           f'{slope:.3f} m({band})\nRMS={rms:.3f} mag')
+        ax.text(.01, .98, annotation, transform=ax.transAxes, va='top', fontsize=8,
+                bbox=dict(boxstyle='round,pad=.25', fc='white', ec='.75', alpha=.9))
+        if ax.lines:
+            ax.legend(loc='lower right', fontsize=7, framealpha=.9)
+        ax.invert_xaxis()
+        ax.invert_yaxis()
+    fig.text(.5, .045,
+             'Gaia BP/G/RP and camera JPEG B/G/R are different, broad passbands. '
+             'These plots are diagnostics, not calibrated standard magnitudes; '
+             'colour terms, extinction, vignetting, saturation and JPEG response can add scatter.',
+             ha='center', va='center', fontsize=8.3, color='.3', wrap=True)
+    return fig
+
+
 def write_report(output, result, *, science=None, **unused):
-    """Write a two-page portrait PDF: results front, fixed formulae reverse."""
+    """Write a three-page portrait PDF: results, formulae and RGB photometry."""
     output = Path(output)
     science = _load_science(output, science)
     sections = report_sections(result, science)
@@ -597,9 +703,12 @@ def write_report(output, result, *, science=None, **unused):
         'Subject': 'Astrometry, Barghini lens, refraction, extinction and planet epoch',
     }
     reverse = formula_page()
+    photometry = photometry_page(output)
     with PdfPages(path, metadata=metadata_pdf) as pdf:
         pdf.savefig(fig)
         pdf.savefig(reverse)
+        pdf.savefig(photometry)
     plt.close(fig)
     plt.close(reverse)
+    plt.close(photometry)
     return path
