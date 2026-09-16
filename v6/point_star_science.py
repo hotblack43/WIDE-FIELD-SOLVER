@@ -123,6 +123,24 @@ def _robust_line(x, y):
                   fitted_count=int(keep.sum()), rejected_count=int((~keep).sum()))
     return output, keep
 
+
+def _full_horizon_geometric_zenith(solution, camera):
+    from point_star_footprint import centred_full_horizon
+    path = Path(solution)/'dots/sky_footprint.npz'
+    if not path.is_file():
+        return None, dict(status='not_available', reason='No saved sky footprint')
+    with np.load(path) as saved:
+        if 'valid_mask' not in saved:
+            raise ValueError('Saved sky-footprint file has no valid_mask')
+        mask = np.asarray(saved['valid_mask'], dtype=bool)
+    if mask.shape != tuple(camera.shape):
+        raise ValueError('Saved sky-footprint shape does not match the fitted camera')
+    evidence = centred_full_horizon(mask)
+    if evidence['status'] != 'centred_full_horizon':
+        return None, evidence
+    vector = camera.to_sky(np.asarray([evidence['centre_px']], dtype=float))[0]
+    return vector, evidence
+
 def measure_photometry(image_path, solution, result, refraction):
     """Measure RGB aperture fluxes and fit catalogue-relative extinction."""
     solution = Path(solution)
@@ -187,15 +205,21 @@ def measure_photometry(image_path, solution, result, refraction):
         r['used_for_photometric_zenith'] = not bool(reason)
         if not reason:
             usable.append(r)
+    geometric_zenith, geometric_evidence = _full_horizon_geometric_zenith(solution, camera)
     if usable:
         pixels = np.array([[_float(coordinates[r['detection_id']], 'x_px'),
                             _float(coordinates[r['detection_id']], 'y_px')] for r in usable])
         rays = camera.to_sky(pixels)
         radial = np.sum((pixels-np.array([camera.physical.x_o, camera.physical.y_o]))**2, axis=1)/camera.scale**2
         zenith = fit_photometric_zenith(rays,
-                    [r['G_minus_catalogue_mag'] for r in usable], radial)
+                    [r['G_minus_catalogue_mag'] for r in usable], radial,
+                    geometric_zenith_unit_vector=geometric_zenith,
+                    geometric_evidence=geometric_evidence)
     else:
-        zenith = fit_photometric_zenith(np.empty((0, 3)), np.array([]), np.array([]))
+        zenith = fit_photometric_zenith(
+            np.empty((0, 3)), np.array([]), np.array([]),
+            geometric_zenith_unit_vector=geometric_zenith,
+            geometric_evidence=geometric_evidence)
     zenith.update(coordinate_frame='ICRS', objective_channel='G',
                   excluded_by_fixed_geometric_cap=0,
                   membership='all identified unsaturated positive-flux sources with finite catalogue magnitude; no angular, morphology or residual cut',
@@ -221,18 +245,22 @@ def measure_photometry(image_path, solution, result, refraction):
             continue
         x = np.array([row['airmass'] for row in fit_rows])
         y = np.array([row[f'{channel}_minus_catalogue_mag'] for row in fit_rows])
-        if channel == 'G':
-            # Show the nuisance regression that actually selected the zenith.
+        if channel == 'G' and all(key in zenith for key in (
+                'intercept_mag', 'extinction_mag_per_airmass', 'extinction_sigma', 'rms_mag')):
+            # Reuse the regression evaluated at the adopted zenith.
             fitted = dict(intercept_mag=zenith['intercept_mag'],
                           coefficient_mag_per_airmass=zenith['extinction_mag_per_airmass'],
                           coefficient_sigma_mag_per_airmass=zenith['extinction_sigma'],
                           rms_mag=zenith['rms_mag'], fitted_count=len(fit_rows), rejected_count=0,
-                          fit_role='zenith_objective')
+                          fit_role=('zenith_objective'
+                                    if zenith.get('zenith_source') == 'photometric_extinction'
+                                    else 'adopted_geometric_zenith_diagnostic'))
             keep = np.ones(len(fit_rows), dtype=bool)
         else:
             fitted, keep = _robust_line(x, y)
             if fitted is not None:
-                fitted['fit_role'] = 'post_fit_channel_diagnostic'
+                fitted['fit_role'] = ('adopted_geometric_zenith_diagnostic' if channel == 'G'
+                                      else 'post_fit_channel_diagnostic')
         if fitted is None:
             continue
         for row, retained in zip(fit_rows, keep):
@@ -292,7 +320,10 @@ def measure_photometry(image_path, solution, result, refraction):
                    extinction_status=(representative['status']
                                       if representative else 'not_fitted'),
                    epoch_and_site_source=None, metadata_used=False,
-                   airmass_source='blind_photometric_zenith', photometric_zenith=zenith,
+                   airmass_source=('blind_centred_full_horizon_geometry'
+                                   if zenith.get('zenith_source') == 'centred_full_horizon_geometry'
+                                   else 'blind_photometric_zenith'),
+                   photometric_zenith=zenith,
                    limitation=('Each channel is compared with the same catalogue magnitude. '
                      'Passband mismatch, JPEG response, colour terms and vignetting add scatter.'))
     (solution/'photometry_summary.json').write_text(json.dumps(summary, indent=2)+'\n')

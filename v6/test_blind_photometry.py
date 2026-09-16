@@ -21,7 +21,7 @@ class BlindPhotometryTests(unittest.TestCase):
             image = np.full((400, 400, 3), 10, dtype=np.uint8)
             camera = BarghiniCamera.initial((400, 400), 210, np.eye(3))
             coordinates, detections = [], []
-            for i, (x, y) in enumerate(( (x,y) for x in range(60, 361, 60) for y in range(60, 361, 60))):
+            for i, (x, y) in enumerate(( (x,y) for x in range(80, 321, 48) for y in range(80, 321, 48))):
                 image[y-1:y+2, x-1:x+2] = 50+i
                 sky = camera.to_sky(np.array([[x, y]]))[0]
                 ra,dec=np.rad2deg(np.arctan2(sky[1],sky[0]))%360,np.rad2deg(np.arcsin(sky[2]))
@@ -31,6 +31,9 @@ class BlindPhotometryTests(unittest.TestCase):
             Image.fromarray(image).save(source)
             for output in ('one','two'):
                 destination=root/output; (destination/'dots').mkdir(parents=True)
+                yy, xx = np.mgrid[:400, :400]
+                np.savez_compressed(destination/'dots/sky_footprint.npz',
+                                    valid_mask=(xx-199.5)**2+(yy-199.5)**2 <= 195**2)
                 for path,rows in ((destination/'star_coordinates.csv',coordinates),
                                   (destination/'dots/star_candidates.csv',detections)):
                     with path.open('w') as handle:
@@ -42,14 +45,18 @@ class BlindPhotometryTests(unittest.TestCase):
                 first=measure_photometry(source,root/'one',result,{})
                 second=measure_photometry(source,root/'two',poisoned,{})
             self.assertEqual(first['photometric_zenith'],second['photometric_zenith'])
-            self.assertEqual(first['airmass_source'],'blind_photometric_zenith')
+            self.assertEqual(first['airmass_source'],'blind_centred_full_horizon_geometry')
             self.assertFalse(first['metadata_used'])
             zenith = first['photometric_zenith']
+            self.assertEqual(zenith['zenith_source'], 'centred_full_horizon_geometry')
+            np.testing.assert_allclose(
+                zenith['zenith_unit_vector'], camera.to_sky(np.array([[199.5, 199.5]]))[0],
+                atol=1e-12)
             green = first['extinction_by_channel']['G']
             self.assertEqual(green['coefficient_mag_per_airmass'], zenith['extinction_mag_per_airmass'])
             self.assertEqual(green['intercept_mag'], zenith['intercept_mag'])
             self.assertEqual(green['fitted_count'], len(zenith['fitted_detection_ids']))
-            self.assertEqual(green['fit_role'], 'zenith_objective')
+            self.assertEqual(green['fit_role'], 'adopted_geometric_zenith_diagnostic')
             self.assertEqual((root/'one/stellar_photometry.csv').read_text(),(root/'two/stellar_photometry.csv').read_text())
 
     def test_unsaturated_identified_sources_enter_fixed_sample_with_explicit_flags(self):

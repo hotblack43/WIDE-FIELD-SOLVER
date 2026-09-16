@@ -39,6 +39,46 @@ def _full_image(shape, reason, **details):
     return np.ones(shape, dtype=bool), audit
 
 
+def centred_full_horizon(valid_mask):
+    """Recognise a closed, near-circular horizon centred on the detector.
+
+    This is deliberately stricter than the general sky-footprint inference:
+    cropped, off-centre and elliptical fields remain valid detection domains,
+    but they do not establish that the physical zenith is the image centre.
+    """
+    mask = np.asarray(valid_mask, dtype=bool)
+    if mask.ndim != 2 or min(mask.shape) < 15:
+        raise ValueError('A two-dimensional footprint at least 15 pixels wide is required')
+    h, w = mask.shape
+    image_centre = np.array([(w-1)/2., (h-1)/2.])
+    result = dict(status='not_established', centre_px=image_centre.tolist(),
+                  method='closed centred circular sky-footprint geometry',
+                  reason='Saved sky footprint does not show a closed centred circular horizon',
+                  metadata_used=False)
+    yy, xx = np.nonzero(mask)
+    if not len(xx) or mask.all():
+        return result
+    x0, x1 = int(xx.min()), int(xx.max())
+    y0, y1 = int(yy.min()), int(yy.max())
+    bbox_width, bbox_height = x1-x0+1, y1-y0+1
+    bbox_centre = np.array([(x0+x1)/2., (y0+y1)/2.])
+    offset = float(np.linalg.norm(bbox_centre-image_centre))
+    aspect = float(bbox_width/bbox_height)
+    fill = float(mask.sum()/(bbox_width*bbox_height))
+    closed = not (mask[0].any() or mask[-1].any() or mask[:, 0].any() or mask[:, -1].any())
+    broad = min(bbox_width, bbox_height) >= .7*min(h, w)
+    centred = offset <= .03*min(h, w)
+    round_enough = .9 <= aspect <= 1.1 and .68 <= fill <= .86
+    result.update(bounding_box_px=[x0, y0, x1, y1],
+                  bounding_box_centre_px=bbox_centre.tolist(),
+                  centre_offset_px=offset, bounding_box_aspect_ratio=aspect,
+                  bounding_box_fill_fraction=fill, boundary_closed=bool(closed))
+    if closed and broad and centred and round_enough and mask[round(image_centre[1]), round(image_centre[0])]:
+        result.update(status='centred_full_horizon',
+                      reason='Closed near-circular sky footprint is centred on the detector')
+    return result
+
+
 def infer_sky_footprint(image):
     """Return a Boolean sky-support mask inferred only from image luminance.
 

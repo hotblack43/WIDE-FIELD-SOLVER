@@ -73,6 +73,40 @@ class ReportTests(unittest.TestCase):
             self.assertIn('Extinction zenith: no candidate',
                           ' '.join(item.get_text() for item in axis.texts))
 
+    def test_geometric_fallback_is_not_labelled_as_extinction_zenith(self):
+        from PIL import Image
+        from point_star_barghini import BarghiniCamera
+        from point_star_report import write_report_sky_overlay
+        camera = BarghiniCamera.initial((100, 120), 60., np.eye(3))
+        centre = np.array([[59.5, 49.5]])
+        vector = camera.to_sky(centre)[0].tolist()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            Image.new('RGB', (120, 100)).save(root/'source.png')
+            science = {'photometry': {'photometric_zenith': {
+                'status': 'not_identifiable', 'provisional': True,
+                'zenith_source': 'centred_full_horizon_geometry',
+                'zenith_unit_vector': vector}}}
+            with patch('point_star_report.save_png') as save:
+                write_report_sky_overlay(
+                    root, {'source': str(root/'source.png'), 'camera': camera.serialise()}, science)
+            axis = save.call_args.args[0].axes[0]
+            labels = ' '.join(item.get_text() for item in axis.get_legend().get_texts())
+            self.assertIn('Geometric zenith', labels)
+            self.assertNotIn('Extinction zenith', labels)
+            np.testing.assert_allclose(
+                [line for line in axis.lines if line.get_marker() == 'x'][0].get_xydata(),
+                centre, atol=1e-7)
+
+    def test_results_text_distinguishes_geometric_fallback_from_extinction_trial(self):
+        science = {'stellar_epoch': {}, 'refraction': {}, 'planets': {},
+                   'photometry': {'photometric_zenith': {
+                       'status': 'not_identifiable', 'provisional': True,
+                       'zenith_source': 'centred_full_horizon_geometry'}}}
+        text = report_sections(self.sample_result(), science)['atmosphere']
+        self.assertIn('image-centre geometric zenith', text)
+        self.assertIn('extinction trial remains not identifiable', text)
+
     def test_predicted_planets_are_distinct_and_keep_saved_positions(self):
         from PIL import Image
         from point_star_report import write_report_sky_overlay

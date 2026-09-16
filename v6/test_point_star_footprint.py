@@ -3,7 +3,7 @@ import unittest
 
 import numpy as np
 
-from point_star_footprint import infer_sky_footprint
+from point_star_footprint import centred_full_horizon, infer_sky_footprint
 
 
 def framed_field(shape, centre, radii):
@@ -27,6 +27,20 @@ def full_frame_star_field(shape):
 
 
 class SkyFootprintTests(unittest.TestCase):
+    def test_centred_closed_round_footprint_establishes_image_centre_horizon(self):
+        yy, xx = np.mgrid[:240, :240]
+        mask = (xx-119.5)**2 + (yy-119.5)**2 <= 114**2
+        result = centred_full_horizon(mask)
+        self.assertEqual(result['status'], 'centred_full_horizon')
+        np.testing.assert_allclose(result['centre_px'], [119.5, 119.5])
+
+    def test_off_centre_or_clipped_footprint_does_not_establish_centre_horizon(self):
+        yy, xx = np.mgrid[:220, :260]
+        off_centre = ((xx-82)/105)**2 + ((yy-112)/94)**2 <= 1
+        clipped = (xx-129.5)**2 + (yy-109.5)**2 <= 140**2
+        self.assertEqual(centred_full_horizon(off_centre)['status'], 'not_established')
+        self.assertEqual(centred_full_horizon(clipped)['status'], 'not_established')
+
     def test_round_field_excludes_black_frame_and_disconnected_frame_marks(self):
         image = framed_field((240, 300), (142, 116), (112, 96))
         image[222:228, 30:120] = 220.

@@ -159,8 +159,14 @@ def report_sections(result, science=None, **legacy):
     else:
         atmosphere = 'The empirical refraction fit has not been run.'
     if photometric_zenith:
-        atmosphere += (f" Blind photometric zenith: {photometric_zenith.get('status', 'unknown').replace('_', ' ')}. "
-                       'Extinction is a constraint; unresolved zenith gives provisional airmasses.')
+        zenith_status = photometric_zenith.get('status', 'unknown').replace('_', ' ')
+        if photometric_zenith.get('zenith_source') == 'centred_full_horizon_geometry':
+            atmosphere += (f" Blind photometric zenith: {zenith_status}. The adopted image-centre geometric zenith "
+                           'comes from the closed circular sky footprint; the extinction trial remains not '
+                           'identifiable, so its airmasses are provisional.')
+        else:
+            atmosphere += (f" Blind photometric zenith: {zenith_status}. "
+                           'Extinction is a constraint; unresolved zenith gives provisional airmasses.')
     if extinction_by_channel:
         channel_values = ', '.join(
             f"{channel}: {_fmt(values.get('coefficient_mag_per_airmass'))}±"
@@ -307,7 +313,7 @@ def _show_image(ax, path, title):
 
 
 def _draw_photometric_zenith(ax, result, science, *, native_image):
-    """Project only the saved extinction candidate through the fitted camera."""
+    """Project only the saved adopted zenith through the fitted camera."""
     zenith = (science.get('photometry') or {}).get('photometric_zenith') or {}
     if not zenith:
         return None
@@ -326,10 +332,13 @@ def _draw_photometric_zenith(ax, result, science, *, native_image):
                 height, width = camera.shape
                 if np.isfinite(x) and np.isfinite(y) and -.5 <= x < width-.5 and -.5 <= y < height-.5:
                     provisional = zenith.get('status') != 'conditional_zenith' or zenith.get('provisional', False)
-                    label = 'Extinction zenith — ' + ('provisional' if provisional else 'conditional')
+                    geometric = zenith.get('zenith_source') == 'centred_full_horizon_geometry'
+                    label = ('Geometric zenith' if geometric else 'Extinction zenith')
+                    label += ' — ' + ('provisional' if provisional else 'conditional')
                     marker, = ax.plot(x, y, marker='x', color='red', ms=13, mew=2.5,
                                       linestyle='none', label=label, zorder=6)
-                    ax.annotate('Zenith' + (' (provisional)' if provisional else ' (conditional)'),
+                    qualifier = 'geometric' if geometric else ('provisional' if provisional else 'conditional')
+                    ax.annotate(f'Zenith ({qualifier})',
                                 (x, y), xytext=(9 if x < .7*width else -9, 12),
                                 textcoords='offset points',
                                 ha='left' if x < .7*width else 'right', color='white', fontsize=8,

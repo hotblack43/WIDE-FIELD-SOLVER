@@ -19,6 +19,7 @@ must not describe a proposal as working merely because related products exist.
 | RGB-versus-catalogue report diagnostics | Preserved from final v0.5.0 | Third PDF page compares camera R/G/B instrumental magnitudes with Gaia RP/G/BP for finite unsaturated Gaia matches; passband mismatch and lack of calibration are explicit |
 | Extinction as nuisance regression in blind zenith search | Added in 0.3.0 using robust regression | Fixed membership; no site/time-derived airmass; G plot uses the exact fitted line. The OLS reference specified in GOAL.md and its comparison remain unimplemented |
 | Zenith estimated by minimising photometric regression scatter | Added in 0.3.0; conditional component | Synthetic recovery and degeneracy tests; real example remains unresolved under the radial-response check |
+| Centred full-horizon geometric zenith | Added in v6 | A closed, broad, near-circular sky footprint centred on the detector supplies the provisional image-centre zenith when extinction is not identifiable; cropped/off-centre fields do not. A photometric zenith that passes the existing strong-evidence checks retains authority |
 | Zenith fitted through astrometric refraction residuals | Implemented downstream diagnostic | Different objective from photometric zenith; does not establish that photometric proposal works |
 | Joint photometric zenith/extinction and astrometric epoch constraint | **Not implemented** | Not part of the 0.3.0 proper-motion bugfix; must be designed and tested explicitly |
 | Blind planetary epoch | Candidate search implemented in 0.4.2 | Past-only positional search capped at recorded run time, with measured/predicted horizon checks; alternatives retained and single-planet results ambiguous |
@@ -73,15 +74,29 @@ Peter requests a change, as recorded in GOAL.md.
 
 ## Extinction zenith on the sky report
 
-The report sky overlay projects the saved photometric zenith vector through the
-saved Barghini camera and marks it with a red X. Conditional and provisional
-candidates are explicitly distinguished; absent or off-image candidates get a
-text notice rather than an invented or clamped position. This is the extinction
-regression candidate, not the lens reference Z or refraction diagnostic zenith.
-No astrometry, photometry, selection thresholds or numerical results change.
+The report sky overlay projects the saved adopted zenith vector through the
+saved Barghini camera and marks it with a red X. Conditional extinction and
+provisional geometric candidates are explicitly distinguished; absent or
+off-image candidates get a text notice rather than an invented or clamped
+position. This is never the lens reference Z or refraction diagnostic zenith.
+The unconstrained extinction minimum remains separately recorded as
+`photometric_trial` when full-horizon geometry supplies the adopted vector.
 The PDF planet row distinguishes an unattempted search from a completed search
 with no match. The metadata-assisted routine remains available in code; the
 blind replacement remains unfinished, so the normal launcher skips that search.
+
+The Subaru Maunakea 2026-09-16 image supplies the motivating v6 regression. Its
+saved footprint is closed, has bounding-box aspect ratio 0.997797 and circular
+fill fraction 0.778648, and its bounding-box centre is 15.81 pixels from the
+centre of the 3672-pixel square detector. The former unconstrained minimum lay
+about 416 pixels from image centre, placed one fitted star on the horizon, and
+gave k=0.011121±0.007939 mag/airmass with 0.378125-mag RMS. It remains
+`not_identifiable`. The adopted detector-centre ray projects to
+(1835.5, 1835.5) pixels; on the unchanged 716-star sample it gives minimum
+altitude 8.830 degrees, airmass 1.0002--6.2664,
+k=0.018872±0.012887 mag/airmass and 0.378854-mag RMS. Thus the geometric value
+changes provisional airmasses and downstream visibility, but no detections,
+associations, camera parameters or saved astrometric coordinates.
 
 ## v0.4.1 horizon and saturation correction
 

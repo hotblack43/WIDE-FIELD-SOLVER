@@ -62,6 +62,36 @@ class ZenithTests(unittest.TestCase):
         answer = fit_photometric_zenith(rays, dimming, radial)
         self.assertEqual(answer['status'], 'not_identifiable')
 
+    def test_weak_extinction_adopts_supplied_full_horizon_centre(self):
+        from point_star_zenith import fit_photometric_zenith
+        rays, dimming, radial, geometric = photometric_field(extinction=0.)
+        answer = fit_photometric_zenith(
+            rays, dimming, radial,
+            geometric_zenith_unit_vector=geometric,
+            geometric_evidence={'status': 'centred_full_horizon', 'centre_px': [99.5, 99.5]},
+        )
+        self.assertEqual(answer['status'], 'not_identifiable')
+        self.assertEqual(answer['zenith_source'], 'centred_full_horizon_geometry')
+        np.testing.assert_allclose(answer['zenith_unit_vector'], geometric, atol=1e-12)
+        self.assertEqual(answer['photometric_trial']['status'], 'not_identifiable')
+        self.assertIn('positive extinction', answer['photometric_trial']['reason'])
+        self.assertGreater(answer['minimum_altitude_deg'], 19.)
+
+    def test_strong_extinction_overrides_supplied_geometric_centre(self):
+        from point_star_zenith import fit_photometric_zenith
+        rays, dimming, radial, truth = photometric_field()
+        geometric = np.array([0., 0., 1.])
+        answer = fit_photometric_zenith(
+            rays, dimming, radial,
+            geometric_zenith_unit_vector=geometric,
+            geometric_evidence={'status': 'centred_full_horizon', 'centre_px': [99.5, 99.5]},
+        )
+        self.assertEqual(answer['status'], 'conditional_zenith')
+        self.assertEqual(answer['zenith_source'], 'photometric_extinction')
+        estimated = np.asarray(answer['zenith_unit_vector'])
+        self.assertLess(np.rad2deg(np.arccos(np.clip(estimated@truth, -1, 1))), 1.)
+        self.assertGreater(np.rad2deg(np.arccos(np.clip(estimated@geometric, -1, 1))), 5.)
+
     def test_vignetting_alone_is_not_claimed_as_atmospheric_zenith(self):
         from point_star_zenith import fit_photometric_zenith
         rays, dimming, radial, _ = photometric_field(extinction=0., vignette=.5)
@@ -74,6 +104,19 @@ class ZenithTests(unittest.TestCase):
         answer = fit_photometric_zenith(rays[:8], dimming[:8], radial[:8])
         self.assertEqual(answer['status'], 'not_identifiable')
         self.assertIsNone(answer['zenith_unit_vector'])
+
+    def test_insufficient_sources_still_use_established_full_horizon_geometry(self):
+        from point_star_zenith import fit_photometric_zenith
+        rays, dimming, radial, geometric = photometric_field()
+        answer = fit_photometric_zenith(
+            rays[:8], dimming[:8], radial[:8],
+            geometric_zenith_unit_vector=geometric,
+            geometric_evidence={'status': 'centred_full_horizon', 'centre_px': [99.5, 99.5]},
+        )
+        self.assertEqual(answer['status'], 'not_identifiable')
+        self.assertEqual(answer['zenith_source'], 'centred_full_horizon_geometry')
+        np.testing.assert_allclose(answer['zenith_unit_vector'], geometric, atol=1e-12)
+        self.assertIn('Fewer than 20', answer['reason'])
 
     def test_many_stars_with_no_spatial_coverage_are_unresolved(self):
         from point_star_zenith import fit_photometric_zenith

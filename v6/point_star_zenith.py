@@ -17,7 +17,8 @@ def airmass(altitude_deg):
     return answer
 
 
-def fit_photometric_zenith(rays, dimming, radial_squared, *, loss_scale_mag=.1):
+def fit_photometric_zenith(rays, dimming, radial_squared, *, loss_scale_mag=.1,
+                           geometric_zenith_unit_vector=None, geometric_evidence=None):
     """Profile the extinction regression on a fixed set of usable stellar rays.
 
     Returns a conditional or explicitly provisional zenith, and a radial-response
@@ -30,11 +31,26 @@ def fit_photometric_zenith(rays, dimming, radial_squared, *, loss_scale_mag=.1):
                   fitted_count=nstars, withheld_count=0, metadata_used=False,
                   method='blind trial zenith; robust magnitude-difference versus airmass regression',
                   loss_scale_mag=loss_scale_mag, minimum_allowed_altitude_deg=0., candidate_profile=[],
+                  geometric_horizon=geometric_evidence,
                   limitation='Conditional on a uniform atmosphere and catalogue/image photometry. '
                     'Colours, clouds, JPEG response and lens response may bias the zenith. '
                     'A fitted extinction slope alone does not establish a physical zenith.')
+    geometric = None
+    if geometric_zenith_unit_vector is not None:
+        geometric = np.asarray(geometric_zenith_unit_vector, dtype=float)
+        if (geometric.shape != (3,) or not np.isfinite(geometric).all()
+                or np.linalg.norm(geometric) < 1e-12):
+            raise ValueError('Geometric zenith must be a finite three-dimensional vector')
+        if not geometric_evidence or geometric_evidence.get('status') != 'centred_full_horizon':
+            raise ValueError('Geometric zenith requires an established centred full horizon')
+        geometric = geometric/np.linalg.norm(geometric)
     if nstars < 20:
         record['reason'] = 'Fewer than 20 usable photometric sources'
+        if geometric is not None:
+            record.update(zenith_unit_vector=geometric.tolist(),
+                          zenith_source='centred_full_horizon_geometry', provisional=True,
+                          reason=record['reason'] + '; adopted image-centre zenith from closed circular horizon',
+                          method=record['method'] + '; geometric image-centre fallback')
         return record
     if rays.shape != (nstars, 3) or radial.shape != y.shape or not all(
             np.isfinite(value).all() for value in (rays, y, radial)):
@@ -82,6 +98,31 @@ def fit_photometric_zenith(rays, dimming, radial_squared, *, loss_scale_mag=.1):
                 break
             weights = updated
         return coefs, residual
+
+    def fixed_zenith_fit(vector):
+        vector = np.asarray(vector, dtype=float)
+        if vector.shape != (3,) or not np.isfinite(vector).all() or np.linalg.norm(vector) < 1e-12:
+            raise ValueError('Geometric zenith must be a finite three-dimensional vector')
+        vector = vector/np.linalg.norm(vector)
+        sine = rays@vector
+        if np.min(sine) < minimum_sine-1e-9:
+            return None
+        x = airmass(np.rad2deg(np.arcsin(np.clip(sine, minimum_sine, 1))))
+        coefs, residual = regression(x, False)
+        weights = 1/np.sqrt(1+(residual/loss_scale_mag)**2)
+        design = np.column_stack([np.ones(nstars), x])
+        weighted = design*np.sqrt(weights)[:, None]
+        full_rank = np.linalg.matrix_rank(weighted) == 2
+        variance = float(np.sum(weights*residual**2)/max(nstars-2, 1))
+        covariance = variance*np.linalg.pinv(weighted.T@weighted)
+        return dict(parameters=None, zenith_unit_vector=vector.tolist(),
+                    cost=robust_cost(residual), intercept_mag=float(coefs[0]),
+                    extinction_mag_per_airmass=float(coefs[1]),
+                    extinction_sigma=float(np.sqrt(max(0., covariance[1, 1]))) if full_rank else None,
+                    radial_coefficient_mag=0., conditional_sigma_deg=None, full_rank=False,
+                    search_boundary_limited=False, rms_mag=float(np.sqrt(np.mean(residual**2))),
+                    airmass_range=[float(x.min()), float(x.max())],
+                    minimum_altitude_deg=float(np.rad2deg(np.arcsin(np.min(sine)))))
 
     constraints = [{'type': 'ineq', 'fun': lambda p: rays@zenith(p)-minimum_sine}]
     # Geometric seeds only. The mean ray is not assumed to be the physical zenith.
@@ -155,11 +196,30 @@ def fit_photometric_zenith(rays, dimming, radial_squared, *, loss_scale_mag=.1):
             reasons.append(f'{label} minimum is limited by the horizon boundary')
     if angle > max(3., 3*np.hypot(primary['conditional_sigma_deg'] or 180., sensitivity['conditional_sigma_deg'] or 180.)):
         reasons.append('Zenith changes under the radial-response sensitivity fit')
-    record.update(selected, status='not_identifiable' if reasons else 'conditional_zenith',
-                  reason='; '.join(reasons) if reasons else 'Photometry constrains a conditional zenith',
+    trial_status = 'not_identifiable' if reasons else 'conditional_zenith'
+    trial_reason = '; '.join(reasons) if reasons else 'Photometry constrains a conditional zenith'
+    record.update(selected, status=trial_status,
+                  reason=trial_reason,
                   provisional=bool(reasons), radial_response_check=sensitivity,
                   radial_response_shift_deg=angle,
                   profile_centre_unit_vector=centre.tolist(), profile_basis=basis.tolist())
+    if not reasons:
+        record['zenith_source'] = 'photometric_extinction'
+    elif geometric is not None:
+        fixed = fixed_zenith_fit(geometric)
+        if fixed is not None:
+            record['photometric_trial'] = dict(
+                selected, status=trial_status, reason=trial_reason,
+                radial_response_check=sensitivity, radial_response_shift_deg=angle)
+            record.update(fixed, zenith_source='centred_full_horizon_geometry',
+                          reason=trial_reason + '; adopted image-centre zenith from closed circular horizon',
+                          method=record['method'] + '; geometric image-centre fallback')
+        else:
+            record['zenith_source'] = 'unconstrained_photometric_trial'
+            record['geometric_fallback_rejected_reason'] = (
+                'One or more fixed photometric-sample rays fall below the geometric horizon')
+    else:
+        record['zenith_source'] = 'unconstrained_photometric_trial'
     for x in np.linspace(-.6, .6, 21):
         for ytrial in np.linspace(-.6, .6, 21):
             point = np.array([x, ytrial])
@@ -179,11 +239,14 @@ def write_zenith_products(output, record):
     fig, ax = plt.subplots(figsize=(6, 5))
     profile = record.get('candidate_profile', [])
     if profile:
+        trial = record.get('photometric_trial') or record
         cost = np.array([p['cost'] for p in profile])
         points = ax.scatter([p['x'] for p in profile], [p['y'] for p in profile],
-                            c=cost-record['cost'], cmap='viridis', s=22)
+                            c=cost-trial['cost'], cmap='viridis', s=22)
         fig.colorbar(points, ax=ax, label='Increase in robust photometric regression cost')
-        ax.plot(*record['parameters'], marker='+', color='red', ms=12, label='Numerical best zenith')
+        label = ('Unconstrained photometric minimum' if record.get('photometric_trial')
+                 else 'Numerical best zenith')
+        ax.plot(*trial['parameters'], marker='+', color='red', ms=12, label=label)
         ax.legend()
     else:
         ax.text(.5, .5, record['reason'], ha='center', va='center', wrap=True, transform=ax.transAxes)
