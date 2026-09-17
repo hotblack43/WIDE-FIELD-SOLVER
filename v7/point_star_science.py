@@ -10,17 +10,12 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import numpy as np
-from scipy.optimize import minimize_scalar
-from scipy.spatial import cKDTree
 
 from point_star_barghini import vectors
 from point_star_image import load_recorded_image
 from point_star_plotting import save_png
 from point_star_refraction import fit_atmospheric_refraction
 from point_star_report import _camera_from_result, observation_metadata
-
-PLANETS = ('mercury', 'venus', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune')
-
 
 def _read(path):
     with Path(path).open(newline='', encoding='utf-8') as handle:
@@ -151,6 +146,9 @@ def _full_horizon_geometric_zenith(solution, camera):
     percentiles = np.percentile(angles, [5, 50, 95])
     evidence['camera_boundary_zenith_angle_percentiles_deg'] = percentiles.tolist()
     evidence['camera_horizon_angle_tolerance_deg'] = 10.
+    horizon_radius = float(evidence['fitted_circle_radius_px'])
+    evidence['footprint_horizon_scale_arcmin_per_px'] = 90.*60./horizon_radius
+    evidence['fitted_horizon_scale_arcmin_per_px'] = percentiles[1]*60./horizon_radius
     if not (percentiles[0] >= 80. and percentiles[2] <= 100.
             and abs(percentiles[1]-90.) <= 5.):
         evidence.update(
@@ -400,13 +398,6 @@ def measure_photometry(image_path, solution, result, refraction):
     return summary
 
 
-def _planet_vectors(times, name, location):
-    from astropy.coordinates import get_body
-    body = get_body(name, times, location)
-    ra, dec = body.ra.radian, body.dec.radian
-    return np.c_[np.cos(dec)*np.cos(ra), np.cos(dec)*np.sin(ra), np.sin(dec)], body
-
-
 def planet_confidence(match_count, random_expectation, bright_single=True):
     if match_count >= 3 and random_expectation < .05:
         return 'strong'
@@ -417,136 +408,28 @@ def planet_confidence(match_count, random_expectation, bright_single=True):
     return 'none'
 
 
-def fit_planet_epoch(image_path, solution, result, stellar_epoch, search_days=366, gate_px=3., *, allow_metadata=False):
-    """Blind planetary search by default; legacy control requires explicit opt-in."""
-    if not allow_metadata:
-        from point_star_planets import fit_blind_planet_epoch
-        return fit_blind_planet_epoch(image_path, solution, result)
-    from astropy import units as u
-    from astropy.coordinates import AltAz, EarthLocation
-    from astropy.time import Time
-    solution = Path(solution)
-    detections = _read(solution/'dots/star_candidates.csv')
-    used = {row['detection_id'] for row in _read(solution/'star_coordinates.csv')}
-    unused = [row for row in detections if row['detection_id'] not in used]
-    unused_xy = np.array([[_float(row, 'x_px'), _float(row, 'y_px')] for row in unused])
-    metadata = observation_metadata(result)
-    if not len(unused) or not metadata.get('observation_time'):
-        output = dict(status='not_run', matches=[], reason='No unused sources or epoch search centre')
-        (solution/'planet_epoch.json').write_text(json.dumps(output, indent=2)+'\n')
-        return output
-    centre = Time(metadata['observation_time'], scale='utc')
-    times = centre + np.arange(-search_days, search_days+1)*u.day
-    location = None
-    if metadata.get('latitude') is not None:
-        location = EarthLocation.from_geodetic(metadata['longitude']*u.deg,
-            metadata['latitude']*u.deg, metadata['elevation_m']*u.m)
-    camera = _camera_from_result(result); tree = cKDTree(unused_xy)
-    predicted = {}; altitude = {}
-    for name in PLANETS:
-        sky, body = _planet_vectors(times, name, location)
-        predicted[name] = camera.project(sky)
-        if location is not None:
-            altitude[name] = body.transform_to(AltAz(obstime=times, location=location,
-                                                     pressure=0*u.hPa)).alt.deg
-    trials = []
-    for index in range(len(times)):
-        candidates = []
-        for name in PLANETS:
-            xy = predicted[name][index]
-            if not (0 <= xy[0] < camera.shape[1] and 0 <= xy[1] < camera.shape[0]):
-                continue
-            if name in altitude and altitude[name][index] <= 0:
-                continue
-            distance, nearest = tree.query(xy)
-            if distance <= gate_px:
-                candidates.append((float(distance), name, int(nearest)))
-        candidates.sort()
-        unique = []; claimed = set()
-        for candidate in candidates:
-            if candidate[2] not in claimed:
-                unique.append(candidate); claimed.add(candidate[2])
-        trials.append(unique)
-    best_index = min(range(len(trials)), key=lambda i: (-len(trials[i]),
-                     sum(item[0]**2 for item in trials[i])))
-    coarse = trials[best_index]
-    if not coarse:
-        output = dict(status='no_planet_match', matches=[], unused_sources=len(unused),
-                      search_centre_utc=centre.isot, search_half_width_days=search_days)
-        (solution/'planet_epoch.json').write_text(json.dumps(output, indent=2)+'\n')
-        return output
-    assignments = [(name, nearest) for _, name, nearest in coarse]
-
-    def objective(jd):
-        epoch = Time(jd, format='jd', scale='utc'); total = 0.
-        for name, nearest in assignments:
-            sky, _ = _planet_vectors(epoch, name, location)
-            total += float(np.sum((camera.project(sky)[0]-unused_xy[nearest])**2))
-        return total
-    optimum = minimize_scalar(objective, bounds=(times[best_index].jd-2,
-                              times[best_index].jd+2), method='bounded',
-                              options={'xatol': 1e-7})
-    epoch = Time(optimum.x, format='jd', scale='utc')
-    matches = []
-    for name, nearest in assignments:
-        sky, _ = _planet_vectors(epoch, name, location); predicted_xy = camera.project(sky)[0]
-        row = unused[nearest]
-        matches.append(dict(planet=name.title(), detection_id=int(row['detection_id']),
-            measured_x_px=_float(row, 'x_px'), measured_y_px=_float(row, 'y_px'),
-            predicted_x_px=float(predicted_xy[0]), predicted_y_px=float(predicted_xy[1]),
-            separation_px=float(np.linalg.norm(predicted_xy-unused_xy[nearest])),
-            flux_above_background=_float(row, 'flux_above_background'),
-            saturated=row['saturated']=='True', source_class=row['source_class']))
-    area = camera.shape[0]*camera.shape[1]
-    random_expectation = len(PLANETS)*len(unused)*math.pi*gate_px**2/area
-    ranked = sorted(range(len(unused)),
-                    key=lambda i: _float(unused[i], 'flux_above_background'),
-                    reverse=True)
-    rank_by_index = {index: rank+1 for rank, index in enumerate(ranked)}
-    for match, (_, nearest) in zip(matches, assignments):
-        match['unused_brightness_rank'] = rank_by_index[nearest]
-        match['unused_brightness_percentile'] = float(
-            100.*(len(unused)-rank_by_index[nearest]+1)/len(unused))
-    bright_single = bool(matches and
-        (matches[0]['unused_brightness_percentile'] >= 75. or matches[0]['saturated']))
-    confidence = planet_confidence(len(matches), random_expectation, bright_single)
-    competing = sum(len(trial) >= len(matches) for trial in trials)-1
-    speeds = []
-    step_days = 1./1440.
-    for name, nearest in assignments:
-        before, _ = _planet_vectors(Time(epoch.jd-step_days, format='jd'), name, location)
-        after, _ = _planet_vectors(Time(epoch.jd+step_days, format='jd'), name, location)
-        speeds.append(np.linalg.norm(camera.project(after)[0]-
-                                     camera.project(before)[0])/(2.*step_days))
-    positional_sigma = max(float(result['fit']['rms_px']), .25)
-    time_sigma_days = positional_sigma/math.sqrt(sum(speed**2 for speed in speeds))
-    output = dict(status='planet_epoch_fitted', confidence=confidence,
-        derived_epoch_utc=epoch.utc.isot+' UTC', derived_jd_utc=float(epoch.utc.jd),
-        matches=matches, match_count=len(matches), unused_sources=len(unused),
-        rms_px=float(math.sqrt(optimum.fun/len(matches))), gate_px=gate_px,
-        random_match_expectation=float(random_expectation),
-        conditional_time_sigma_minutes=float(time_sigma_days*1440.),
-        competing_daily_minima=int(max(competing, 0)), search_centre_utc=centre.isot+' UTC',
-        search_centre_source=metadata.get('epoch_source'), search_half_width_days=search_days,
-        method='apparent GCRS ephemerides matched uniquely to unused measured point sources')
-    (solution/'planet_epoch.json').write_text(json.dumps(output, indent=2)+'\n')
-    with (solution/'planet_matches.csv').open('w', newline='') as handle:
-        writer=csv.DictWriter(handle, fieldnames=list(matches[0])); writer.writeheader(); writer.writerows(matches)
-    rgb=load_recorded_image(image_path, solution).display_rgb; fig,ax=plt.subplots(figsize=(11,10));ax.imshow(rgb)
-    for match in matches:
-        ax.plot(match['measured_x_px'],match['measured_y_px'],'o',ms=14,mfc='none',mec='cyan',mew=1.5)
-        ax.annotate(f"{match['planet']} #{match['detection_id']}",(match['measured_x_px'],match['measured_y_px']),
-                    xytext=(8,8),textcoords='offset points',color='cyan')
-    ax.set_title(f"Planet matches: {confidence}; derived epoch {epoch.utc.isot} UTC")
-    ax.set_xlim(-.5,rgb.shape[1]-.5);ax.set_ylim(rgb.shape[0]-.5,-.5);fig.tight_layout();save_png(fig, solution/'planet_candidates.png',dpi=160);plt.close(fig)
-    return output
+def fit_planet_epoch(image_path, solution, result, stellar_epoch, gate_px=3., *,
+                     force_blind=False):
+    """Use post-fit time metadata by default, with a full blind fallback."""
+    from point_star_metadata import planet_search_context
+    from point_star_planets import fit_blind_planet_epoch
+    explicit = (result.get('observation') or {}).get('time_utc')
+    ceiling = (result.get('causal_epoch_ceiling') or {}).get('jd_tdb')
+    context = planet_search_context(
+        image_path, explicit_time=explicit, force_blind=force_blind,
+        latest_jd_tdb=ceiling)
+    return fit_blind_planet_epoch(
+        image_path, solution, result, epoch_limits=context['epoch_limits'],
+        gate_px=gate_px, search_context=context)
 
 
-def analyse_existing(image_path, solution, result, catalogue_path):
+def analyse_existing(image_path, solution, result, catalogue_path, *,
+                     force_blind_planets=False):
     stellar = fit_stellar_epoch(solution, result, catalogue_path)
     refraction = fit_refraction(solution, result, catalogue_path, stellar)
     photometry = measure_photometry(image_path, solution, result, refraction)
-    planets = fit_planet_epoch(image_path, solution, result, stellar)
+    planets = fit_planet_epoch(image_path, solution, result, stellar,
+                               force_blind=force_blind_planets)
     science = dict(stellar_epoch=stellar, refraction=refraction,
                    photometry=photometry, planets=planets)
     (Path(solution)/'science_summary.json').write_text(json.dumps(science, indent=2)+'\n')

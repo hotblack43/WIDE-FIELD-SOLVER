@@ -12,7 +12,7 @@ This guide covers **`go.sh`, `go4.sh`, `go5.sh`, `go6.sh` and `go7.sh`**.
 |---|---|---|---|---|---|
 | Use it for | Reproducing the established Tycho workflow | Reproducing Gaia v0.4.3 | Reproducing v0.5.0 | Reproducing v0.6.0 | New analyses with v0.7.0 and blind detector parity |
 | Stellar catalogue | Tycho-2/Hipparcos | Gaia DR3 plus bright supplement | Gaia DR3 plus bright supplement | Gaia DR3 plus bright supplement | Gaia DR3 plus bright supplement |
-| Planet analysis | Historical metadata-assisted diagnostics | Blind positional search | Blind search with absence evidence | Bundled reference and batched/parallel refinement | Same v6 search after parity-aware astrometry |
+| Planet analysis | Historical metadata-assisted diagnostics | Blind positional search | Blind search with absence evidence | Bundled reference and batched/parallel refinement | Metadata-conditioned local fit by default; full blind search by option/fallback |
 | Repeated runs | Replace previous output | New folder per run | New folder per run | New folder per run | New folder per run |
 
 All five versions are included and accept monochrome and RGB images. You do not
@@ -110,7 +110,11 @@ V6 preserves those rules and adds a bundled 1850--2036 reference, batched exact
 refinement and up to four planet workers. Its controlled benchmark measured a
 [3.09x median planetary-stage speedup](v6/docs/PLANET_SEARCH_PERFORMANCE.md).
 V7 preserves that science and adds blind normal/mirrored detector-parity
-selection, propagated through coordinates, reports and FITS WCS products.
+selection, propagated through coordinates, reports and FITS WCS products. Its
+planet stage defaults to a ±1-day local fit when an explicit, FITS, EXIF or
+filename observation time is available, and records the fitted timing error
+against that reference. Use `./go7.sh IMAGE --blind-planets` for the inherited
+full 1850-to-present search; missing metadata triggers that fallback automatically.
 
 Other useful products include:
 
@@ -135,8 +139,10 @@ fit. Thinner hollow stars labelled “predicted” show the other planets expect
 in view at that same candidate epoch; they are not measured identifications.
 Other date/identity alternatives remain in the numerical records.
 
-`go4.sh` through `go7.sh` fit from the image and reference catalogues. Observing time and site
-are reserved for a separately requested comparison after the blind fits.
+All versions fit stellar astrometry and photometric zenith from the image and
+reference catalogues without observation metadata. In v7 only, after those
+results are fixed, observation time may bound the default planetary analysis;
+the report labels it metadata-conditioned rather than blind.
 The legacy analyser's metadata-assisted diagnostics retain their historical
 behaviour. Instrumental image photometry is not automatically calibrated
 astronomical photometry.

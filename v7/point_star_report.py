@@ -140,11 +140,20 @@ def report_sections(result, science=None, **legacy):
         )
     else:
         epoch_text = 'The stellar proper-motion epoch analysis has not been run.'
-    astrometry = (
-        f"Detector residuals are RMS {_fmt(fit['rms_px'])} px, median "
-        f"{_fmt(fit['median_px'])} px and 90th percentile {_fmt(fit['p90_px'])} px. "
-        + epoch_text
-    )
+    if fit.get('rms_arcmin') is not None:
+        residual_text = (
+            f"Sky residuals are RMS {_fmt(fit['rms_arcmin'])} arcmin, median "
+            f"{_fmt(fit['median_arcmin'])} arcmin and 90th percentile "
+            f"{_fmt(fit['p90_arcmin'])} arcmin. Corresponding detector residuals are RMS "
+            f"{_fmt(fit['rms_px'])} px, median {_fmt(fit['median_px'])} px and 90th percentile "
+            f"{_fmt(fit['p90_px'])} px. "
+        )
+    else:
+        residual_text = (
+            f"Detector residuals are RMS {_fmt(fit['rms_px'])} px, median "
+            f"{_fmt(fit['median_px'])} px and 90th percentile {_fmt(fit['p90_px'])} px. "
+        )
+    astrometry = residual_text+epoch_text
 
     photometric_zenith = photometry.get('photometric_zenith') or {}
     if refraction:
@@ -191,6 +200,9 @@ def report_sections(result, science=None, **legacy):
         atmosphere += ' The image lacks a usable airmass-based extinction fit.'
 
     matches = planets.get('matches') or []
+    metadata_conditioned = bool(planets.get('metadata_used'))
+    planet_prefix = ('Metadata-conditioned positional candidates'
+                     if metadata_conditioned else 'Blind positional candidates')
     identity_alternatives = planets.get('surviving_source_identity_alternatives',
                                        planets.get('source_identity_alternatives', {}))
     if matches:
@@ -202,7 +214,7 @@ def report_sections(result, science=None, **legacy):
         ]
         if planets.get('status') in ('planet_epoch_ambiguous', 'conditional_planet_epoch'):
             planet_text = (
-                f"Blind positional candidates: {'; '.join(descriptions)}. "
+                f"{planet_prefix}: {'; '.join(descriptions)}. "
                 + (f"Alternative identities: {', '.join(sorted({name for values in identity_alternatives.values() for name in values}))}. "
                    if identity_alternatives else '') +
                 f"Best candidate: {planets.get('best_candidate_epoch_tdb', '--')}. "
@@ -226,6 +238,19 @@ def report_sections(result, science=None, **legacy):
         planet_text = 'No competitive planet match survived the measured-source and catalogue checks.'
     else:
         planet_text = planets.get('reason', 'A blind planetary epoch has not been established.')
+    if metadata_conditioned:
+        metadata = planets.get('observation_time_metadata') or {}
+        planet_text += (
+            f" Metadata time {metadata.get('time_utc', '--')} from "
+            f"{metadata.get('source', '--')} constrained the local search; "
+            "this is not blind epoch inference.")
+        accuracy = planets.get('metadata_accuracy') or {}
+        if accuracy.get('planet_minus_metadata_seconds') is not None:
+            planet_text += (
+                f" Locally fitted planetary epoch minus metadata: "
+                f"{_fmt(accuracy['planet_minus_metadata_seconds'], 1)} s "
+                f"(absolute error {_fmt(accuracy.get('absolute_timing_error_seconds'), 1)} s), "
+                "conditional on the metadata-supplied local interval.")
     evidence = planets.get('negative_evidence') or {}
     if evidence.get('contradicted_candidates'):
         planet_text += (f" Bright-planet absence checks contradict {evidence['contradicted_candidates']} positional candidates; "
@@ -284,6 +309,8 @@ def table_rows(result, science):
     if planets.get('status') == 'planet_epoch_not_identifiable':
         planet_value = (f"Not identifiable; {planets.get('single_planet_candidate_count', 0)} "
                         "single-planet aliases; no multi-planet solution")
+    if planets.get('metadata_used'):
+        planet_value = 'Metadata-conditioned; '+planet_value
     if by_channel:
         extinction_value = '; '.join(
             f"k{channel}={_fmt(values.get('coefficient_mag_per_airmass'))} ± "
@@ -299,7 +326,9 @@ def table_rows(result, science):
     rows = [
         ('Catalogue', catalogue_label(result)),
         ('Astrometry', f"{fit['count']}/{result['detection_count']} associations/detections; "
-                       f"RMS {_fmt(fit['rms_px'])} px"),
+                       + (f"RMS {_fmt(fit['rms_arcmin'])} arcmin ({_fmt(fit['rms_px'])} px)"
+                          if fit.get('rms_arcmin') is not None else
+                          f"RMS {_fmt(fit['rms_px'])} px")),
         ('Lens', f"O=({_fmt(p['x_o'],1)},{_fmt(p['y_o'],1)}) px; "
                  f"V={p['v']:.4g}, S={p['s']:.4g}, D={p['d']:.4g}"),
         ('Stellar epoch', stellar_value),

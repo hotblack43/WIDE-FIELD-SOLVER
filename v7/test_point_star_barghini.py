@@ -6,10 +6,116 @@ import unittest
 import numpy as np
 from scipy.spatial.transform import Rotation
 
-from point_star_barghini import BarghiniCamera, fit_camera, prepare_output, select_labels
+from point_star_barghini import (
+    BarghiniCamera, angular_separations_arcmin, associate, astrometric_stats,
+    fit_camera, plate_scale_summary, prepare_output, radial_soft_l1_residuals,
+    resolved_association_gate_arcmin, select_labels, tangent_residuals_arcmin,
+)
 
 
 class BarghiniPointTests(unittest.TestCase):
+    def test_radial_robust_loss_is_invariant_to_tangent_direction(self):
+        radius = 8.
+        residuals = np.array([[radius, 0.],
+                              [radius/np.sqrt(2.), radius/np.sqrt(2.)]])
+        transformed = radial_soft_l1_residuals(residuals, scale=3.)
+
+        costs = .5*np.sum(transformed**2, axis=1)
+        np.testing.assert_allclose(costs, [costs[0], costs[0]], atol=1e-12)
+
+    def test_radial_robust_cost_is_continuous_across_tangent_basis_switch(self):
+        angle = np.deg2rad(8./60.)
+        references = np.array([
+            [np.sqrt(1.-z*z), 0., z] for z in (.9-1e-9, .9+1e-9)
+        ])
+        predicted = references @ Rotation.from_rotvec([0., angle, 0.]).as_matrix().T
+        residuals = tangent_residuals_arcmin(predicted, references)
+        transformed = radial_soft_l1_residuals(residuals, scale=3.)
+
+        costs = .5*np.sum(transformed**2, axis=1)
+        self.assertAlmostEqual(float(costs[0]), float(costs[1]), places=9)
+
+    def test_tangent_residual_does_not_treat_an_antipode_as_a_perfect_fit(self):
+        reference = np.array([[1., 0., 0.]])
+        residual = tangent_residuals_arcmin(-reference, reference)
+
+        self.assertAlmostEqual(float(np.linalg.norm(residual[0])), 180.*60.)
+
+    def test_angular_association_gate_is_independent_of_detector_resolution(self):
+        decisions = []
+        measured_offsets_px = []
+        for size in (200, 2000):
+            camera = BarghiniCamera.initial((size, size), size/2., np.eye(3))
+            measured = np.array([[(size-1)/2., (size-1)/2.]])
+            ray = camera.to_sky(measured)
+            angle = np.deg2rad(10./60.)
+            rotation = Rotation.from_rotvec([0., angle, 0.]).as_matrix()
+            catalogue = ray @ rotation.T
+            measured_offsets_px.append(float(np.linalg.norm(camera.project(catalogue)-measured)))
+            inside = associate(camera, measured, catalogue, gate_arcmin=10.1)
+            outside = associate(camera, measured, catalogue, gate_arcmin=9.9)
+            decisions.append((len(inside[0]), len(outside[0])))
+            np.testing.assert_allclose(
+                angular_separations_arcmin(ray, catalogue), [10.], atol=1e-9)
+
+        self.assertEqual(decisions, [(1, 0), (1, 0)])
+        self.assertGreater(measured_offsets_px[1], 9.*measured_offsets_px[0])
+
+    def test_robust_camera_fit_has_resolution_independent_angular_weighting(self):
+        rng = np.random.default_rng(911)
+        offsets = rng.uniform(-.3, .3, (40, 2))
+        fitted_centre_rays = []
+        for size in (400, 4000):
+            centre = np.array([(size-1)/2., (size-1)/2.])
+            measured = centre+size*offsets
+            truth = BarghiniCamera.initial((size, size), size/2., np.eye(3))
+            catalogue = truth.to_sky(measured)
+            catalogue[-1] = catalogue[-1] @ Rotation.from_rotvec(
+                [0., np.deg2rad(1.), 0.]).as_matrix().T
+            initial = BarghiniCamera.initial(
+                (size, size), size/2., Rotation.from_rotvec([.002, -.001, .001]).as_matrix())
+
+            fitted, info = fit_camera(initial, measured, catalogue, max_nfev=600)
+
+            self.assertTrue(info['success'])
+            fitted_centre_rays.append(fitted.to_sky(centre[None, :]))
+
+        separation = angular_separations_arcmin(
+            fitted_centre_rays[0], fitted_centre_rays[1])[0]
+        self.assertLess(separation, .05)
+
+    def test_astrometric_stats_keep_pixels_but_make_angular_error_primary(self):
+        angular_rms = []
+        pixel_rms = []
+        centre_scales = []
+        for size in (200, 2000):
+            camera = BarghiniCamera.initial((size, size), size/2., np.eye(3))
+            centre = np.array([[(size-1)/2., (size-1)/2.]])
+            measured_ray = camera.to_sky(centre)
+            catalogue = measured_ray @ Rotation.from_rotvec(
+                [0., np.deg2rad(10./60.), 0.]).as_matrix().T
+
+            score = astrometric_stats(camera, centre, catalogue)
+            scale = plate_scale_summary(camera)
+
+            angular_rms.append(score['rms_arcmin'])
+            pixel_rms.append(score['rms_px'])
+            centre_scales.append(scale['centre_arcmin_per_px'])
+
+        np.testing.assert_allclose(angular_rms, [10., 10.], atol=1e-9)
+        self.assertGreater(pixel_rms[1], 9.*pixel_rms[0])
+        self.assertGreater(centre_scales[0], 9.*centre_scales[1])
+
+    def test_angular_gate_includes_coarse_camera_sampling_without_becoming_pixel_based(self):
+        coarse = BarghiniCamera.initial((200, 200), 100., np.eye(3))
+        fine = BarghiniCamera.initial((2000, 2000), 1000., np.eye(3))
+
+        coarse_gate = resolved_association_gate_arcmin(coarse, physical_floor_arcmin=8.1)
+        fine_gate = resolved_association_gate_arcmin(fine, physical_floor_arcmin=8.1)
+
+        self.assertGreater(coarse_gate, 30.)
+        self.assertAlmostEqual(fine_gate, 8.1)
+
     def test_serialised_camera_without_parity_defaults_to_normal(self):
         camera = BarghiniCamera.initial((100, 120), 60., np.eye(3))
         saved = camera.serialise()

@@ -77,6 +77,15 @@ def moving_field(motion_scale=1500., year=2060., noise=.0005):
 
 
 class EpochFitTests(unittest.TestCase):
+    def test_profile_variance_is_invariant_to_tangent_direction(self):
+        from point_star_epoch import radial_profile_variance
+        radius = 8.
+        aligned = np.tile([radius, 0.], (20, 1))
+        diagonal = np.tile([radius/np.sqrt(2.), radius/np.sqrt(2.)], (20, 1))
+
+        self.assertAlmostEqual(radial_profile_variance(aligned, 3., 31),
+                               radial_profile_variance(diagonal, 3., 31), places=12)
+
     def solve(self, motion_scale=1500., year=2060., noise=.0005, fixed_year=None):
         from point_star_epoch import Catalogue, fit_epoch
         camera, xy, rows, target = moving_field(motion_scale, year, noise)
@@ -91,6 +100,8 @@ class EpochFitTests(unittest.TestCase):
         self.assertAlmostEqual(epoch['epoch_jyear'], 2060., delta=.5)
         self.assertEqual(epoch['fitted_count'], len(xy))
         self.assertEqual(epoch['withheld_count'], 0)
+        self.assertIn('rms_arcmin', epoch['fit'])
+        self.assertTrue(all('rms_arcmin' in item for item in epoch['profile']))
         self.assertLess(np.max(np.linalg.norm(fitted.project(target)-xy, axis=1)), .003)
         low, high = epoch['conditional_interval_95_jyear']
         self.assertLess(low, 2060.)

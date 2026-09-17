@@ -82,8 +82,30 @@ Normal and one-axis-reflected detectors are represented by an explicit parity
 term in `BarghiniCamera`, while the celestial reference matrix remains a proper
 rotation. The parity is inferred from pixels and catalogue geometry rather than
 file type or metadata. Seed refinement is kept only when its measured pixel RMS
-does not worsen, and a seed outside the existing tetra3 match-radius scale is
-rejected so later blind patch hypotheses can continue.
+does not worsen, and a seed outside tetra3's existing match-radius scale is
+rejected so later blind patch hypotheses can continue. A formally usable seed
+with great-circle RMS above 3 arcminutes is retained as a weak fallback rather
+than returned immediately. The blind patch search continues and accepts the
+first seed at or below that angular threshold; if none exists, it returns the
+lowest-angular-RMS retained seed. This keeps difficult fields recoverable while
+preventing a loose early answer from hiding a much stronger later hypothesis.
+
+## V7 planetary time routing
+
+Stellar astrometry, stellar epoch, refraction and photometric zenith finish
+before observation-time metadata is inspected. The default planet stage selects
+an explicit CLI time, FITS `DATE-OBS`/`MJD-OBS`/`JD`, EXIF time, or recognized
+filename time in that order and runs the modern positional pipeline inside a
+±1-day interval. All parsed alternatives, UTC assumptions and disagreements are
+saved. The date remains a fitted positional result inside that interval, so
+source competition, exact ephemeris refinement, physical visibility, solar
+consistency and missing-bright-planet evidence still apply.
+
+The fitted planetary date is compared with the metadata reference in seconds.
+That error is conditional on being given the correct local interval and does not
+measure global date/identity ambiguity. `--blind-planets` bypasses metadata and
+runs the complete 1850-to-present search; the same full search is the automatic
+fallback for undated inputs.
 
 ## Global lens fit
 
@@ -98,17 +120,29 @@ u(r) = V r + S [exp(D r) - 1].
 `BarghiniCamera` applies its saved detector parity and maps these local angular
 coordinates through the fixed reference rotation into celestial unit vectors. Parameters comprise a
 rotation angle, independent O/Z detector coordinates, and V/S/D. The fitter
-uses robust least squares in unit-vector space and checks positive radial
-slope over the detector. The reported residuals are subsequently calculated
-in detector pixels using the inverse projection.
+uses robust least squares on each star's two-dimensional tangent-plane residual
+in arcminutes. A rotationally invariant radial pseudo-Huber/`soft_l1` transform
+with a 3-arcminute scale is evaluated before linear least squares, so equal
+great-circle errors receive equal weight regardless of tangent direction. The
+fit also checks positive radial slope over the detector. Great-circle RMS,
+median and 90th-percentile residuals are the primary accuracy measures.
+Corresponding inverse-projection pixel residuals remain in the products as
+detector-sampling diagnostics.
 
 Progressive association increases the spatial radius and catalogue depth,
-then reduces the pixel matching gate from 12 to 3 pixels. Associations are
-mutual nearest neighbours with exclusive assignments. All measured sources
+then reduces the physical great-circle gate through 30, 24, 20, 16, 11 and 8.1
+arcminutes. Each stage also has a one-fitted-pixel angular sampling floor,
+calculated from the median local Jacobian of the current Barghini camera. Thus
+a coarse detector is not required to localise below one sample, while cameras
+with different pixel counts or plate scales no longer receive different sky
+gates merely because the old constants were expressed in pixels. Associations
+are mutual nearest neighbours with exclusive assignments. All measured sources
 remain available; the last fit uses all current accepted associations.
 Variables historically named `train` denote that complete set, without a
 withheld-star split. The synthetic geometry unit test separately checks
-recovery at additional coordinates.
+recovery at additional coordinates. `result.json` records the physical and
+resolved gates, fitted plate-scale samples and robust-loss scale; diagnostics
+and coordinate exports retain both angular and pixel residuals.
 
 ## Coordinates and interpretation
 
@@ -124,7 +158,8 @@ The frozen catalogue contains reference-epoch positions; the solver does not
 propagate them to an observation epoch. No atmospheric refraction correction,
 planet classification or calibrated photometry is claimed.
 
-The three-pixel association gate and use of fitted stars must accompany
+The resolved angular association gate and use of fitted stars must accompany
 reported residuals. Local accuracy near field edges, and behaviour on other
 lenses, need further tests. A converged solution alone cannot establish that
-every source is correctly identified.
+every source is correctly identified; a residual distribution concentrated at
+the gate remains evidence of weak or chance-dominated associations.

@@ -30,10 +30,14 @@ the historical comparison with solve-field factual and bounded by its tests.
 ## Read the scientific goal first
 
 Read [GOAL.md](GOAL.md) before changes and check `docs/FEATURE_STATUS.md` when
-present. Blind solving is the primary contract: site/time metadata may be
-revealed only after the fitted results are fixed, for separate validation.
-Do not replace the photometric-zenith constraint with metadata-derived airmass
-or describe a metadata-centred planet lookup as blind epoch inference.
+present. Blind stellar solving remains the primary contract: site/time metadata
+may be revealed only after the astrometric, refraction and photometric-zenith
+results are fixed. The default v7 planet stage may then use an EXIF, FITS,
+filename or explicit observation time to bound a metadata-conditioned local
+fit; it must record that provenance and must not describe the result as blind
+epoch inference. `--blind-planets` preserves the full blind planetary search,
+which is also the automatic fallback when no usable time exists. Do not replace
+the photometric-zenith constraint with metadata-derived airmass.
 Preserve implemented capabilities and add regression evidence for new ones.
 
 ## Version boundary

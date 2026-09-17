@@ -13,7 +13,8 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-from point_star_report import formula_page, observation_metadata, report_sections, write_report
+from point_star_report import (formula_page, observation_metadata, report_sections,
+                               table_rows, write_report)
 
 
 class ReportTests(unittest.TestCase):
@@ -37,6 +38,17 @@ class ReportTests(unittest.TestCase):
         sections = report_sections(result, {})
 
         self.assertIn('mirrored detector parity', sections['lens'])
+
+    def test_report_leads_with_angular_astrometry_and_retains_pixel_diagnostics(self):
+        result = self.sample_result()
+        result['fit'].update(rms_arcmin=4.2, median_arcmin=3.1, p90_arcmin=6.8)
+
+        sections = report_sections(result, {})
+        rows = dict(table_rows(result, {}))
+
+        self.assertIn('RMS 4.200 arcmin', sections['astrometry'])
+        self.assertIn('0.398 px', sections['astrometry'])
+        self.assertIn('RMS 4.200 arcmin', rows['Astrometry'])
 
     def test_sky_overlay_accepts_four_plane_high_bit_fits(self):
         from point_star_report import write_report_sky_overlay
@@ -165,6 +177,7 @@ class ReportTests(unittest.TestCase):
         from point_star_report import write_report_sky_overlay
         from point_star_planets import _plot_candidates
         answer = {'status': 'planet_epoch_ambiguous',
+                  'metadata_used': True, 'planet_search_mode': 'metadata_conditioned',
                   'matches': [{'planet': 'Mars', 'measured_x_px': 30., 'measured_y_px': 40.}],
                   'predicted_planets': [{'planet': 'Jupiter', 'predicted_x_px': 85., 'predicted_y_px': 60.}]}
         with tempfile.TemporaryDirectory() as directory:
@@ -175,6 +188,8 @@ class ReportTests(unittest.TestCase):
             report_axis = save.call_args.args[0].axes[0]
             with patch('point_star_plotting.save_png') as save:
                 _plot_candidates(root/'source.png', root, answer)
+            self.assertIn('Metadata-conditioned', save.call_args.args[0].axes[0].get_title())
+            self.assertNotIn('Blind planet', save.call_args.args[0].axes[0].get_title())
             for axis in (report_axis, save.call_args.args[0].axes[0]):
                 markers = [line for line in axis.lines if line.get_marker() == '*']
                 self.assertEqual(len(markers), 2)
@@ -183,6 +198,32 @@ class ReportTests(unittest.TestCase):
                 self.assertTrue(all(m.get_markerfacecolor() == 'none' for m in markers))
                 self.assertLess(markers[1].get_markeredgewidth(), markers[0].get_markeredgewidth())
                 self.assertIn('Jupiter (predicted)', [t.get_text() for t in axis.texts])
+
+    def test_metadata_conditioned_planet_result_is_disclosed_in_report(self):
+        planets = {
+            'status': 'planet_epoch_ambiguous', 'metadata_used': True,
+            'planet_search_mode': 'metadata_conditioned', 'candidate_count': 2,
+            'match_count': 1, 'best_candidate_epoch_tdb': '2018-09-16T00:13:55 TDB',
+            'observation_time_metadata': {
+                'time_utc': '2018-09-16T00:13:55.000 UTC',
+                'source': 'fits:PRIMARY:DATE-OBS'},
+            'metadata_accuracy': {
+                'status': 'local_planet_epoch_compared',
+                'planet_minus_metadata_seconds': -42.5,
+                'absolute_timing_error_seconds': 42.5},
+            'matches': [{'planet': 'Mars', 'detection_id': 7, 'separation_px': .4,
+                         'unused_brightness_rank': 1}],
+        }
+        science = {'planets': planets}
+        text = report_sections(self.sample_result(), science)['planets']
+        row = dict(table_rows(self.sample_result(), science))['Planet epoch']
+        self.assertIn('Metadata-conditioned', text)
+        self.assertIn('2018-09-16T00:13:55.000 UTC', text)
+        self.assertIn('fits:PRIMARY:DATE-OBS', text)
+        self.assertIn('-42.5 s', text)
+        self.assertIn('conditional on the metadata-supplied local interval', text)
+        self.assertNotIn('Blind positional candidates', text)
+        self.assertIn('Metadata-conditioned', row)
 
     def test_missing_original_preserves_rendered_fallback_without_detector_labels(self):
         from PIL import Image

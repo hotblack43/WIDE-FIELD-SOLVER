@@ -29,6 +29,27 @@ unambiguously. Scientific samples retain native depth. The 8-bit rendering in
 plots is a display-only stretch; `analysis/dots/input_image.json` records the
 exact loading, channel and saturation policy.
 
+After the blind tetra3 bootstrap, v7 performs catalogue association and robust
+Barghini fitting in angular sky coordinates. Progressive great-circle gates end
+at an 8.1-arcminute physical floor; for undersampled images the fitted camera adds
+a minimum allowance equal to one detector pixel expressed in arcminutes.
+Reports therefore lead with great-circle RMS/median/p90 and retain pixel
+residuals only as useful detector diagnostics. The resolved gate and sampled
+plate scale are saved in `result.json`.
+
+By default, the v7 planetary stage uses an observation time found in an explicit
+argument, FITS header, EXIF header or recognized filename to restrict the full
+planet analysis to ±1 day. Stellar astrometry, refraction and photometric zenith
+are fixed before this metadata is read. The local planetary date is still fitted
+from measured positions and compared with the metadata time; visibility, solar,
+Gaia-competition and missing-bright-planet checks still run. Products identify
+this as metadata-conditioned and record the conditional timing error. With no
+usable time, v7 falls back to the full blind search. Force that search with:
+
+```sh
+./go7.sh /path/to/image.fits --blind-planets
+```
+
 The root `go.sh` remains the preserved Tycho-2/Hipparcos workflow. The v4, v5
 and v6 launchers retain their corresponding preserved packages. Each runtime has
 separate modules and a lockfile. For the implemented science and remaining
@@ -59,10 +80,13 @@ retain the displaced catalogue identity and a `constellation_override` flag. See
 
 The inherited blind planet search ships a validated 1850--2036 daily proposal table,
 batches exact Astropy refinement and uses up to four deterministic planet
-workers. Set `WFS_PLANET_WORKERS=1` for the serial reference path. Timing and
+workers. It remains the `--blind-planets` path and the no-metadata fallback.
+Set `WFS_PLANET_WORKERS=1` for the serial reference path. Timing and
 call counts are written to `planet_search_performance.json`; see the
 [controlled v5/v6 benchmark](docs/PLANET_SEARCH_PERFORMANCE.md), which measured
 a 3.09x median planetary-stage speedup with unchanged candidate identities.
+The measured Paranal ApiCam diagnosis and corrected v7 result are recorded in
+[docs/APICAM_PARANAL_V07.md](docs/APICAM_PARANAL_V07.md).
 
 V7 adds blind detector-parity selection. A tetra3 seed may describe either a
 normal or one-axis-reflected detector, without consulting FITS metadata, site,
@@ -70,4 +94,6 @@ time or a saved solution. The chosen parity is part of the Barghini camera,
 propagates through saved coordinates, reports and ZPN export, and is recorded in
 `bootstrap.json` and `result.json`. Seed refinement is adopted only when its
 measured seed residual does not worsen; unusable seeds are rejected and the
-remaining blind patch hypotheses continue.
+remaining blind patch hypotheses continue. Seeds looser than 3 arcminutes RMS
+are retained as fallbacks while later blind hypotheses are tried, so a weak
+early tetra3 answer cannot suppress a stronger zero-distortion bootstrap.

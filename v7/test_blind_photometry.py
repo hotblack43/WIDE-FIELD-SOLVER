@@ -87,6 +87,11 @@ class BlindPhotometryTests(unittest.TestCase):
             self.assertFalse(first['metadata_used'])
             zenith = first['photometric_zenith']
             self.assertEqual(zenith['zenith_source'], 'centred_full_horizon_geometry')
+            horizon = zenith['geometric_horizon']
+            self.assertAlmostEqual(horizon['footprint_horizon_scale_arcmin_per_px'],
+                                   90.*60./195., delta=.1)
+            self.assertAlmostEqual(horizon['fitted_horizon_scale_arcmin_per_px'],
+                                   90.*60./195., delta=.1)
             np.testing.assert_allclose(
                 zenith['zenith_unit_vector'], camera.to_sky(np.array([[199.5, 199.5]]))[0],
                 atol=1e-12)
@@ -150,14 +155,30 @@ class BlindPhotometryTests(unittest.TestCase):
                 self.assertEqual(len(list(csv.DictReader(handle))), 5)
             self.assertEqual(rows[4]['photometric_zenith_exclusion_reason'], 'nonpositive_or_nonfinite_G_flux')
 
-    def test_default_planet_path_cannot_use_a_metadata_search_centre(self):
+    def test_default_planet_path_uses_metadata_only_for_planet_search(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            expected = {'status': 'planet_epoch_ambiguous', 'metadata_used': True}
+            image = Path(tmp)/'APICAM.2018-09-16T00:13:55.000.fits'
+            with patch('point_star_planets.fit_blind_planet_epoch', return_value=expected) as search:
+                result = fit_planet_epoch(image, tmp,
+                    {'causal_epoch_ceiling': {'jd_tdb': 2461300.}},
+                    {'epoch_jyear': 2100})
+            self.assertEqual(result, expected)
+            self.assertEqual(search.call_args.kwargs['search_context']['planet_search_mode'],
+                             'metadata_conditioned')
+
+    def test_blind_planet_option_forces_full_search(self):
         with tempfile.TemporaryDirectory() as tmp:
             expected = {'status': 'planet_epoch_ambiguous', 'metadata_used': False}
-            with patch('point_star_science.observation_metadata', side_effect=AssertionError('Metadata used')), \
-                 patch('point_star_planets.fit_blind_planet_epoch', return_value=expected) as search:
-                result = fit_planet_epoch('unused', tmp, {'observation': {'time_utc': 'poison'}}, {'epoch_jyear': 2100})
+            image = Path(tmp)/'APICAM.2018-09-16T00:13:55.000.fits'
+            with patch('point_star_planets.fit_blind_planet_epoch', return_value=expected) as search:
+                result = fit_planet_epoch(image, tmp,
+                    {'causal_epoch_ceiling': {'jd_tdb': 2461300.}},
+                    {'epoch_jyear': 2100}, force_blind=True)
             self.assertEqual(result, expected)
-            self.assertEqual(len(search.call_args.args), 3)
+            self.assertEqual(search.call_args.kwargs['epoch_limits'], (1850., 2036.))
+            self.assertEqual(search.call_args.kwargs['search_context']['planet_search_mode'],
+                             'blind_forced')
 
     def test_blind_report_hides_metadata_until_explicit_reveal(self):
         from point_star_report import observation_metadata

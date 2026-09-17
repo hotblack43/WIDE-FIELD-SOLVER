@@ -68,6 +68,13 @@ class EpochIntegrationTests(unittest.TestCase):
             self.assertIn('fit', saturated[0]['usage'])
             self.assertEqual(saved['solver_version'], '0.7.0')
             self.assertIn('point_star_footprint.py', saved['code_sha256'])
+            self.assertIn('rms_arcmin', saved['fit'])
+            self.assertEqual(saved['association']['units'], 'arcmin')
+            self.assertEqual(saved['association']['robust_loss'],
+                             'radial_soft_l1_per_star')
+            self.assertGreater(saved['plate_scale']['centre_arcmin_per_px'], 0.)
+            self.assertTrue(all('gate_arcmin' in stage and 'gate_px' not in stage
+                                for stage in saved['stages']))
             camera = _camera_from_result(saved)
             propagated = vectors([float(r['propagated_ra_deg']) for r in exported],
                                  [float(r['propagated_dec_deg']) for r in exported])
@@ -80,6 +87,7 @@ class EpochIntegrationTests(unittest.TestCase):
             np.testing.assert_allclose(measured, xy[ids], atol=1e-12, rtol=0)
             np.testing.assert_allclose(np.linalg.norm(prediction-measured, axis=1),
                                        [float(r['residual_px']) for r in exported], atol=1e-7)
+            self.assertTrue(all(float(r['residual_arcmin']) >= 0. for r in exported))
             self.assertLess(result['fit']['rms_px'], .003)
             for r in exported:
                 self.assertEqual(r['catalog_ra_deg'], rows[int(r['star_id'])]['ra_deg'])

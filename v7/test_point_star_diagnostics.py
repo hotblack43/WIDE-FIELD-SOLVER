@@ -9,10 +9,29 @@ import matplotlib.pyplot as plt
 import numpy as np
 from PIL import Image
 
+from point_star_barghini import BarghiniCamera
 from point_star_diagnostics import create_overlay, radial_statistics, write_diagnostics
 
 
 class DiagnosticTests(unittest.TestCase):
+    def test_radial_statistics_report_physical_angular_residuals_when_camera_is_available(self):
+        camera = BarghiniCamera.initial((101, 101), 50., np.eye(3))
+        measured = np.array([[50., 50.]])
+        angle = np.deg2rad(10./60.)
+        reference = camera.to_sky(measured)
+        reference = reference @ np.array([
+            [np.cos(angle), 0., np.sin(angle)],
+            [0., 1., 0.],
+            [-np.sin(angle), 0., np.cos(angle)],
+        ]).T
+        predicted = camera.project(reference)
+
+        report = radial_statistics(measured, predicted, camera.shape, camera=camera)
+
+        self.assertAlmostEqual(report['rms_arcmin'], 10., places=9)
+        self.assertAlmostEqual(report['bins'][0]['rms_arcmin'], 10., places=9)
+        self.assertIn('rms_px', report)
+
     def test_overlay_uses_actual_measured_and_predicted_positions(self):
         measured = np.array([[10., 20.], [30., 40.]])
         predicted = np.array([[10.5, 19.], [32., 40.2]])

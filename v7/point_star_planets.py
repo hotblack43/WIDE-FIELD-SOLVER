@@ -1,4 +1,4 @@
-"""Blind positional planet/date candidates, independent of observation metadata."""
+"""Planet/date candidates for blind or explicitly metadata-conditioned searches."""
 from __future__ import annotations
 
 import csv
@@ -84,7 +84,8 @@ def search_planet_epochs(camera, detections, jd_grid, sky_grid, vector_function,
                          gate_px=3., positional_sigma_px=.5, zenith_unit_vector=None,
                          zenith_status='conditional_zenith', zenith_source='photometric_extinction',
                          latest_jd_tdb=None,
-                         planet_workers=1, solar_constraint=None):
+                         planet_workers=1, solar_constraint=None,
+                         search_label='Blind planets'):
     """Search trajectory segments, refine dates and retain competing assignments.
 
     Inputs are measured detections, a fitted camera and reference ephemerides only.
@@ -222,7 +223,7 @@ def search_planet_epochs(camera, detections, jd_grid, sky_grid, vector_function,
                     lo, hi = max(0, sample[k]-1), min(len(jd)-1, sample[k]+1)
                     windows.append((name, source, jd[lo], jd[hi], jd[visit[0]], jd[visit[-1]+1]))
     coarse_seconds = time.perf_counter()-coarse_started
-    print(f'Blind planets: refining {len(windows)} positional visits across the full date interval', flush=True)
+    print(f'{search_label}: refining {len(windows)} positional visits across the date interval', flush=True)
 
     from point_star_planet_ephemeris import EphemerisProvider
     from point_star_planet_refinement import (
@@ -380,7 +381,7 @@ def search_planet_epochs(camera, detections, jd_grid, sky_grid, vector_function,
             passages.extend(local)
             visit_index += 1
             if visit_index % 100 == 0:
-                print(f'Blind planets: {visit_index}/{len(windows)} visits refined', flush=True)
+                print(f'{search_label}: {visit_index}/{len(windows)} visits refined', flush=True)
     output['refined_visit_count'] = len(windows)
     individual_seconds = time.perf_counter()-individual_started
     output['source_candidates'] = [dict(planet=name.title(), detection_id=int(detections[source]['detection_id']),
@@ -577,7 +578,7 @@ def search_planet_epochs(camera, detections, jd_grid, sky_grid, vector_function,
                     continue
                 expansions.append((expanded, expanded_date))
         if (trial_index+1) % 100 == 0:
-            print(f'Blind planets: {trial_index+1}/{len(seeds)} joint date trials', flush=True)
+            print(f'{search_label}: {trial_index+1}/{len(seeds)} joint date trials', flush=True)
         retain_candidate(assignments, date)
         for expanded, expanded_date in expansions:
             retain_candidate(expanded, expanded_date)
@@ -640,7 +641,39 @@ def predict_other_planets(camera, answer, vector_function):
     return rows
 
 
-def fit_blind_planet_epoch(image_path, solution, result, *, epoch_limits=(1850., 2036.), gate_px=3.):
+def annotate_metadata_accuracy(answer):
+    """Compare locally fitted planetary dates with the metadata reference time."""
+    if not answer.get('metadata_used'):
+        return answer
+    metadata = answer.get('observation_time_metadata') or {}
+    reference = metadata.get('jd_tdb')
+    if reference is None:
+        return answer
+    reference = float(reference)
+    for candidate in answer.get('candidates', []):
+        candidate['metadata_offset_seconds'] = float(np.round(
+            (float(candidate['jd_tdb'])-reference)*86400., 6))
+    best = answer.get('best_candidate_jd_tdb')
+    offset = (float(np.round((float(best)-reference)*86400., 6))
+              if best is not None else None)
+    answer['metadata_accuracy'] = dict(
+        status=('local_planet_epoch_compared' if best is not None
+                else 'no_supported_planet_epoch'),
+        reference_time_utc=metadata.get('time_utc'),
+        reference_source=metadata.get('source'),
+        reference_jd_tdb=reference,
+        fitted_planet_jd_tdb=(float(best) if best is not None else None),
+        planet_minus_metadata_seconds=offset,
+        absolute_timing_error_seconds=(abs(offset) if offset is not None else None),
+        candidate_offsets_seconds=[candidate['metadata_offset_seconds']
+                                   for candidate in answer.get('candidates', [])],
+        limitation=('Timing accuracy is conditional on the metadata-supplied local interval; '
+                    'it does not measure global blind date identifiability or ephemeris systematics.'))
+    return answer
+
+
+def fit_blind_planet_epoch(image_path, solution, result, *, epoch_limits=(1850., 2036.),
+                           gate_px=3., search_context=None):
     """Search positions, check local bright-planet absences, then select and plot."""
     from point_star_planet_ephemeris import load_ephemeris, planet_vectors
     from point_star_planet_refinement import planet_worker_count
@@ -675,13 +708,29 @@ def fit_blind_planet_epoch(image_path, solution, result, *, epoch_limits=(1850.,
     # reference path; the shipped module function is safe for process workers.
     parallel_safe = getattr(planet_vectors, '__module__', '') == 'point_star_planet_ephemeris'
     workers = planet_worker_count(nonempty_groups=len(grid)) if parallel_safe else 1
+    metadata_conditioned = bool(search_context and search_context.get('metadata_used'))
     answer = search_planet_epochs(_camera_from_result(result), detections, jd, grid, planet_vectors,
                                  gate_px=gate_px, positional_sigma_px=max(float(result['fit']['rms_px']), .5),
                                  zenith_unit_vector=photometric_zenith.get('zenith_unit_vector'),
                                  zenith_status=photometric_zenith.get('status', 'unresolved'),
                                  zenith_source=photometric_zenith.get('zenith_source'),
                                  latest_jd_tdb=ceiling['jd_tdb'], planet_workers=workers,
-                                 solar_constraint=solar)
+                                 solar_constraint=solar,
+                                 search_label=('Metadata planets' if metadata_conditioned
+                                               else 'Blind planets'))
+    if search_context is None:
+        search_context = dict(planet_search_mode='blind', metadata_used=False,
+                              epoch_limits=tuple(epoch_limits))
+    answer.update({key: value for key, value in search_context.items()
+                   if key != 'epoch_limits'})
+    if answer['metadata_used']:
+        answer['method'] = answer['method'].replace(
+            'blind trajectory-segment search',
+            'metadata-conditioned trajectory-segment search')
+        answer['limitation'] = answer['limitation'].replace(
+            'No site, image date or stellar epoch seeds this search.',
+            'The selected observation time bounds this local search; '
+            'no site or stellar epoch seeds it.')
     answer['causal_epoch_ceiling'] = ceiling
     answer['ephemeris'] = provenance
     from point_star_planet_nondetections import check_candidate_absences, write_evidence
@@ -698,6 +747,7 @@ def fit_blind_planet_epoch(image_path, solution, result, *, epoch_limits=(1850.,
     answer = check_candidate_absences(image_path, answer, _camera_from_result(result),
                                      detections, list(used.values()), counted_planet_vectors,
                                      valid_mask=_load_sky_footprint(output), solution=output)
+    answer = annotate_metadata_accuracy(answer)
     evidence_seconds = time.perf_counter()-evidence_started-solar_seconds
     write_evidence(output, answer)
     write_solar_evidence(output, answer)
@@ -755,7 +805,7 @@ def fit_blind_planet_epoch(image_path, solution, result, *, epoch_limits=(1850.,
     fields = ['candidate_rank', 'positional_rank', 'missing_bright_planets', 'solar_status', 'solar_reason',
               'solar_selection_eligible', 'solar_boundary_refinement',
               'sun_altitude_deg', 'sun_minimum_altitude_deg', 'sun_maximum_altitude_deg',
-              'epoch_tdb', 'match_count', 'rms_px', 'planet', 'detection_id',
+              'epoch_tdb', 'metadata_offset_seconds', 'match_count', 'rms_px', 'planet', 'detection_id',
               'measured_x_px', 'measured_y_px', 'predicted_x_px', 'predicted_y_px', 'separation_px',
               'saturated', 'source_class', 'unused_brightness_rank', 'flux_above_background',
               'catalogue_star_id', 'catalogue_residual_px', 'improvement_over_star_chi2',
@@ -774,6 +824,7 @@ def fit_blind_planet_epoch(image_path, solution, result, *, epoch_limits=(1850.,
                                      sun_minimum_altitude_deg=solar_row.get('minimum_solar_altitude_deg'),
                                      sun_maximum_altitude_deg=solar_row.get('maximum_solar_altitude_deg'),
                                      epoch_tdb=candidate['epoch_tdb'],
+                                     metadata_offset_seconds=candidate.get('metadata_offset_seconds'),
                                      match_count=candidate['match_count'], rms_px=candidate['rms_px'], **match))
     with (output/'planet_source_candidates.csv').open('w') as handle:
         writer = csv.DictWriter(handle, fieldnames=['planet', 'detection_id', 'jd_tdb', 'epoch_tdb', 'separation_px'])
@@ -801,7 +852,9 @@ def _plot_candidates(image_path, output, answer):
     prediction_handle = _draw_predicted_planets(ax, answer.get('predicted_planets', []))
     if prediction_handle is not None:
         ax.legend(handles=[prediction_handle], loc='lower left', fontsize=8)
-    ax.set_title('Blind planet candidates: '+answer['status'].replace('_', ' ')+'\n'+
+    heading = ('Metadata-conditioned planet candidates'
+               if answer.get('metadata_used') else 'Blind planet candidates')
+    ax.set_title(heading+': '+answer['status'].replace('_', ' ')+'\n'+
                  (answer.get('best_candidate_epoch_tdb') or 'No supported candidate')+'; alternatives in planet_candidates.csv')
     ax.axis('off'); fig.tight_layout()
     save_png(fig, output/'planet_candidates.png', dpi=180); plt.close(fig)
@@ -814,8 +867,14 @@ def write_epoch_diagnostics(output, answer):
     from point_star_plotting import save_png
     output = Path(output)
     candidates = answer.get('candidates', [])
-    lines = [f"Blind planetary epoch candidates: {len(candidates)} ({answer['status']})",
+    conditioned = bool(answer.get('metadata_used'))
+    heading = ('Metadata-conditioned planetary candidates'
+               if conditioned else 'Blind planetary epoch candidates')
+    lines = [f"{heading}: {len(candidates)} ({answer['status']})",
              'Fit rank | Candidate epoch (TDB)       | Planet/source                   | RMS px | local sigma (h) | Missing bright planets | Solar status']
+    metadata = answer.get('observation_time_metadata') or {}
+    if conditioned:
+        lines.insert(1, f"Metadata time: {metadata.get('time_utc', '--')} from {metadata.get('source', '--')}; local search only, not blind epoch inference.")
     if answer.get('visibility'):
         visible = answer['visibility']
         lines.insert(1, f"Visibility: altitude >=0 degrees using {visible['source']} ({visible['zenith_status']}); {visible.get('rejected_below_horizon_count', 0)} below-horizon detections rejected.")
@@ -853,8 +912,10 @@ def write_epoch_diagnostics(output, answer):
         ax.legend(fontsize=8)
     else:
         ax.text(.5, .5, 'No competitive planet/date candidate', ha='center', transform=ax.transAxes)
+    plot_heading = ('Metadata-conditioned planetary dates'
+                    if conditioned else 'Blind planetary dates')
     ax.set(xlabel='Candidate epoch (Julian year, TDB)', ylabel='Positional RMS (pixels)',
-           title=f"Blind planetary dates: {len(candidates)} retained candidates\n{answer['status'].replace('_', ' ')}")
+           title=f"{plot_heading}: {len(candidates)} retained candidates\n{answer['status'].replace('_', ' ')}")
     ax.grid(alpha=.25)
     fig.text(.5, .01, 'Horizontal bars: conditional local 1-sigma only; global date/identity ambiguities remain.',
              ha='center', fontsize=8)

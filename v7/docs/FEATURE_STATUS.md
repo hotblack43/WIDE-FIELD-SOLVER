@@ -18,6 +18,7 @@ must not describe a proposal as working merely because related products exist.
 | Audited undersampled-source detection fallback | Added after the v0.6.0 release | If the standard pass finds fewer than 100 sources and `too_small`/`too_sharp` rejections dominate, a 0.8-pixel Gaussian recognition pass is accepted only when it finds at least 12 sources and doubles the count. Native pixels retain flux and peak authority; the selected pass, blur scale and initial counts are recorded. Zenodo 3736793 trials recovered 159 R and 138 G candidates |
 | Image-only sky-footprint masking | Integrated in v0.5.0 development | Conservative connected illuminated field; dark exterior frame excluded before association; no OCR or semantic masking inside the field; ambiguous images use the full detector |
 | Blind pattern bootstrap and Barghini lens fit | Preserved | Fresh pixels and bundled pattern database; no saved associations |
+| Angular astrometric association and fitting | Added in v7 | After the blind bootstrap, mutual-nearest-neighbour gates and rotationally invariant robust Barghini residuals are measured on the celestial sphere in arcminutes rather than detector pixels. Progressive physical gates end at 8.1 arcminutes, the smallest tested floor preserving the historical demo with the radial loss, with a one-fitted-pixel angular floor for coarse sampling. Reports lead with great-circle RMS/median/p90 while retaining pixel diagnostics. After the weak-bootstrap acceptance correction, the 4096-pixel APICAM 2018-09-16T00:13:55 trial gives 8,032 associations at 1.912 arcmin RMS (0.702 px), with 97.2% inside half its gate. On the 915-pixel Espenak-derived FITS, whose 11.24-arcminute sampling floor controls the final gate, it gives 1,072 associations at 4.019 arcmin RMS (0.339 px), with 85.2% inside half the gate; this improves the previous 6.220-arcminute result while retaining most detections. These are fitted residuals, not independent validation |
 | Proper-motion propagation in the final astrometric solution | Added in 0.3.0 | Shared catalogue propagation, synthetic recovery and exported-coordinate checks |
 | Stellar epoch fitted with all associations; final camera saved | Added in 0.3.0 | All-star robust profile; conditional or provisional date status. If six proper-motion reassociation profiles do not settle, v6 now records `not_converged` and retains the last camera with the exact membership used to fit it rather than failing or pairing a camera with unfitted membership |
 | RGB instrumental photometry | Implemented | Aperture fluxes and flags retained in stellar_photometry.csv |
@@ -27,7 +28,8 @@ must not describe a proposal as working merely because related products exist.
 | Centred full-horizon geometric zenith | Added in v6 | A closed, broad circular boundary must pass circle-residual, complete-azimuth and fitted-camera 90-degree horizon checks before supplying the provisional image-centre zenith when extinction is not identifiable; crops, ellipses and round vignettes do not qualify. A photometric zenith that passes the existing strong-evidence checks retains authority |
 | Zenith fitted through astrometric refraction residuals | Implemented downstream diagnostic | Different objective from photometric zenith; does not establish that photometric proposal works |
 | Joint photometric zenith/extinction and astrometric epoch constraint | **Not implemented** | Not part of the 0.3.0 proper-motion bugfix; must be designed and tested explicitly |
-| Blind planetary epoch | Candidate search implemented in 0.4.2 | Past-only positional search capped at recorded run time, with measured/predicted horizon checks; alternatives retained and single-planet results ambiguous |
+| Metadata-conditioned planetary analysis | Default in v7 | After stellar astrometry, refraction and photometric zenith are fixed, v7 selects an explicit time, FITS `DATE-OBS`/`MJD-OBS`/`JD`, EXIF original/digitized/image time, or a recognized filename time in that priority order. It runs the complete modern planet pipeline inside ±1 day, records every parsed candidate and disagreement, and saves fitted-minus-metadata timing error. This measures conditional local accuracy, not global blind identifiability |
+| Blind planetary epoch | Preserved opt-in and fallback | `--blind-planets` forces the inherited past-only 1850-to-run-time positional search. The same search runs automatically when no usable metadata time exists. Measured/predicted horizon checks and alternatives are retained; single-planet results remain ambiguous |
 | Coherent planet-constellation Gaia reassignment | Added in v6 | Two independently eligible planets may recruit a third or later detected planet only inside the ordinary gate and only when the joint epoch refit beats its saved Gaia residual; all compatible one-to-one alternatives are tested, while isolated and two-body gates are unchanged |
 | Post-fit metadata comparison, including pole–zenith latitude | Added in 0.3.0 | Explicit `--compare-metadata`; no refit, uncertainty/status retained |
 | Gaia reference catalogue | Added in 0.4.0 as an opt-in alternative | Native DR3 epochs/PM, 36,663 Gaia rows plus 78 labelled bright supplements; `go_v0.4.0.sh` explicitly selects Gaia; bare solve/analyse CLI defaults remain Tycho/Hipparcos |
@@ -253,6 +255,17 @@ added only after all original attempts fail. A measured-pixel regression exercis
 real blind pattern identification and Barghini fitting after simulated timeout.
 No sources are withheld and no metadata or cached identities seed the search.
 See `BOOTSTRAP_FAILURES.md` for the measured failure and controlled diagnosis.
+
+V7 now measures every formally usable seed's great-circle RMS. A seed at or below
+3 arcminutes is accepted immediately. A looser seed is retained as an emergency
+fallback while the remaining blind hypotheses continue, and the best retained
+seed is used only if no strong candidate appears. This prevents a loose first
+tetra3 answer from suppressing the existing zero-distortion fallback. On the
+APICAM 2018-09-16T00:13:55 frame, the former 15-star seed at 6.252 arcminutes is
+retained but displaced by a 23-star fallback seed at 0.251 arcminutes; the normal
+pipeline then recovers 8,032 associations at 1.912 arcminutes RMS and the common
+Mars/Jupiter/Saturn candidate. The decision uses measured pixels and catalogue
+geometry only; no instrument, site, time or saved camera enters the bootstrap.
 
 ## Planet display at the fixed candidate epoch
 

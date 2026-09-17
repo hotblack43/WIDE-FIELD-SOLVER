@@ -43,9 +43,12 @@ def parser():
                    help='Explicit order for an unlabelled three/four-plane stack')
     p.add_argument('--saturation-level',
                    help='One threshold for all planes or channel mapping such as R=4095,G1=4095,G2=4095,B=4095')
+    p.add_argument('--blind-planets', action='store_true',
+                   help='Ignore time metadata and force the full blind planetary epoch search')
     p.add_argument('--compare-metadata', action='store_true',
-                   help='Reveal metadata only after all blind fits, for a separate comparison')
-    p.add_argument('--observation-time', help='UTC metadata for optional post-fit comparison; never used to fit the blind epoch')
+                   help='Compare metadata with completed stellar, zenith and planetary results')
+    p.add_argument('--observation-time',
+                   help='Explicit UTC time; used by the post-fit planet search and optional metadata comparison')
     p.add_argument('--latitude', type=float)
     p.add_argument('--longitude', type=float)
     p.add_argument('--elevation-m', type=float, default=0.)
@@ -86,7 +89,8 @@ def analyse(args):
                  epoch_year=args.epoch_year, epoch_limits=args.epoch_limits,
                  fits_hdu=args.fits_hdu, channel_order=args.channel_order,
                  saturation_level=args.saturation_level)
-    science = analyse_existing(args.image.resolve(), args.output, result, args.catalog)
+    science = analyse_existing(args.image.resolve(), args.output, result, args.catalog,
+                               force_blind_planets=args.blind_planets)
     result['fits_export'] = write_fits(args.image.resolve(), args.output, result, science)
     if args.compare_metadata:
         comparison = compare_metadata(result, science)

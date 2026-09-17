@@ -414,17 +414,33 @@ class PlanetSearchTests(unittest.TestCase):
                       'source': str(source),
                       'causal_epoch_ceiling': {'jd_tdb': self.origin+100,
                                                'source': 'test clock'}}
+            search_context = {
+                'planet_search_mode': 'metadata_conditioned',
+                'metadata_used': True,
+                'metadata_search_half_width_days': 1.,
+                'observation_time_metadata': {
+                    'time_utc': '2000-01-06T00:00:00.000 UTC',
+                    'source': 'fits:PRIMARY:DATE-OBS',
+                    'jd_tdb': self.origin+4.5,
+                },
+            }
             with patch('point_star_planet_ephemeris.load_ephemeris',
                        return_value=(dates, grid, {})), \
                  patch('point_star_planet_ephemeris.planet_vectors', side_effect=vectors), \
                  patch('point_star_planets._plot_candidates'):
-                answer = fit_blind_planet_epoch(source, output, result)
+                answer = fit_blind_planet_epoch(
+                    source, output, result, search_context=search_context)
 
             mars = next(row for row in answer['matches'] if row['planet'] == 'Mars')
             self.assertTrue(mars['constellation_override'])
             self.assertEqual(answer['source_identity_alternatives']['3'], ['Mars'])
             self.assertEqual(answer['source_identity_alternatives']['4'], ['Mars'])
             self.assertEqual(answer['status'], 'planet_epoch_ambiguous')
+            self.assertIn('metadata-conditioned trajectory-segment search',
+                          answer['method'])
+            self.assertIn('selected observation time bounds this local search',
+                          answer['limitation'])
+            self.assertNotIn('No site, image date', answer['limitation'])
             self.assertIn('coherent three-or-more-planet constellation',
                           answer['candidate_selection'])
             saved = json.loads((output/'planet_epoch.json').read_text())
@@ -486,7 +502,12 @@ class PlanetSearchTests(unittest.TestCase):
         from pathlib import Path
         from unittest.mock import patch
         from point_star_planets import write_epoch_diagnostics
-        answer = {'status': 'planet_epoch_ambiguous', 'candidates': [
+        answer = {'status': 'planet_epoch_ambiguous', 'metadata_used': True,
+                  'planet_search_mode': 'metadata_conditioned',
+                  'observation_time_metadata': {
+                      'time_utc': '2018-09-16T00:13:55.000 UTC',
+                      'source': 'fits:PRIMARY:DATE-OBS'},
+                  'candidates': [
             {'epoch_tdb': '2000-01-01T00:00:00 TDB', 'jd_tdb': self.origin, 'rms_px': .2,
              'conditional_time_sigma_minutes': 60., 'matches': [{'planet': 'Saturn', 'detection_id': 4}]},
             {'epoch_tdb': '2030-01-01T00:00:00 TDB', 'jd_tdb': self.origin+10957., 'rms_px': .4,
@@ -498,8 +519,52 @@ class PlanetSearchTests(unittest.TestCase):
             self.assertIn('2030-01-01', printed.getvalue())
             self.assertIn('Saturn', printed.getvalue())
             self.assertIn('Mars', printed.getvalue())
+            self.assertIn('Metadata-conditioned planetary candidates', printed.getvalue())
+            self.assertIn('fits:PRIMARY:DATE-OBS', printed.getvalue())
+            self.assertNotIn('Blind planetary epoch candidates', printed.getvalue())
             self.assertEqual(save.call_args.args[1].name, 'planet_epoch_candidates.png')
             self.assertTrue((Path(tmp)/'planet_epoch_candidates.txt').is_file())
+
+    def test_metadata_search_progress_is_not_labelled_blind(self):
+        import contextlib, io
+        from point_star_planets import search_planet_epochs
+        dates = self.origin + np.arange(2.)
+        def vectors(name, jd):
+            return self.camera.to_sky(
+                np.tile([250., 230.], (len(np.atleast_1d(jd)), 1)))
+        with contextlib.redirect_stdout(io.StringIO()) as printed:
+            search_planet_epochs(
+                self.camera,
+                [dict(detection_id='1', x_px=250., y_px=230.)],
+                dates, {'mars': vectors('mars', dates)}, vectors,
+                zenith_unit_vector=[0, 0, 1], search_label='Metadata planets')
+        self.assertIn('Metadata planets:', printed.getvalue())
+        self.assertNotIn('Blind planets:', printed.getvalue())
+
+    def test_metadata_accuracy_records_fitted_date_error_and_all_offsets(self):
+        from point_star_planets import annotate_metadata_accuracy
+        answer = {
+            'metadata_used': True,
+            'observation_time_metadata': {
+                'time_utc': '2000-01-01T12:00:00.000 UTC',
+                'source': 'fits:PRIMARY:DATE-OBS',
+                'jd_tdb': self.origin,
+            },
+            'best_candidate_jd_tdb': self.origin+.25,
+            'candidates': [
+                {'jd_tdb': self.origin+.25, 'match_count': 3, 'rms_px': .2},
+                {'jd_tdb': self.origin-.5, 'match_count': 2, 'rms_px': .4},
+            ],
+        }
+        result = annotate_metadata_accuracy(answer)
+        validation = result['metadata_accuracy']
+        self.assertEqual(validation['status'], 'local_planet_epoch_compared')
+        self.assertEqual(validation['reference_source'], 'fits:PRIMARY:DATE-OBS')
+        self.assertAlmostEqual(validation['planet_minus_metadata_seconds'], 21600.)
+        self.assertAlmostEqual(validation['absolute_timing_error_seconds'], 21600.)
+        self.assertEqual([row['metadata_offset_seconds'] for row in result['candidates']],
+                         [21600., -43200.])
+        self.assertIn('metadata-supplied local interval', validation['limitation'])
 
     def test_below_horizon_measured_source_is_rejected(self):
         from point_star_planets import search_planet_epochs

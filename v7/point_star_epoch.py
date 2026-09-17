@@ -63,6 +63,18 @@ class Catalogue:
                          self.reference[indices], self.velocity[indices], self.has_motion[indices])
 
 
+def radial_profile_variance(residual, scale, degrees_of_freedom):
+    """Robust radial variance estimate for paired tangent-plane residuals."""
+    residual = np.asarray(residual, dtype=float)
+    if residual.ndim != 2 or residual.shape[1] != 2:
+        raise ValueError('Profile variance requires Nx2 tangent residuals')
+    if not np.isfinite(scale) or scale <= 0:
+        raise ValueError('Profile variance scale must be positive and finite')
+    radius_squared = np.sum(residual**2, axis=1)
+    radial_weight = 1./np.hypot(1., np.sqrt(radius_squared)/scale)
+    return float(np.sum(radius_squared*radial_weight)/max(1, degrees_of_freedom))
+
+
 def fit_epoch(camera, xy, catalogue, year_limits=(1850., 2036.), *, fixed_year=None):
     """Refit all fixed associations at trial epochs and return the adopted camera.
 
@@ -71,7 +83,10 @@ def fit_epoch(camera, xy, catalogue, year_limits=(1850., 2036.), *, fixed_year=N
     uncertainty, refraction/model systematics and any independent date evidence.
     """
     from scipy.optimize import brentq, minimize_scalar
-    from point_star_barghini import fit_camera, stats
+    from point_star_barghini import (
+        ASTROMETRIC_LOSS_SCALE_ARCMIN, astrometric_stats, fit_camera,
+        tangent_residuals_arcmin,
+    )
 
     xy = np.asarray(xy, dtype=float)
     low, high = map(float, year_limits)
@@ -90,12 +105,8 @@ def fit_epoch(camera, xy, catalogue, year_limits=(1850., 2036.), *, fixed_year=N
             fitted, info = fit_camera(camera, xy, sky, max_nfev=2000)
             if not info['success'] or not fitted.is_monotonic():
                 raise RuntimeError(f'Barghini fit failed at trial epoch {year:g}')
-            residual = (fitted.to_sky(xy)-sky)*fitted.scale
-            square = residual**2
-            # Stable equivalent of scipy's soft_l1 cost at f_scale=1.
-            penalty = (np.maximum(1e-6-fitted.radial_slopes(), 0)*fitted.scale*1e4)**2
-            cost = float(np.sum(square/(np.sqrt(1+square)+1)) +
-                         np.sum(penalty/(np.sqrt(1+penalty)+1)))
+            residual = tangent_residuals_arcmin(fitted.to_sky(xy), sky)
+            cost = float(info['cost'])
             cache[year] = (fitted, info, cost, residual)
         return cache[year]
 
@@ -136,7 +147,8 @@ def fit_epoch(camera, xy, catalogue, year_limits=(1850., 2036.), *, fixed_year=N
         best, minimum = min(candidates, key=lambda pair: pair[1])
         fitted, _, _, residual = evaluate(best)
         # Two independent sky coordinates per star, eight camera terms and epoch.
-        variance = float(np.sum(residual**2/np.sqrt(1+residual**2))/max(1, 2*len(xy)-9))
+        variance = radial_profile_variance(
+            residual, ASTROMETRIC_LOSS_SCALE_ARCMIN, 2*len(xy)-9)
         threshold = minimum + 1.920729410347062*max(variance, 1e-14)
         boundary = min(best-low, high-best) < .02
         nodes = sorted(set([*map(float, grid), *[c[0] for c in candidates]]))
@@ -168,10 +180,12 @@ def fit_epoch(camera, xy, catalogue, year_limits=(1850., 2036.), *, fixed_year=N
                               ('Numerically flat profile; J2000.0 adopted' if flat else
                                'Provisional numerical best fit; epoch not established by this image')))
         record['profile'] = [dict(year=year, cost=evaluate(year)[2],
-                                  rms_px=stats(evaluate(year)[0].project(catalogue.at_year(year))-xy)['rms_px'])
+                                  **{key:value for key,value in astrometric_stats(
+                                      evaluate(year)[0], xy, catalogue.at_year(year)).items()
+                                     if key in ('rms_px', 'rms_arcmin')})
                              for year in sorted(set([*map(float, grid), best]))]
     fitted, info, _, _ = evaluate(adopted)
-    record['fit'] = stats(fitted.project(catalogue.at_year(adopted))-xy)
+    record['fit'] = astrometric_stats(fitted, xy, catalogue.at_year(adopted))
     record['applied_epoch_jyear'] = adopted
     return fitted, info, record
 

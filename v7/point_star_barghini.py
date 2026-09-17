@@ -29,11 +29,73 @@ from point_star_time_bounds import capture_time_ceiling, limit_epoch_range
 
 
 SOLVER_VERSION = '0.7.0'
+ARCMIN_PER_RADIAN = 180.*60./np.pi
+ASTROMETRIC_LOSS_SCALE_ARCMIN = 3.
+BOOTSTRAP_STRONG_RMS_ARCMIN = 3.
+FINAL_ASSOCIATION_PHYSICAL_FLOOR_ARCMIN = 8.1
+LABEL_RESIDUAL_LIMIT_ARCMIN = 10.
+ASSOCIATION_STAGES = (
+    (.30, 5., 30.), (.40, 5.5, 30.), (.50, 6., 24.), (.65, 6.5, 20.),
+    (1., 7., 16.), (1., 7.5, 11.),
+    (1., 7.5, FINAL_ASSOCIATION_PHYSICAL_FLOOR_ARCMIN),
+)
 
 
 def vectors(ra, dec):
     ra, dec = np.deg2rad(ra), np.deg2rad(dec)
     return np.c_[np.cos(dec)*np.cos(ra), np.cos(dec)*np.sin(ra), np.sin(dec)]
+
+
+def angular_separations_arcmin(first, second):
+    """Great-circle separation of paired unit vectors, in arcminutes."""
+    first, second = np.asarray(first, dtype=float), np.asarray(second, dtype=float)
+    if first.shape != second.shape or first.ndim != 2 or first.shape[1] != 3:
+        raise ValueError('Angular separations require paired Nx3 vectors')
+    cross = np.linalg.norm(np.cross(first, second), axis=1)
+    dot = np.sum(first*second, axis=1)
+    return np.arctan2(cross, dot)*ARCMIN_PER_RADIAN
+
+
+def tangent_residuals_arcmin(predicted, reference):
+    """Signed two-axis great-circle residuals in each reference tangent plane."""
+    predicted, reference = np.asarray(predicted, dtype=float), np.asarray(reference, dtype=float)
+    if predicted.shape != reference.shape or predicted.ndim != 2 or predicted.shape[1] != 3:
+        raise ValueError('Tangent residuals require paired Nx3 vectors')
+    dot = np.clip(np.sum(predicted*reference, axis=1), -1., 1.)
+    pole = np.zeros_like(reference)
+    pole[:, 2] = 1.
+    near_pole = np.abs(reference[:, 2]) > .9
+    pole[near_pole] = [1., 0., 0.]
+    axis_one = np.cross(pole, reference)
+    axis_one /= np.linalg.norm(axis_one, axis=1)[:, None]
+    axis_two = np.cross(reference, axis_one)
+    components = np.column_stack([
+        np.sum(predicted*axis_one, axis=1),
+        np.sum(predicted*axis_two, axis=1),
+    ])
+    sine = np.linalg.norm(components, axis=1)
+    angle = np.arctan2(sine, dot)
+    nonzero = sine > 1e-15
+    components[nonzero] *= (angle[nonzero]/sine[nonzero])[:, None]
+    # The tangent direction at an exact antipode is undefined, but its angular
+    # error is still pi. Pick a deterministic axis so it cannot appear perfect.
+    antipodal = ~nonzero & (dot < 0.)
+    components[antipodal, 0] = np.pi
+    return components*ARCMIN_PER_RADIAN
+
+
+def radial_soft_l1_residuals(residuals, scale):
+    """Encode a rotationally invariant 2-D soft-L1 cost as linear residuals."""
+    residuals = np.asarray(residuals, dtype=float)
+    if residuals.ndim != 2 or residuals.shape[1] != 2:
+        raise ValueError('Radial robust residuals require Nx2 tangent coordinates')
+    if not np.isfinite(scale) or scale <= 0:
+        raise ValueError('Radial robust scale must be positive and finite')
+    radius = np.linalg.norm(residuals, axis=1)
+    # If q=r/scale, this gives ||f||^2 =
+    # 2*scale^2*(sqrt(1+q^2)-1), evaluated without cancellation near zero.
+    factor = np.sqrt(2./(np.hypot(1., radius/scale)+1.))
+    return residuals*factor[:, None]
 
 
 @dataclass
@@ -117,11 +179,15 @@ def fit_camera(camera, xy, sky, max_nfev=300):
     def residual(p):
         model = BarghiniCamera(camera.shape, camera.reference_rotation, p,
                                camera.detector_parity)
-        return np.r_[((model.to_sky(xy)-sky)*scale).ravel(),
-                     np.maximum(1e-6-model.radial_slopes(), 0)*scale*1e4]
+        angular = tangent_residuals_arcmin(model.to_sky(xy), sky)
+        robust_angular = radial_soft_l1_residuals(
+            angular, ASTROMETRIC_LOSS_SCALE_ARCMIN)
+        scaled_slopes = model.radial_slopes()*scale
+        monotonic_penalty = np.maximum(1e-9-scaled_slopes, 0)*ARCMIN_PER_RADIAN*1e6
+        return np.r_[robust_angular.ravel(), monotonic_penalty]
 
     opt = least_squares(residual, camera.p, bounds=(lower, upper),
-                        loss='soft_l1', f_scale=1., x_scale='jac',
+                        loss='linear', x_scale='jac',
                         max_nfev=max_nfev, ftol=1e-10, xtol=1e-10, gtol=1e-10)
     fitted = BarghiniCamera(camera.shape, camera.reference_rotation, opt.x,
                             camera.detector_parity)
@@ -137,6 +203,7 @@ def bootstrap(xy, shape):
     solver = tetra3.Tetra3()
     h, w = shape
     attempts = []
+    best_weak = None
     patches = [(fraction, dx, dy) for fraction in (.18, .25, .14)
                for dx, dy in ((0, 0), (-.125, 0), (.125, 0), (0, -.125), (0, .125))]
     # Preserve the established search before trying a cheaper local hypothesis.
@@ -193,25 +260,52 @@ def bootstrap(xy, shape):
             fit_adopted = refined_rms <= initial_rms
             camera = refined_camera if fit_adopted else initial_camera
             accepted_rms = min(initial_rms, refined_rms)
+
+            def seed_angular_rms(candidate):
+                try:
+                    separation = angular_separations_arcmin(
+                        candidate.to_sky(matched_xy), sky)
+                except (FloatingPointError, OverflowError, ValueError):
+                    return math.inf
+                if not np.isfinite(separation).all():
+                    return math.inf
+                return float(np.sqrt(np.mean(separation**2)))
+
+            accepted_rms_arcmin = seed_angular_rms(camera)
             info.update(initial_rms_px=initial_rms, refined_rms_px=refined_rms,
-                        adopted=fit_adopted, accepted_rms_px=accepted_rms)
+                        adopted=fit_adopted, accepted_rms_px=accepted_rms,
+                        accepted_rms_arcmin=accepted_rms_arcmin)
             record.update(seed_initial_rms_px=initial_rms,
                           seed_refined_rms_px=refined_rms,
-                          seed_fit_adopted=fit_adopted)
+                          seed_fit_adopted=fit_adopted,
+                          seed_rms_arcmin=accepted_rms_arcmin)
             if not np.isfinite(accepted_rms) or accepted_rms > .012*size:
                 record['seed_rejected'] = 'residual_exceeds_tetra3_match_radius'
                 continue
-            return camera, dict(method='tetra3_blind_bootstrap_from_new_training_dots',
+
+            audit = dict(method='tetra3_blind_bootstrap_from_new_training_dots',
                 attempts=attempts, fit=info, seed_stars=len(sky),
                 fit_adopted=fit_adopted,
                 seed_fov_deg=float(answer['FOV']),
                 detector_parity=('normal' if detector_parity == 1 else 'mirrored'),
                 metadata_used=False)
+            if accepted_rms_arcmin <= BOOTSTRAP_STRONG_RMS_ARCMIN:
+                record['seed_disposition'] = 'accepted_strong_candidate'
+                return camera, audit
+            record['seed_disposition'] = 'retained_weak_candidate'
+            if best_weak is None or accepted_rms_arcmin < best_weak[0]:
+                best_weak = (accepted_rms_arcmin, camera, audit, record)
+    if best_weak is not None:
+        _, camera, audit, record = best_weak
+        record['seed_disposition'] = 'selected_weak_candidate'
+        return camera, audit
     raise RuntimeError('No blind catalogue bootstrap from the measured training dots')
 
 
-def associate(camera, xy, catalogue, gate_px):
-    """Exclusive nearest neighbours, gated in actual detector pixels."""
+def associate(camera, xy, catalogue, gate_arcmin):
+    """Exclusive nearest neighbours, gated by great-circle separation."""
+    if not np.isfinite(gate_arcmin) or gate_arcmin <= 0:
+        raise ValueError('Association gate must be positive finite arcminutes')
     ray = camera.to_sky(xy)
     _, nearest = cKDTree(catalogue).query(ray)
     _, reverse = cKDTree(ray).query(catalogue)
@@ -219,8 +313,8 @@ def associate(camera, xy, catalogue, gate_px):
     mutual = reverse[nearest] == indices
     ii = indices[mutual]
     jj = nearest[mutual]
-    distance = np.linalg.norm(camera.project(catalogue[jj])-xy[ii], axis=1)
-    return ii[distance < gate_px], jj[distance < gate_px]
+    distance = angular_separations_arcmin(ray[ii], catalogue[jj])
+    return ii[distance < gate_arcmin], jj[distance < gate_arcmin]
 
 
 def stats(delta):
@@ -230,10 +324,68 @@ def stats(delta):
                 p90_px=float(np.percentile(radius, 90)) if len(radius) else None)
 
 
+def astrometric_stats(camera, measured_xy, reference_sky):
+    """Report detector residuals and their physical great-circle equivalents."""
+    measured_xy = np.asarray(measured_xy, dtype=float)
+    reference_sky = np.asarray(reference_sky, dtype=float)
+    predicted_xy = camera.project(reference_sky)
+    report = stats(predicted_xy-measured_xy)
+    angular = angular_separations_arcmin(camera.to_sky(measured_xy), reference_sky)
+    report.update(
+        rms_arcmin=float(np.sqrt(np.mean(angular**2))) if len(angular) else None,
+        median_arcmin=float(np.median(angular)) if len(angular) else None,
+        p90_arcmin=float(np.percentile(angular, 90)) if len(angular) else None,
+    )
+    return report
+
+
+def _local_plate_scale_arcmin_per_px(camera, xy):
+    xy = np.asarray(xy, dtype=float)
+    x_minus, x_plus = xy.copy(), xy.copy()
+    y_minus, y_plus = xy.copy(), xy.copy()
+    x_minus[:, 0] -= .5
+    x_plus[:, 0] += .5
+    y_minus[:, 1] -= .5
+    y_plus[:, 1] += .5
+    scale_x = angular_separations_arcmin(camera.to_sky(x_minus), camera.to_sky(x_plus))
+    scale_y = angular_separations_arcmin(camera.to_sky(y_minus), camera.to_sky(y_plus))
+    return np.sqrt(scale_x*scale_y)
+
+
+def plate_scale_summary(camera):
+    """Sample the fitted camera Jacobian without assuming a constant fisheye scale."""
+    h, w = camera.shape
+    centre = np.array([[(w-1)/2., (h-1)/2.]])
+    radius = .45*min(h, w)
+    phase = np.arange(8)*np.pi/4
+    ring = centre+np.column_stack([radius*np.cos(phase), radius*np.sin(phase)])
+    centre_scale = float(_local_plate_scale_arcmin_per_px(camera, centre)[0])
+    samples = _local_plate_scale_arcmin_per_px(camera, np.vstack([centre, ring]))
+    return dict(
+        method='great-circle finite differences of fitted Barghini camera',
+        centre_arcmin_per_px=centre_scale,
+        sampled_median_arcmin_per_px=float(np.median(samples)),
+        sampled_min_arcmin_per_px=float(np.min(samples)),
+        sampled_max_arcmin_per_px=float(np.max(samples)),
+        sample_count=len(samples),
+    )
+
+
+def resolved_association_gate_arcmin(camera, physical_floor_arcmin):
+    """Angular gate including one fitted pixel of coarse-camera sampling."""
+    if not np.isfinite(physical_floor_arcmin) or physical_floor_arcmin <= 0:
+        raise ValueError('Physical association floor must be positive finite arcminutes')
+    sampling = plate_scale_summary(camera)['sampled_median_arcmin_per_px']
+    return max(float(physical_floor_arcmin), sampling)
+
+
 def select_labels(rows, count=20):
     """Prefer bright, well-matched dots, then maximise spatial coverage."""
-    good = [r for r in rows if float(r['residual_px']) < 1.
-            and r.get('source_class', 'compact') == 'compact']
+    def accurate(row):
+        if row.get('residual_arcmin') not in (None, ''):
+            return float(row['residual_arcmin']) < LABEL_RESIDUAL_LIMIT_ARCMIN
+        return float(row['residual_px']) < 1.
+    good = [r for r in rows if accurate(r) and r.get('source_class', 'compact') == 'compact']
     bright = [r for r in good if float(r['magnitude']) <= 4.5]
     candidates = bright if len(bright) >= count else good
     if not candidates or count <= 0:
@@ -282,7 +434,8 @@ def annotate_stars(image_path, records, output, count=40, *, names_cache=None, o
     ax.axis('off')
     fig.tight_layout(); save_png(fig, output/f'identified_{len(selected)}_stars.png', dpi=160); plt.close(fig)
     (output/'labelled_stars.json').write_text(json.dumps(dict(
-        selection='bright compact catalogue matches; residual < 1 pixel; farthest-point spatial coverage',
+        selection=('bright compact catalogue matches; angular residual < '
+                   f'{LABEL_RESIDUAL_LIMIT_ARCMIN:g} arcmin; farthest-point spatial coverage'),
         stars=selected), ensure_ascii=False, indent=2)+'\n')
 
 
@@ -379,23 +532,26 @@ def run(image_path, output, catalog_path, *, label_count=40, names_cache=None, o
     radius = np.linalg.norm(xy[train]-centre, axis=1)
     stages = []
     # Barghini's progressive matching: increase catalogue depth, reduce correlation radius.
-    for radial_fraction, mag, gate in ((.30, 5., 12.), (.40, 5.5, 12.),
-                                      (.50, 6., 10.), (.65, 6.5, 8.),
-                                      (1., 7., 6.), (1., 7.5, 4.), (1., 7.5, 3.)):
+    for radial_fraction, mag, physical_gate in ASSOCIATION_STAGES:
         use = train[radius < radial_fraction*min(shape)]
         cat_use = np.flatnonzero(mags <= mag)
         for iteration in range(3):
+            gate = resolved_association_gate_arcmin(camera, physical_gate)
             ii, jj = associate(camera, xy[use], sky[cat_use], gate)
             if len(ii) < 12:
                 stages.append(dict(radius_fraction=radial_fraction, magnitude=mag,
-                                   gate_px=gate, matches=len(ii), fitted=False))
+                                   physical_gate_floor_arcmin=physical_gate,
+                                   gate_arcmin=gate, matches=len(ii), fitted=False))
                 break
             camera, info = fit_camera(camera, xy[use[ii]], sky[cat_use[jj]])
             record = dict(radius_fraction=radial_fraction, magnitude=mag,
-                          gate_px=gate, matches=len(ii), fitted=True, **info)
+                          physical_gate_floor_arcmin=physical_gate,
+                          gate_arcmin=gate, matches=len(ii), fitted=True, **info)
             stages.append(record)
             print('Barghini point fit:', record, flush=True)
-    train_i, train_j = associate(camera, xy[train], sky, 3.)
+    final_gate = resolved_association_gate_arcmin(
+        camera, FINAL_ASSOCIATION_PHYSICAL_FLOOR_ARCMIN)
+    train_i, train_j = associate(camera, xy[train], sky, final_gate)
     if len(train_i) < 20:
         raise RuntimeError('Insufficient catalogue associations after Barghini refinement')
     # Refine all current catalogue associations together.
@@ -410,7 +566,9 @@ def run(image_path, output, catalog_path, *, label_count=40, names_cache=None, o
                 camera, xy[train[fitted_i]], catalogue.subset(fitted_j), epoch_limits,
                 fixed_year=epoch_year)
             sky = catalogue.at_year(stellar_epoch['applied_epoch_jyear'])
-            next_i, next_j = associate(camera, xy[train], sky, 3.)
+            final_gate = resolved_association_gate_arcmin(
+                camera, FINAL_ASSOCIATION_PHYSICAL_FLOOR_ARCMIN)
+            next_i, next_j = associate(camera, xy[train], sky, final_gate)
             if len(next_i) < 20:
                 raise RuntimeError('Insufficient associations after proper-motion propagation')
             train_i, train_j, association_converged, stop = _association_iteration_state(
@@ -429,19 +587,27 @@ def run(image_path, output, catalog_path, *, label_count=40, names_cache=None, o
         if causal_epoch_ceiling is not None:
             stellar_epoch['causal_epoch_ceiling'] = causal_epoch_ceiling
         write_epoch_products(output, stellar_epoch)
-    train_delta = camera.project(sky[train_j])-xy[train[train_i]]
-    fit_score = stats(train_delta)
+    final_gate = resolved_association_gate_arcmin(
+        camera, FINAL_ASSOCIATION_PHYSICAL_FLOOR_ARCMIN)
+    fit_score = astrometric_stats(camera, xy[train[train_i]], sky[train_j])
     accepted = final_fit['success'] and camera.is_monotonic()
     result = dict(status='point_star_fit_converged' if accepted else 'point_star_fit_not_converged',
         source=str(image_path), source_sha256=detection['source_sha256'],
         input_image=detection.get('input_image'),
         model='Barghini_2019_O_Z_FET', metadata_used=False, trails_used=False,
         catalogue_sha256=hashlib.sha256(Path(catalog_path).read_bytes()).hexdigest(),
-        camera=camera.serialise(), stages=stages, final_fit=final_fit,
+        camera=camera.serialise(), plate_scale=plate_scale_summary(camera), stages=stages,
+        association=dict(units='arcmin', final_gate_arcmin=final_gate,
+                         physical_gate_floor_arcmin=FINAL_ASSOCIATION_PHYSICAL_FLOOR_ARCMIN,
+                         sampling_floor_pixels=1.,
+                         robust_loss='radial_soft_l1_per_star',
+                         robust_loss_scale_arcmin=ASTROMETRIC_LOSS_SCALE_ARCMIN),
+        final_fit=final_fit,
         fit=fit_score, detection_count=len(xy), withheld_stars=0,
         unmatched_dots=len(xy)-len(train_i),
         limitation='All stars are available for fitting; no stars are withheld. Residuals describe '
-          'the fitted associations, selected with a 3-pixel matching gate; they are not independent '
+          f'the fitted associations, selected with a {final_gate:.3f}-arcmin '
+          'matching gate; they are not independent '
           'validation or a completeness measurement. No date, terrestrial orientation, '
           'proper-motion epoch or atmospheric-refraction solution is claimed.',
         elapsed_seconds=time.monotonic()-started)
@@ -455,7 +621,8 @@ def run(image_path, output, catalog_path, *, label_count=40, names_cache=None, o
         result['metadata_used'] = epoch_mode == 'fixed'
         result['limitation'] = (
             'All detected sources are available; no stars are withheld. Residuals describe '
-            'fitted associations with a 3-pixel gate, not independent validation. '
+            f'fitted associations with a {final_gate:.3f}-arcmin gate, '
+            'not independent validation. '
             + stellar_epoch['limitation'])
     pairs = [(train[train_i], train_j, 'fitted')]
     matched_records = []
@@ -463,7 +630,7 @@ def run(image_path, output, catalog_path, *, label_count=40, names_cache=None, o
         writer = csv.writer(handle)
         writer.writerow(['detection_id', 'star_id', 'catalog_ra_deg', 'catalog_dec_deg',
                          'magnitude', 'x_px', 'y_px', 'predicted_x_px', 'predicted_y_px',
-                         'residual_px', 'usage', 'source_class', 'saturated'] +
+                         'residual_px', 'residual_arcmin', 'usage', 'source_class', 'saturated'] +
                         (['propagated_ra_deg', 'propagated_dec_deg', 'coordinate_epoch_jyear',
                           'reference_epoch_jyear', 'proper_motion_available',
                           'measured_ra_deg', 'measured_dec_deg'] if stellar_epoch else []))
@@ -471,9 +638,11 @@ def run(image_path, output, catalog_path, *, label_count=40, names_cache=None, o
             prediction = camera.project(sky[reference])
             for i, j, p in zip(measured, reference, prediction):
                 r = catalog_rows[j]
+                measured_sky = camera.to_sky(xy[i:i+1])[0]
+                residual_arcmin = angular_separations_arcmin(
+                    measured_sky[None, :], sky[j:j+1])[0]
                 extra = []
                 if stellar_epoch is not None:
-                    measured_sky = camera.to_sky(xy[i:i+1])[0]
                     extra = [np.rad2deg(np.arctan2(sky[j, 1], sky[j, 0])) % 360,
                              np.rad2deg(np.arctan2(sky[j, 2], np.linalg.norm(sky[j, :2]))),
                              stellar_epoch['applied_epoch_jyear'], r['reference_epoch_jyear'],
@@ -481,12 +650,13 @@ def run(image_path, output, catalog_path, *, label_count=40, names_cache=None, o
                              np.rad2deg(np.arctan2(measured_sky[1], measured_sky[0])) % 360,
                              np.rad2deg(np.arctan2(measured_sky[2], np.linalg.norm(measured_sky[:2])))]
                 writer.writerow([rows[i]['detection_id'], r['star_id'], r['ra_deg'], r['dec_deg'],
-                                 r['mag'], *xy[i], *p, np.linalg.norm(p-xy[i]), split,
+                                 r['mag'], *xy[i], *p, np.linalg.norm(p-xy[i]), residual_arcmin, split,
                                  rows[i]['source_class'], rows[i]['saturated']] + extra)
                 matched_records.append(dict(detection_id=int(rows[i]['detection_id']),
                     star_id=r['star_id'], magnitude=float(r['mag']),
                     x_px=float(xy[i, 0]), y_px=float(xy[i, 1]),
-                    residual_px=float(np.linalg.norm(p-xy[i])), source_class=rows[i]['source_class']))
+                    residual_px=float(np.linalg.norm(p-xy[i])),
+                    residual_arcmin=float(residual_arcmin), source_class=rows[i]['source_class']))
     # Every blob survives in an object table, including those without any stellar match.
     world = camera.to_sky(xy)
     ra = np.rad2deg(np.arctan2(world[:, 1], world[:, 0])) % 360
@@ -522,7 +692,7 @@ def run(image_path, output, catalog_path, *, label_count=40, names_cache=None, o
                    names_cache=names_cache, offline=offline)
     from point_star_diagnostics import write_diagnostics
     write_diagnostics(image_path, xy[train[train_i]], camera.project(sky[train_j]), output,
-                      unmatched=xy[np.setdiff1d(train, train[train_i])])
+                      unmatched=xy[np.setdiff1d(train, train[train_i])], camera=camera)
     from point_star_report import write_report
     report = write_report(output, result, observation_time=observation_time,
                           latitude=latitude, longitude=longitude, elevation_m=elevation_m,

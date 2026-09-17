@@ -10,6 +10,7 @@ usage() {
     echo "  --fits-hdu NAME_OR_INDEX"
     echo "  --channel-order RGB|RGGB|RG1G2B"
     echo "  --saturation-level VALUE_OR_CHANNEL_MAP"
+    echo "  --blind-planets  ignore EXIF/FITS/filename time and run the full blind planet search"
     echo "Runs solver $expected_version with Gaia; outputs go under $repo/results/runs/."
     echo "Every analysis appends its available data to $repo/results/stars.sqlite (including reruns)."
 }
@@ -27,6 +28,10 @@ shift
 solver_args=()
 while [[ $# -gt 0 ]]; do
     case "$1" in
+        --blind-planets)
+            solver_args+=("$1")
+            shift
+            ;;
         --fits-hdu|--channel-order|--saturation-level)
             if [[ $# -lt 2 ]]; then
                 echo "Missing value for $1" >&2

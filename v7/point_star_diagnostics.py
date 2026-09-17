@@ -14,7 +14,7 @@ from point_star_image import load_recorded_image
 from point_star_plotting import save_png
 
 
-def radial_statistics(measured, predicted, shape, bin_width=200.):
+def radial_statistics(measured, predicted, shape, bin_width=200., *, camera=None):
     measured, predicted = np.asarray(measured, dtype=float), np.asarray(predicted, dtype=float)
     if measured.ndim != 2 or measured.shape[1:] != (2,) or not len(measured):
         raise ValueError('At least one measured x/y pair is required')
@@ -27,6 +27,11 @@ def radial_statistics(measured, predicted, shape, bin_width=200.):
     radius = np.linalg.norm(offset, axis=1)
     delta = predicted-measured
     residual = np.linalg.norm(delta, axis=1)
+    angular = None
+    if camera is not None:
+        from point_star_barghini import angular_separations_arcmin
+        angular = angular_separations_arcmin(
+            camera.to_sky(measured), camera.to_sky(predicted))
     noncentral = radius > 0
     radial = np.zeros(len(radius))
     radial[noncentral] = np.sum(delta[noncentral]*offset[noncentral], axis=1)/radius[noncentral]
@@ -36,21 +41,37 @@ def radial_statistics(measured, predicted, shape, bin_width=200.):
         keep = (radius >= low) & (radius < low+bin_width)
         radial_keep = keep & noncentral
         count = int(keep.sum())
-        bins.append(dict(radius_low_px=float(low), radius_high_px=float(low+bin_width),
+        item = dict(radius_low_px=float(low), radius_high_px=float(low+bin_width),
             count=count,
             rms_px=float(np.sqrt(np.mean(residual[keep]**2))) if count else None,
             median_px=float(np.median(residual[keep])) if count else None,
             p90_px=float(np.percentile(residual[keep], 90)) if count else None,
             maximum_px=float(residual[keep].max()) if count else None,
-            mean_radial_offset_px=float(np.mean(radial[radial_keep])) if radial_keep.any() else None))
-    return dict(centre_xy_px=centre.tolist(), radius_definition='distance from geometric image centre',
+            mean_radial_offset_px=float(np.mean(radial[radial_keep])) if radial_keep.any() else None)
+        if angular is not None:
+            item.update(
+                rms_arcmin=float(np.sqrt(np.mean(angular[keep]**2))) if count else None,
+                median_arcmin=float(np.median(angular[keep])) if count else None,
+                p90_arcmin=float(np.percentile(angular[keep], 90)) if count else None,
+                maximum_arcmin=float(angular[keep].max()) if count else None,
+            )
+        bins.append(item)
+    report = dict(centre_xy_px=centre.tolist(), radius_definition='distance from geometric image centre',
         count=len(measured), rms_px=float(np.sqrt(np.mean(residual**2))),
         maximum_residual_px=float(residual.max()), maximum_measured_radius_px=float(radius.max()),
         radial_sign='predicted minus measured; positive points away from image centre',
         selection='All fitted associations, with no extra clipping; no stars withheld. '
-                  'The solver selected associations with a 3-pixel gate before its final fit. '
+                  'The solver selected associations with an angular gate before its final fit. '
                   'Unmatched sources and empty radial regions have no evaluated residual.',
         bins=bins)
+    if angular is not None:
+        report.update(
+            rms_arcmin=float(np.sqrt(np.mean(angular**2))),
+            median_arcmin=float(np.median(angular)),
+            p90_arcmin=float(np.percentile(angular, 90)),
+            maximum_residual_arcmin=float(angular.max()),
+        )
+    return report
 
 
 def create_overlay(rgb, measured, predicted, *, unmatched=None):
@@ -73,11 +94,11 @@ def create_overlay(rgb, measured, predicted, *, unmatched=None):
     return fig
 
 
-def write_diagnostics(image_path, measured, predicted, output, *, unmatched=None):
+def write_diagnostics(image_path, measured, predicted, output, *, unmatched=None, camera=None):
     output = Path(output)
     rgb = load_recorded_image(image_path, output).display_rgb
     measured, predicted = np.asarray(measured), np.asarray(predicted)
-    report = radial_statistics(measured, predicted, rgb.shape[:2])
+    report = radial_statistics(measured, predicted, rgb.shape[:2], camera=camera)
     report['unmatched_detections_shown'] = len(unmatched) if unmatched is not None else 0
     fig = create_overlay(rgb, measured, predicted, unmatched=unmatched)
     save_png(fig, output/'astrometry_overlay.png', dpi=220)
@@ -85,7 +106,13 @@ def write_diagnostics(image_path, measured, predicted, output, *, unmatched=None
     centre = np.asarray(report['centre_xy_px'])
     radius = np.linalg.norm(measured-centre, axis=1)
     delta = predicted-measured
-    residual = np.linalg.norm(delta, axis=1)
+    residual_px = np.linalg.norm(delta, axis=1)
+    angular = camera is not None
+    if angular:
+        from point_star_barghini import angular_separations_arcmin
+        residual = angular_separations_arcmin(camera.to_sky(measured), camera.to_sky(predicted))
+    else:
+        residual = residual_px
     fig, axes = plt.subplots(1, 2, figsize=(15, 7), layout='constrained')
     ax = axes[0]
     ax.imshow(rgb, alpha=.65)
@@ -102,8 +129,10 @@ def write_diagnostics(image_path, measured, predicted, output, *, unmatched=None
     ax.scatter(radius, residual, s=5, alpha=.24, c='#32659b', label='Every fitted association')
     populated = [b for b in report['bins'] if b['count']]
     midpoints = [(b['radius_low_px']+b['radius_high_px'])/2 for b in populated]
-    for name, label, colour in [('rms_px', 'RMS', '#c54c00'), ('median_px', 'Median', '#006852'),
-                                ('p90_px', '90th percentile', '#7952a0')]:
+    suffix = 'arcmin' if angular else 'px'
+    for name, label, colour in [(f'rms_{suffix}', 'RMS', '#c54c00'),
+                                (f'median_{suffix}', 'Median', '#006852'),
+                                (f'p90_{suffix}', '90th percentile', '#7952a0')]:
         ax.plot(midpoints, [b[name] for b in populated], 'o-', color=colour, label=label)
     limit = np.linalg.norm(centre)
     ax.set_xlim(0, max(limit, radius.max()))
@@ -117,10 +146,13 @@ def write_diagnostics(image_path, measured, predicted, output, *, unmatched=None
     if radius.max() < limit:
         ax.axvspan(radius.max(), limit, facecolor='.9', hatch='///', edgecolor='.7',
                    label='No matched sources at these radii')
-    ax.set_title(f"Centre-to-edge residuals — RMS {report['rms_px']:.3f} px\n"
+    rms_text = (f"{report['rms_arcmin']:.3f} arcmin" if angular
+                else f"{report['rms_px']:.3f} px")
+    ax.set_title(f"Centre-to-edge residuals — RMS {rms_text}\n"
                  'Distance from geometric image centre; 200-pixel bins')
     ax.set_xlabel('Distance from image centre [pixel]')
-    ax.set_ylabel('Predicted − measured separation [pixel]')
+    ax.set_ylabel('Predicted − measured separation [arcmin]' if angular
+                  else 'Predicted − measured separation [pixel]')
     ax.grid(alpha=.2)
     ax.legend(loc='upper left', bbox_to_anchor=(0, .91), fontsize=9)
     fig.supxlabel('Fitted associations only; no additional clipping. Empty regions and unmatched detections are untested.', fontsize=10)
@@ -142,6 +174,8 @@ def main():
     args = parser.parse_args()
     image = args.image.expanduser().resolve()
     result = json.loads((args.solution/'result.json').read_text())
+    from point_star_barghini import BarghiniCamera
+    camera = BarghiniCamera.from_serialised(result['camera'])
     if hashlib.sha256(image.read_bytes()).hexdigest() != result['source_sha256']:
         parser.error('The image does not match this astrometric solution')
     with (args.solution/'star_coordinates.csv').open() as handle:
@@ -156,7 +190,8 @@ def main():
             unmatched = np.array([[float(r['x_px']), float(r['y_px'])]
                                   for r in csv.DictReader(handle) if r['detection_id'] not in matched_ids])
     args.output.mkdir(parents=True, exist_ok=False)
-    report = write_diagnostics(image, measured, predicted, args.output, unmatched=unmatched)
+    report = write_diagnostics(
+        image, measured, predicted, args.output, unmatched=unmatched, camera=camera)
     print(json.dumps(report, indent=2))
 
 

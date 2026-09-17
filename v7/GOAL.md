@@ -1,4 +1,4 @@
-# Scientific goal: blind wide-field point-source solving
+# Scientific goal: blind stellar solving with auditable planetary time controls
 
 Owner: Peter Thejll. Scientific intent clarified on 14 September 2026.
 Read this before designing, editing, reviewing or declaring this project complete.
@@ -64,26 +64,37 @@ This is valuable because the stellar proper-motion clock can be weak. Check plan
 identifications and competing dates before claiming a clear epoch determination.
 Keep stellar and planetary epoch estimates, their assumptions and their
 uncertainties separately inspectable. A metadata-centred ephemeris lookup is not
-a blind planetary epoch solution. Do not call this objective complete until the
-blind search and its ambiguities have been implemented and tested.
+a blind planetary epoch solution. In v7 the default planet stage uses trustworthy
+post-fit observation-time metadata to restrict the positional search to a local
+two-day interval, while still refining planet/source assignments and running the
+visibility, solar, Gaia-competition and missing-planet evidence. Compare its
+locally fitted date with the metadata time to measure conditional timing error.
+This local accuracy does not establish global blind identifiability.
+
+`--blind-planets` must preserve the full 1850-to-present search. It is also the
+automatic fallback when no usable metadata time exists. Keep its competing dates
+and ambiguities inspectable.
 
 ## Blindness and validation boundary
 
 - Do not use observing site, latitude/longitude, timestamps, EXIF, filename dates,
   manifest entries, saved solutions or cached identities to seed, constrain,
-  select or tune a blind astrometric, photometric-zenith or planetary epoch fit.
+  select or tune the astrometric, stellar-epoch or photometric-zenith fits, or a
+  planetary run explicitly requested as blind.
 - A local reference catalogue and catalogue proper motions are legitimate inputs.
   Catalogue reference epoch is distinct from an image observation timestamp.
 - Names are display-only. Maintain blind pattern bootstrap from measured pixels.
-- Metadata may be revealed only after the blind results are fixed, for an
-  explicitly separate comparison. Never tune a fit after revealing the answer
-  while continuing to describe that experiment as blind.
+- Metadata may be revealed only after the stellar astrometry, refraction and
+  photometric-zenith results are fixed. Its use in the default planet stage must
+  be explicit in JSON, CSV, plots and reports. Never describe that local fit as
+  blind or use its result to retune an earlier stage.
 - Latitude can be checked afterward from the angle between the determined
   physical zenith and the celestial pole appropriate to the epoch. Polaris is
   an approximate pole marker; its offset must not be silently ignored. This
   site comparison is supporting validation, not the primary objective.
-- Known-epoch runs are explicit non-blind controls, never substitutes for the
-  blind default or evidence that it succeeded.
+- Metadata-conditioned planetary runs are non-blind local controls. Their fitted
+  minus metadata timing error measures conditional local accuracy, not success of
+  the full blind search.
 
 ## Current catalogue depth and labels
 
@@ -135,8 +146,9 @@ Peter explicitly designated `go4.sh` to follow the latest v4 release. Keep
 An existing image cannot have been observed in the future. Capture the current
 system time once at the start of a blind run and use it as the upper limit of
 both stellar and planetary epoch searches. Record that ceiling. This causal
-bound is explicitly allowed; the image timestamp/site metadata still must not
-seed or constrain the blind fits. Explicit fixed-epoch controls remain controls.
+bound is explicitly allowed. Image time metadata may constrain only the default
+post-fit v7 planetary control; it must not enter stellar, refraction,
+photometric-zenith or explicitly blind planetary fits.
 
 Planet candidates must have nonnegative measured and predicted altitude relative
 to the adopted image-derived zenith, and valid detector projections. That zenith

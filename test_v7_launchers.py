@@ -87,6 +87,21 @@ class V7LauncherTests(unittest.TestCase):
                 self.assertEqual(completed.returncode, 2)
                 self.assertFalse((root/'results').exists())
 
+    def test_blind_planet_override_is_forwarded_by_both_launchers(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.make_package(root)
+            image = root/'image.jpg'
+            image.write_bytes(b'fixture')
+            for launcher in LAUNCHERS:
+                completed = subprocess.run(
+                    [str(root/launcher), str(image), '--blind-planets'], cwd='/tmp',
+                    capture_output=True, text=True)
+                self.assertEqual(completed.returncode, 0, completed.stderr)
+            for run in (root/'results/runs').iterdir():
+                args = json.loads((run/'analysis/args.json').read_text())
+                self.assertIn('--blind-planets', args)
+
     def test_version_mismatch_refuses_analysis(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
