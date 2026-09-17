@@ -103,6 +103,32 @@ remain in the database; ordinary failures save their available partial results.
 See [database storage](v6/docs/DATABASE.md). This feature was added after the
 published v0.6.0 download; it is available in the updated checkout.
 
+Regenerate the repeated-star photometry tables and plots from that database with:
+
+```sh
+./make_repeated_star_photometry_plots.sh
+```
+
+The wrapper is independent of the current directory. By default it reads
+`results/stars.sqlite`, uses the v7 Gaia source-photometry table, and writes to
+`results/subaru-repeated-star-colours/`. The underlying options can be overridden,
+for example:
+
+```sh
+./make_repeated_star_photometry_plots.sh \
+  --database /path/to/stars.sqlite \
+  --output /path/to/plots
+```
+
+The output includes the complete repeated-star CSV, catalogue-colour diagrams,
+the four-star RGB-pair grid, the nine-star airmass diagnostics, and the audited
+bright/well-observed G-channel plot with shared axes and the `X <= 5` cutoff.
+The catalogue-colour plots retain all measurements in the CSV but exclude from
+the plotted fit and axis scaling observations more than six scaled MADs from a
+preliminary per-star-median colour relation.  Each plot and its JSON audit state
+the number excluded.  This conservative filter prevents isolated failed colour
+measurements from obscuring the main relation without silently deleting them.
+
 For v5, [bright-planet absence checks](v5/docs/PLANET_NONDETECTIONS.md) explain
 how missing Mercury, Venus, Mars, Jupiter or Saturn can count against an epoch,
 and when the image is too uncertain to judge.

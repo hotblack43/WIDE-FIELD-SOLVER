@@ -46,6 +46,38 @@ class NineStarSelectionTests(unittest.TestCase):
         self.assertEqual(selected[1][0], "Gaia DR3 10")
         self.assertNotIn("Gaia DR3 1", {star_id for star_id, _rows in selected})
 
+    def test_bright_balanced_selection_requires_sixty_percent_of_maximum_coverage(self):
+        rows = []
+        stars = (
+            ("many-faint", 10, 7.0),
+            ("bright-covered", 6, 4.0),
+            ("middle-covered", 6, 5.0),
+            ("bright-too-few", 5, 3.0),
+        )
+        for star_id, count, gaia_g in stars:
+            for image in range(count):
+                row = measurement(star_id, f"{star_id}-{image}", 1.0 + image / 10)
+                rows.append(
+                    colours.ColourMeasurement(
+                        **{
+                            **row.__dict__,
+                            "machine_g_mag": gaia_g - 14.0 + image / 100,
+                            "machine_g_minus_gaia_g": -14.0 + image / 100,
+                        }
+                    )
+                )
+
+        selector = getattr(colours, "select_bright_well_observed", None)
+        self.assertIsNotNone(
+            selector, "select_bright_well_observed() is not implemented"
+        )
+        selected = selector(rows, count=2, coverage_fraction=0.6)
+
+        self.assertEqual(
+            [star_id for star_id, _star_rows in selected],
+            ["bright-covered", "middle-covered"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

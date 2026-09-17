@@ -1,0 +1,12 @@
+​
+Hi Carlos, Ana and Esther,
+let's try to have a meeting - hope it is possible to arrange! Tuesday Wednesday 30th or Thursday Oct 1st will be best for me.
+
+I am reading up on the UMAP technique, and the Ambrosch paper, and I am trying to understand and learn - quick question: Have you already tried projecting combined model stellar spectra onto the existing UMAP map, varying the component temperatures and relative light contributions? Or is there a reference discussing this that I have missed?
+
+I was wondering whether this could help interpret the islands and filaments, and the positions of our objects—for example, whether combinations containing a hot subdwarf occupy different regions from combinations without one.
+
+I saw the discussion of synthetic training samples in Ambrosch, but understood that to mean interpolation between existing examples for the CNN. Here I mean adding two stellar model spectra and processing them in the same way as the observed XP data.
+
+Perhaps you have already explored this; I would be interested to hear what you found.
+

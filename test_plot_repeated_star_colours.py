@@ -119,6 +119,18 @@ class RepeatedStarColourTests(unittest.TestCase):
             self.assertEqual({row.machine_b_minus_g for row in rows}, {1.0})
             self.assertEqual({row.machine_g_minus_r for row in rows}, {0.5})
             self.assertEqual({row.machine_b_minus_r for row in rows}, {1.5})
+            self.assertEqual(
+                {getattr(row, "machine_r_mag", None) for row in rows},
+                {11.0, 12.0},
+            )
+            self.assertEqual(
+                {getattr(row, "machine_g_mag", None) for row in rows},
+                {11.5, 12.5},
+            )
+            self.assertEqual(
+                {getattr(row, "machine_b_mag", None) for row in rows},
+                {12.5, 13.5},
+            )
             self.assertEqual({row.gaia_bp_minus_g for row in rows}, {0.8})
             self.assertEqual({row.gaia_g_minus_rp for row in rows}, {0.6})
             self.assertEqual({row.gaia_bp_minus_rp for row in rows}, {1.4})
