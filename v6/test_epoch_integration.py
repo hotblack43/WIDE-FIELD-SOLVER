@@ -109,6 +109,20 @@ class EpochIntegrationTests(unittest.TestCase):
         self.assertIn('unresolved', text.lower())
         self.assertNotIn('boundary', text.lower())
 
+    def test_exhausted_association_iteration_keeps_last_fitted_membership(self):
+        import point_star_barghini as solver
+        self.assertTrue(hasattr(solver, '_association_iteration_state'))
+        fitted_i = np.array([1, 3, 5])
+        fitted_j = np.array([2, 4, 6])
+        next_i = np.array([1, 3, 7])
+        next_j = np.array([2, 4, 8])
+        use_i, use_j, converged, stop = solver._association_iteration_state(
+            fitted_i, fitted_j, next_i, next_j, iteration=5, limit=6)
+        np.testing.assert_array_equal(use_i, fitted_i)
+        np.testing.assert_array_equal(use_j, fitted_j)
+        self.assertFalse(converged)
+        self.assertTrue(stop)
+
     def test_overwrite_cannot_remove_input_parent(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

@@ -115,6 +115,46 @@ class PointStarDetectionTests(unittest.TestCase):
                     [row['flux_above_background'] for row in gained],
                     np.array([row['flux_above_background'] for row in base])*gain, rtol=2e-5)
 
+    def test_write_products_recovers_undersampled_stars_with_audited_fallback(self):
+        rng = np.random.default_rng(3736793)
+        image = 5000.+rng.normal(0, 2., (180, 220))
+        truth = [(25+31*(index % 6), 24+29*(index // 6)) for index in range(30)]
+        for index, (x, y) in enumerate(truth):
+            image[y, x] += 600.+20.*index
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            source = root/'undersampled.fits'
+            fits.PrimaryHDU(image).writeto(source)
+            summary = write_products(source, root/'dots')
+            with (root/'dots/star_candidates.csv').open() as handle:
+                stars = list(csv.DictReader(handle))
+        self.assertGreaterEqual(len(stars), 25)
+        self.assertEqual(summary['detection_pass'], 'undersampled_fallback')
+        self.assertEqual(summary['detection_blur_sigma_px'], .8)
+        measured = np.array([[float(row['x_px']), float(row['y_px'])] for row in stars])
+        for target in truth:
+            self.assertLess(np.linalg.norm(measured-target, axis=1).min(), 1.)
+
+    def test_undersampled_fallback_is_considered_with_sixty_standard_candidates(self):
+        rng = np.random.default_rng(6201835)
+        yy, xx = np.mgrid[:500, :500]
+        image = 5000.+rng.normal(0, 1., xx.shape)
+        broad = [(20+30*(i % 7), 20+30*(i // 7)) for i in range(55)]
+        sharp = [(280+30*(i % 7), 20+30*(i // 7)) for i in range(60)]
+        for x, y in broad:
+            image += 300.*np.exp(-((xx-x)**2+(yy-y)**2)/(2*1.2**2))
+        for x, y in sharp:
+            image[y, x] += 700.
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            source = root/'mixed-sampling.fits'
+            fits.PrimaryHDU(image).writeto(source)
+            summary = write_products(source, root/'dots')
+        self.assertGreaterEqual(summary['initial_candidates'], 50)
+        self.assertLess(summary['initial_candidates'], 100)
+        self.assertEqual(summary['detection_pass'], 'undersampled_fallback')
+        self.assertGreater(summary['candidates'], summary['initial_candidates'])
+
     def test_write_products_accepts_four_plane_fits_and_records_native_provenance(self):
         mono = self.framed_sources().astype(np.uint16)*16
         planes = np.stack([mono, mono*2, mono*4, mono*3])

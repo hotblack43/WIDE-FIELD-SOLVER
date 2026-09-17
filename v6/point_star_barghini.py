@@ -259,6 +259,16 @@ def prepare_output(output, *, overwrite=True):
     return output
 
 
+def _association_iteration_state(fitted_i, fitted_j, next_i, next_j, *, iteration, limit):
+    """Keep membership consistent with the camera when reassociation does not settle."""
+    converged = np.array_equal(next_i, fitted_i) and np.array_equal(next_j, fitted_j)
+    if converged:
+        return fitted_i, fitted_j, True, True
+    if iteration+1 >= limit:
+        return fitted_i, fitted_j, False, True
+    return next_i, next_j, False, False
+
+
 def run(image_path, output, catalog_path, *, label_count=40, names_cache=None, offline=False,
         overwrite=False, observation_time=None, latitude=None, longitude=None,
         elevation_m=0., pressure_hpa=None, temperature_c=10., relative_humidity=.5,
@@ -342,21 +352,29 @@ def run(image_path, output, catalog_path, *, label_count=40, names_cache=None, o
     if epoch_mode != 'catalog':
         # Each epoch profile uses a fixed set. All dots remain eligible when
         # reassociating between profiles, including large/saturated sources.
+        association_converged = False
         for association_iteration in range(6):
+            fitted_i, fitted_j = train_i, train_j
             camera, final_fit, stellar_epoch = fit_epoch(
-                camera, xy[train[train_i]], catalogue.subset(train_j), epoch_limits,
+                camera, xy[train[fitted_i]], catalogue.subset(fitted_j), epoch_limits,
                 fixed_year=epoch_year)
             sky = catalogue.at_year(stellar_epoch['applied_epoch_jyear'])
             next_i, next_j = associate(camera, xy[train], sky, 3.)
-            if np.array_equal(next_i, train_i) and np.array_equal(next_j, train_j):
-                break
             if len(next_i) < 20:
                 raise RuntimeError('Insufficient associations after proper-motion propagation')
-            train_i, train_j = next_i, next_j
-        else:
-            raise RuntimeError('Proper-motion association did not converge after six profiles')
+            train_i, train_j, association_converged, stop = _association_iteration_state(
+                fitted_i, fitted_j, next_i, next_j,
+                iteration=association_iteration, limit=6)
+            if stop:
+                break
         stellar_epoch.update(association_iterations=association_iteration+1,
-                             association_converged=True)
+                             association_converged=association_converged)
+        if not association_converged:
+            stellar_epoch['association_status'] = 'not_converged'
+            stellar_epoch['limitation'] = (
+                stellar_epoch.get('limitation', '')
+                + ' Proper-motion reassociation did not settle after six profiles; '
+                  'the saved camera and coordinates retain the last internally fitted membership.')
         if causal_epoch_ceiling is not None:
             stellar_epoch['causal_epoch_ceiling'] = causal_epoch_ceiling
         write_epoch_products(output, stellar_epoch)

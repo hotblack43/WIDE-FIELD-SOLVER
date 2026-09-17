@@ -3,6 +3,7 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 results/
+/skycam-images/
 .DS_Store
 /THIS2/
 /.worktrees/

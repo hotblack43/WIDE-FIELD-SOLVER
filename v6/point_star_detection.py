@@ -19,7 +19,8 @@ from point_star_plotting import save_png
 
 
 def detect_stars(image, detection_sigma=6., background_sigma=10., *, valid_mask=None,
-                 saturated_mask=None, saturation_known=True):
+                 saturated_mask=None, saturation_known=True,
+                 detection_blur_sigma=0.):
     pixels = np.asarray(image, dtype=float)
     default_saturated = pixels >= 250
     if pixels.ndim == 3 and pixels.shape[2] >= 3:
@@ -46,16 +47,20 @@ def detect_stars(image, detection_sigma=6., background_sigma=10., *, valid_mask=
         footprint['invalid_pixel_count'] = invalid_count
         footprint['valid_pixel_fraction'] = float(valid_mask.mean())
     pixels = footprint_pixels
-    if detection_sigma <= 0 or background_sigma <= 0:
+    if detection_sigma <= 0 or background_sigma <= 0 or detection_blur_sigma < 0:
         raise ValueError('Detection and background scales must be positive')
+    measurement_background = gaussian_filter(pixels, background_sigma)
+    measurement_signal = pixels-measurement_background
+    detection_pixels = (gaussian_filter(pixels, detection_blur_sigma)
+                        if detection_blur_sigma else pixels)
     if saturated_mask is None:
         saturated_pixels = default_saturated
     else:
         saturated_pixels = np.asarray(saturated_mask, dtype=bool)
         if saturated_pixels.shape != pixels.shape:
             raise ValueError('Saturation mask shape differs from image')
-    background = gaussian_filter(pixels, background_sigma)
-    signal = pixels-background
+    background = gaussian_filter(detection_pixels, background_sigma)
+    signal = detection_pixels-background
     global_noise = max(float(1.4826*np.median(abs(signal-np.median(signal)))), .05)
     noise = np.maximum(global_noise, 1.2533*gaussian_filter(
         np.minimum(abs(signal), 3*global_noise), background_sigma))
@@ -113,8 +118,12 @@ def detect_stars(image, detection_sigma=6., background_sigma=10., *, valid_mask=
                 reason = 'off_centre_or_blended'
                 continue
             else:
+                native_cut = measurement_signal[y-half:y+half+1, x-half:x+half+1].copy()
+                native_cut -= np.median(native_cut[annulus])
+                native_flux = float(native_cut[mask].sum())
                 stars.append(dict(x_px=float(x+cx), y_px=float(y+cy),
-                    flux_above_background=flux, peak_above_background=peak,
+                    flux_above_background=native_flux,
+                    peak_above_background=float(native_cut[half, half]),
                     peak_snr=float(peak/noise[y, x]), area_px=area,
                     major_sigma_px=width, axis_ratio=ratio, saturated=saturated,
                     saturation_known=bool(saturation_known),
@@ -175,6 +184,21 @@ def write_products(image_path, output, detection_sigma=6., background_sigma=10.,
         scientific.luminance, detection_sigma, background_sigma,
         valid_mask=valid_mask, saturated_mask=scientific.saturated_mask,
         saturation_known=scientific.provenance()['saturation_known'])
+    initial_stars, initial_audit = stars, audit
+    undersampled_rejections = sum(
+        row['reason'] in ('too_small', 'too_sharp') for row in audit['rejected'])
+    detection_pass = 'standard'
+    detection_blur_sigma = 0.
+    if len(stars) < 100 and undersampled_rejections >= max(12, len(stars)):
+        fallback_stars, fallback_audit = detect_stars(
+            scientific.luminance, detection_sigma, background_sigma,
+            valid_mask=valid_mask, saturated_mask=scientific.saturated_mask,
+            saturation_known=scientific.provenance()['saturation_known'],
+            detection_blur_sigma=.8)
+        if len(fallback_stars) >= max(12, 2*len(stars)):
+            stars, audit = fallback_stars, fallback_audit
+            detection_pass = 'undersampled_fallback'
+            detection_blur_sigma = .8
     for star in stars:
         x, y = round(star['x_px']), round(star['y_px'])
         half = int(star['measurement_half_window_px'])
@@ -205,6 +229,10 @@ def write_products(image_path, output, detection_sigma=6., background_sigma=10.,
         saturated_sources=sum(s['saturated'] for s in stars),
         local_maxima=audit['local_maxima_count'], rejected=len(audit['rejected']),
         detection_sigma=detection_sigma, background_sigma_px=background_sigma,
+        detection_pass=detection_pass,
+        detection_blur_sigma_px=detection_blur_sigma,
+        initial_candidates=len(initial_stars),
+        initial_rejected=len(initial_audit['rejected']),
         global_noise_adu=audit['global_noise'], source_resized=False,
         input_image=provenance,
         footprint_status=audit['footprint']['status'],

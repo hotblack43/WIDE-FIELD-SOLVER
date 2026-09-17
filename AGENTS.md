@@ -50,3 +50,13 @@ catalogue, lockfile, ephemeris data and source manifest. All versions must work
 without `.worktrees`. Update the v6 manifest deliberately and test all four
 versions before publishing. Never merge a development worktree over a preserved
 runtime.
+
+## Local patch-helper fallback
+
+In this repository, the `apply_patch` helper is known to fail during sandbox
+setup with `bwrap: loopback: Failed RTM_NEWADDR`. Once that exact failure has
+occurred in a session, do not retry the helper for every edit. Use a narrow
+`git apply` patch directly instead, then inspect the resulting diff. Keep this
+as a fallback only for the known helper failure; it does not relax the
+requirements to preserve unrelated working-tree changes or to avoid destructive
+commands.
