@@ -1,4 +1,4 @@
-"""Keep the legacy, v4 and v5 runtimes separate from active v6 development."""
+"""Keep the legacy through v6 runtimes separate from active v7 development."""
 import hashlib
 import json
 from pathlib import Path
@@ -90,6 +90,31 @@ class PreservedVersionTests(unittest.TestCase):
             capture_output=True, text=True)
         self.assertEqual(tracked.returncode, 0,
                          'Every v6 manifest asset must exist in git archives:\n' + tracked.stderr)
+
+    def test_v6_runtime_and_launchers_match_v7_parent_checkpoint(self):
+        record = json.loads((ROOT/'docs/v6-runtime.json').read_text())
+        self.assertEqual(record['version'], '0.6.0')
+        source = json.loads((ROOT/'v6/SOURCE_MANIFEST.json').read_text())
+        expected_files = {'v6/' + name for name in source['sha256']}
+        expected_files.update({'v6/SOURCE_MANIFEST.json', 'go6.sh', 'go_v0.6.0.sh'})
+        self.assertEqual(set(record['sha256']), expected_files)
+        for name, expected in record['sha256'].items():
+            with self.subTest(file=name):
+                self.assertEqual(hashlib.sha256((ROOT/name).read_bytes()).hexdigest(), expected,
+                                 'Preserved v6 changed: develop upgrades under v7/')
+
+    def test_v7_manifest_covers_runtime_and_packaged_data(self):
+        record = json.loads((ROOT/'v7/SOURCE_MANIFEST.json').read_text())
+        self.assertEqual(record['version'], '0.7.0')
+        self.assertEqual(record['based_on_version'], '0.6.0')
+        files = record['sha256']
+        for name, expected in files.items():
+            with self.subTest(file=name):
+                self.assertEqual(hashlib.sha256((ROOT/'v7'/name).read_bytes()).hexdigest(), expected)
+        runtime = {p.name for p in (ROOT/'v7').iterdir()
+                   if p.is_file() and p.suffix in ('.py', '.sh')}
+        self.assertEqual(runtime, {name for name in files
+                                  if '/' not in name and Path(name).suffix in ('.py', '.sh')})
 
 
 if __name__ == '__main__':

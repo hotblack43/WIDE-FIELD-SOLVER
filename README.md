@@ -4,20 +4,21 @@ by Peter Thejll and Chris Flynn
 
 Find stars in a wide-field image, identify them against a catalogue, fit the
 Barghini fish-eye lens model, and produce an annotated scientific report.
-This guide covers **`go.sh`, `go4.sh`, `go5.sh` and `go6.sh`**.
+This guide covers **`go.sh`, `go4.sh`, `go5.sh`, `go6.sh` and `go7.sh`**.
 
 ## 1. Choose a version
 
-| | `go.sh` — legacy | `go4.sh` — preserved v4 | `go5.sh` — preserved v5 | `go6.sh` — v6 |
-|---|---|---|---|---|
-| Use it for | Reproducing the established Tycho workflow | Reproducing Gaia v0.4.3 | Reproducing v0.5.0 | New analyses with v0.6.0 |
-| Stellar catalogue | Tycho-2/Hipparcos | Gaia DR3 plus bright supplement | Gaia DR3 plus bright supplement | Gaia DR3 plus bright supplement |
-| Planet analysis | Historical metadata-assisted diagnostics | Blind positional search | Blind search with absence evidence | Same exact search, bundled reference and batched/parallel refinement |
-| Repeated runs | Replace previous output | New folder per run | New folder per run | New folder per run |
+| | `go.sh` — legacy | `go4.sh` — preserved v4 | `go5.sh` — preserved v5 | `go6.sh` — preserved v6 | `go7.sh` — v7 |
+|---|---|---|---|---|---|
+| Use it for | Reproducing the established Tycho workflow | Reproducing Gaia v0.4.3 | Reproducing v0.5.0 | Reproducing v0.6.0 | New analyses with v0.7.0 and blind detector parity |
+| Stellar catalogue | Tycho-2/Hipparcos | Gaia DR3 plus bright supplement | Gaia DR3 plus bright supplement | Gaia DR3 plus bright supplement | Gaia DR3 plus bright supplement |
+| Planet analysis | Historical metadata-assisted diagnostics | Blind positional search | Blind search with absence evidence | Bundled reference and batched/parallel refinement | Same v6 search after parity-aware astrometry |
+| Repeated runs | Replace previous output | New folder per run | New folder per run | New folder per run | New folder per run |
 
-All four versions are included and accept monochrome and RGB images. You do not
+All five versions are included and accept monochrome and RGB images. You do not
 need to switch branches or edit code. `go_v0.4.3.sh` selects the preserved v4
-release; `go_v0.5.0.sh` selects v5 and `go_v0.6.0.sh` selects v6. The versioned
+release; `go_v0.5.0.sh`, `go_v0.6.0.sh` and `go_v0.7.0.sh` select v5, v6 and v7.
+The versioned
 packages each contain their own modules, catalogues and pinned dependencies.
 
 ## 2. Install
@@ -34,6 +35,7 @@ uv sync --frozen
 uv sync --project v4 --frozen
 uv sync --project v5 --frozen
 uv sync --project v6 --frozen
+uv sync --project v7 --frozen
 ```
 
 The first setup needs internet access to download dependencies. The stellar
@@ -71,6 +73,12 @@ Run **one** of these commands from the repository root. Quote paths containing s
 ./go6.sh "/full/path/to/image.jpg"
 ```
 
+**Gaia v0.7.0 (normal or mirrored detectors):**
+
+```sh
+./go7.sh "/full/path/to/image.fits"
+```
+
 Each command prints the PDF report location when finished. The Gaia launchers
 also print their run folder and log location at startup. A complete run can take
 several minutes, especially when bootstrap or planetary searches need more work.
@@ -83,12 +91,13 @@ several minutes, especially when bootstrap or planetary searches need more work.
 | `go4.sh` | `results/runs/IMAGE-v0.4.3-TIMESTAMP-UNIQUE/analysis/` | A new folder is created; the run log is alongside `analysis/` |
 | `go5.sh` | `results/runs/IMAGE-v0.5.0-TIMESTAMP-UNIQUE/analysis/` | A new folder is created; the run log is alongside `analysis/` |
 | `go6.sh` | `results/runs/IMAGE-v0.6.0-TIMESTAMP-UNIQUE/analysis/` | A new folder is created; the run log is alongside `analysis/` |
+| `go7.sh` | `results/runs/IMAGE-v0.7.0-TIMESTAMP-UNIQUE/analysis/` | A new folder is created; the run log is alongside `analysis/` |
 
 `IMAGE_STEM` means the input filename without its extension.
-For `go4.sh`, `go5.sh` and `go6.sh`, open **`report.pdf`** in the printed output folder; its parent run
+For `go4.sh` through `go7.sh`, open **`report.pdf`** in the printed output folder; its parent run
 folder identifies the input image. Legacy `go.sh` retains its `report_*.pdf` name.
 
-The working v6 launcher also automatically appends every analysis to
+The v6 and v7 launchers automatically append every analysis to
 `results/stars.sqlite`. Repeated images and quality-flagged measurements all
 remain in the database; ordinary failures save their available partial results.
 See [database storage](v6/docs/DATABASE.md). This feature was added after the
@@ -100,13 +109,15 @@ and when the image is too uncertain to judge.
 V6 preserves those rules and adds a bundled 1850--2036 reference, batched exact
 refinement and up to four planet workers. Its controlled benchmark measured a
 [3.09x median planetary-stage speedup](v6/docs/PLANET_SEARCH_PERFORMANCE.md).
+V7 preserves that science and adds blind normal/mirrored detector-parity
+selection, propagated through coordinates, reports and FITS WCS products.
 
 Other useful products include:
 
 - `result.json`: fitted camera, residuals and provenance.
 - `star_coordinates.csv`: measured positions, model predictions and catalogue identities.
 - `stellar_photometry.csv`: instrumental fluxes, magnitudes and quality flags.
-- In v5/v6 `report.pdf`, page 3 compares camera R/G/B instrumental magnitudes
+- In v5/v6/v7 `report.pdf`, page 3 compares camera R/G/B instrumental magnitudes
   with Gaia RP/G/BP in one row. Both magnitude axes put brighter stars toward
   the upper right; the displayed fit is ordinary least squares, with no 1:1 line.
 - In Gaia results, `solution.fits`: image, ZPN coordinates and embedded overlays.
@@ -124,7 +135,7 @@ fit. Thinner hollow stars labelled “predicted” show the other planets expect
 in view at that same candidate epoch; they are not measured identifications.
 Other date/identity alternatives remain in the numerical records.
 
-`go4.sh`, `go5.sh` and `go6.sh` fit from the image and reference catalogues. Observing time and site
+`go4.sh` through `go7.sh` fit from the image and reference catalogues. Observing time and site
 are reserved for a separately requested comparison after the blind fits.
 The legacy analyser's metadata-assisted diagnostics retain their historical
 behaviour. Instrumental image photometry is not automatically calibrated
@@ -132,7 +143,8 @@ astronomical photometry.
 
 See [v4 capabilities and limitations](v4/docs/FEATURE_STATUS.md),
 [v5 capabilities and limitations](v5/docs/FEATURE_STATUS.md), and
-[v6 status](v6/docs/FEATURE_STATUS.md) for each version's scientific status.
+[v6 status](v6/docs/FEATURE_STATUS.md), and
+[v7 status](v7/docs/FEATURE_STATUS.md) for each version's scientific status.
 
 ## Try the included example
 
@@ -150,10 +162,11 @@ To run the same historical regression through either Gaia-capable implementation
 ./v4/demo.sh --output results/example-check-v4
 ./v5/demo.sh --output results/example-check-v5
 ./v6/demo.sh --output results/example-check-v6
+./v7/demo.sh --output results/example-check-v7
 ```
 
 All demo commands deliberately use the historical Tycho catalogue for comparison;
-use `go4.sh`, `go5.sh` or `go6.sh` for the corresponding Gaia analysis.
+use `go4.sh` through `go7.sh` for the corresponding Gaia analysis.
 
 ![Preserved Milky Way example with 40 named stars](examples/milky_way/reference/identified_40_stars.png)
 
@@ -167,6 +180,7 @@ options belong to the corresponding analyser:
 ./v4/analyse.sh --help    # preserved Gaia v4 workflow
 ./v5/analyse.sh --help    # Gaia v5 workflow
 ./v6/analyse.sh --help    # Gaia v6 workflow
+./v7/analyse.sh --help    # Gaia v7 workflow
 ```
 
 For an advanced Gaia run, select its catalogue explicitly:
@@ -191,6 +205,7 @@ command above for the preserved release.
 - [Attribution and redistribution notice](NOTICE.md)
 
 The original `v0.1.0` tag and historical reference products are preserved.
-New changes stay in `v6/`. The legacy Tycho, v0.4.3 and v0.5.0 runtimes and
-launchers remain preserved; the [v4](docs/v4-runtime.json) and
-[v5](docs/v5-runtime.json) hash manifests record those checkpoints.
+New changes stay in `v7/`. The legacy Tycho, v0.4.3, v0.5.0 and v0.6.0 runtimes
+and launchers remain preserved; the [v4](docs/v4-runtime.json),
+[v5](docs/v5-runtime.json) and [v6](docs/v6-runtime.json) hash manifests record
+those checkpoints.

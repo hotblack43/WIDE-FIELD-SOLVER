@@ -36,29 +36,9 @@ Do not replace the photometric-zenith constraint with metadata-derived airmass
 or describe a metadata-centred planet lookup as blind epoch inference.
 Preserve implemented capabilities and add regression evidence for new ones.
 
-## Consolidated version boundary
+## Version boundary
 
-`go.sh` is the preserved root Tycho-2/Hipparcos workflow. Its runtime is
-recorded in `docs/legacy-runtime.json`. `go4.sh`, `go_v0.4.3.sh`, and the complete
-`v4/` package are frozen at the public `v0.4.3` checkpoint; their hashes are in
-`docs/v4-runtime.json`. `go5.sh`, `go_v0.5.0.sh`, and the complete `v5/` package
-are also frozen; their hashes are in `docs/v5-runtime.json`. `go6.sh`,
-`go_v0.6.0.sh`, and the complete `v6/` package are frozen at the v7 boundary;
-their hashes are in `docs/v6-runtime.json`. Never replace a preserved version
-during an upgrade.
-
-Develop upgrades in `v7/`, launched by `go7.sh` or `go_v0.7.0.sh`, with its own
-catalogue, lockfile, ephemeris data and source manifest. All versions must work
-without `.worktrees`. Update the v7 manifest deliberately and test all five
-versions before publishing. Never merge a development worktree over a preserved
-runtime.
-
-## Local patch-helper fallback
-
-In this repository, the `apply_patch` helper is known to fail during sandbox
-setup with `bwrap: loopback: Failed RTM_NEWADDR`. Once that exact failure has
-occurred in a session, do not retry the helper for every edit. Use a narrow
-`git apply` patch directly instead, then inspect the resulting diff. Keep this
-as a fallback only for the known helper failure; it does not relax the
-requirements to preserve unrelated working-tree changes or to avoid destructive
-commands.
+This directory is the active v0.7.0 runtime. Keep root legacy, `v4/`, `v5/` and
+`v6/` unchanged; `docs/v6-runtime.json` records the exact v6 parent snapshot.
+Develop v7 changes only here and through `go7.sh` or `go_v0.7.0.sh`. Keep this
+package self-contained and runnable without `.worktrees`.
