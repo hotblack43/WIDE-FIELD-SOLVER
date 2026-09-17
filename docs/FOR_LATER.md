@@ -47,3 +47,58 @@ instrumental magnitudes, planet candidates and separately labelled metadata.
 Cached identities or earlier solutions must never seed a blind solve, and
 metadata revealed after fitting must remain distinguishable from values actually
 used by a fit.
+
+## High-dynamic-range all-sky archives and sparse trials
+
+Recorded 2026-09-17. Keep source FITS local; commit only query metadata,
+checksums and provenance. Dates and sites may be used only after a blind fit is
+fixed, never to seed astrometry, airmass, zenith or epoch inference.
+
+### Subaru Zenodo 3736793
+
+Peter Thejll's Zenodo record <https://doi.org/10.5281/zenodo.3736793> is the
+durable high-dynamic-range Subaru/Maunakea source. The camera can acquire
+14-bit samples; the published dark-subtracted trial products are 488 x 652
+floating-point FITS (`BITPIX=-64`). Storage type is not acquisition precision.
+The public API listed 51 R and 8 G files on 2026-09-17, but no B file despite
+the record description mentioning R/G/B.
+
+Three checksum-verified trial files are recorded under
+`data/zenodo-3736793/trial/README.md`. The matched-JD 16-second pair solved
+blindly with go6: R yielded 159 candidates, 40 Gaia fits and 1.6800 px RMS;
+G yielded 138 candidates, 46 Gaia fits and 1.7989 px RMS. The second R frame
+was downloaded but not run. Keep the FITS themselves out of Git.
+
+### ESO APICAM
+
+APICAM means ApiCam-3 at Paranal, not the La Silla LASC camera. The combined
+ESO La Silla Paranal archive name can obscure that distinction. ESO's raw API
+returned no records for instrument `LASC`; its live-image system is separate.
+
+The trial dataset `APICAM.2018-03-01T00:13:02.000` is a 120-second tracked
+luminance exposure: one 4096 x 4096 unsigned-16 FITS image (`BITPIX=16`,
+`BZERO=32768`), 33,557,760 bytes, SHA-256
+`9d65d31113e85b8aa691d503800fbc33b45f025746d7e8012c9b93aad8a63de8`.
+It has 58,621 pixels (0.3494%) at 65535 and no authoritative `SATURATE`
+keyword. Its 1/50/99 percentiles are 620/3868/34193.85 ADU. Astropy inspection
+must use `memmap=False` because scaled unsigned FITS cannot be memory-mapped.
+
+Direct ESO counts on 2026-09-17 found 118,717 APICAM records from 2018-03-01
+through 2020-06-25: 50,817 in 2018, 52,643 in 2019 and 15,257 in 2020.
+The first ten records have a median 147-second cadence. At the trial size, a
+complete uncompressed download is about 3.98 TB (3.62 TiB). For comparison,
+the same API reported 326,523 ALPACA and 2,477,763 MASCOT records; never start
+an unrestricted download of any of these collections.
+
+Select metadata first, then download a scientifically designed subset. One
+APICAM frame per calendar night is bounded by about 847 files/28 GB; a uniform
+30-minute sample across every available sequence is roughly 9,900 files/330 GB.
+Start instead with a few well-covered nights and 20--30 minute spacing across
+airmass, inspect go6 success and saturation, then expand only if justified.
+Keep `query_results.csv` beside each local trial and retain dataset IDs, dates,
+checksums, exposure/filter metadata and the exact selection rule.
+
+Next action: run the downloaded APICAM trial through the current development
+launcher, record whether its tracked high-resolution stars solve cleanly, and
+only then design a batch selector. Do not fold exposure timestamps or the known
+Paranal site into the blind fit.
