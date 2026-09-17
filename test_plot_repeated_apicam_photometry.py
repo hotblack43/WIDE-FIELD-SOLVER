@@ -7,6 +7,17 @@ import unittest
 
 
 class APICAMRepeatedPhotometryTests(unittest.TestCase):
+    def test_airmass_line_is_robust_to_one_severe_outlier(self):
+        from scripts import plot_repeated_apicam_photometry as apicam
+
+        slope, intercept = apicam.robust_airmass_line(
+            [1.0, 2.0, 3.0, 4.0, 5.0],
+            [3.0, 5.0, 100.0, 9.0, 11.0],
+        )
+
+        self.assertAlmostEqual(slope, 2.0)
+        self.assertAlmostEqual(intercept, 1.0)
+
     def test_loader_uses_only_repeated_monochrome_apicam_fits_rows(self):
         from scripts import plot_repeated_apicam_photometry as apicam
 
@@ -62,7 +73,13 @@ class APICAMRepeatedPhotometryTests(unittest.TestCase):
                     db.execute("INSERT INTO products VALUES (?,?,?)",
                                (run_id, "photometry_summary.json", provenance))
                     db.execute("INSERT INTO products VALUES (?,?,?)",
-                               (run_id, "input_image.json", mono_input))
+                               (run_id, "dots/input_image.json", mono_input))
+                    db.execute(
+                        "INSERT INTO products VALUES (?,?,?)",
+                        (run_id, "display_names.json", json.dumps({
+                            "Gaia DR3 123": {"display_name": "α Test"}
+                        })),
+                    )
                     magnitude = 10.0 + number
                     values = json.dumps({
                         "R_mag": magnitude, "G_mag": magnitude,
@@ -84,6 +101,7 @@ class APICAMRepeatedPhotometryTests(unittest.TestCase):
             self.assertEqual({row.machine_l_minus_gaia_g for row in rows},
                              {6.0, 7.0})
             self.assertEqual({row.gaia_bp_minus_rp for row in rows}, {1.4})
+            self.assertEqual({row.display_name for row in rows}, {"α Test"})
 
     def test_writer_creates_apicam_luminance_outputs_without_rgb_claims(self):
         from scripts import plot_repeated_apicam_photometry as apicam
@@ -119,6 +137,11 @@ class APICAMRepeatedPhotometryTests(unittest.TestCase):
             for name in expected:
                 self.assertGreater((output / name).stat().st_size, 100)
             self.assertFalse(any("RGB" in path.name for path in output.iterdir()))
+            audit = json.loads((
+                output
+                / "apicam_nine_bright_well_observed_stars_L_airmass_shared_ranges_le5.json"
+            ).read_text())
+            self.assertEqual(audit["regression_method"], "Theil-Sen")
 
 
 if __name__ == "__main__":

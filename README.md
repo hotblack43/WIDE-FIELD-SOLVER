@@ -103,16 +103,18 @@ remain in the database; ordinary failures save their available partial results.
 See [database storage](v6/docs/DATABASE.md). This feature was added after the
 published v0.6.0 download; it is available in the updated checkout.
 
-Regenerate the repeated-star photometry tables and plots from that database with:
+Regenerate the repeated-star APICAM photometry tables and plots from that database
+with:
 
 ```sh
 ./make_repeated_star_photometry_plots.sh
 ```
 
 The wrapper is independent of the current directory. By default it reads
-`results/stars.sqlite`, uses the v7 Gaia source-photometry table, and writes to
-`results/subaru-repeated-star-colours/`. The underlying options can be overridden,
-for example:
+`results/stars.sqlite`, uses the v7 Gaia source-photometry table, selects only
+single-plane FITS inputs named `APICAM.*`, and writes to
+`results/apicam-repeated-star-photometry/`. The underlying options can be
+overridden, for example:
 
 ```sh
 ./make_repeated_star_photometry_plots.sh \
@@ -120,14 +122,21 @@ for example:
   --output /path/to/plots
 ```
 
-The output includes the complete repeated-star CSV, catalogue-colour diagrams,
-the four-star RGB-pair grid, the nine-star airmass diagnostics, and the audited
-bright/well-observed G-channel plot with shared axes and the `X <= 5` cutoff.
-The catalogue-colour plots retain all measurements in the CSV but exclude from
-the plotted fit and axis scaling observations more than six scaled MADs from a
-preliminary per-star-median colour relation.  Each plot and its JSON audit state
-the number excluded.  This conservative filter prevents isolated failed colour
-measurements from obscuring the main relation without silently deleting them.
+The output includes the complete repeated-star luminance CSV, an APICAM
+`L−Gaia G` versus Gaia `BP−RP` colour-term diagnostic, four-star comparisons of
+the one measured L channel with the Gaia RP/G/BP passbands, and nine-star
+airmass diagnostics including the audited shared-axis `X <= 5` plot. APICAM's
+16-bit files contain one luminance plane, not independent RGB channels. The
+extractor verifies that the generic stored R/G/B values are identical copies
+and never presents them as measured colour. Per-star airmass lines use robust
+Theil–Sen regression and are labelled accordingly; they are diagnostics and do
+not replace the specified photometric-zenith fit.
+
+The colour-term plot retains all measurements in the CSV but excludes from its
+fit and axis scaling observations more than six scaled MADs from a preliminary
+per-star-median relation. The plot and JSON audit state the number excluded, so
+isolated failed measurements do not obscure the main relation or disappear from
+the numerical record.
 
 For v5, [bright-planet absence checks](v5/docs/PLANET_NONDETECTIONS.md) explain
 how missing Mercury, Venus, Mars, Jupiter or Saturn can count against an epoch,

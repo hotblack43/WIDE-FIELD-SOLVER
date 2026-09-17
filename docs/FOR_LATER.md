@@ -98,7 +98,17 @@ airmass, inspect go6 success and saturation, then expand only if justified.
 Keep `query_results.csv` beside each local trial and retain dataset IDs, dates,
 checksums, exposure/filter metadata and the exact selection rule.
 
-Next action: run the downloaded APICAM trial through the current development
-launcher, record whether its tracked high-resolution stars solve cleanly, and
-only then design a batch selector. Do not fold exposure timestamps or the known
-Paranal site into the blind fit.
+### Full-colour high-dynamic-range fisheye cameras
+
+Recorded 2026-09-17. Find one or more fisheye/all-sky cameras that preserve
+independent full-colour channels in a high-dynamic-range scientific format
+(preferably linear multi-plane FITS or high-bit TIFF/PNG with documented channel
+response). APICAM supplies high-dynamic-range luminance FITS, not colour; the
+Subaru web-camera sample supplies colour only as processed 8-bit JPEG. Require
+documented bit depth, linearity or transfer function, saturation behaviour,
+channel layout/passbands and enough repeated exposures for colour/extinction
+tests before treating such an archive as a calibration dataset.
+
+The downloaded APICAM trial has now been run through the development launcher
+and its repeated luminance photometry is analysed separately from colour data.
+Do not fold exposure timestamps or the known Paranal site into the blind fit.
