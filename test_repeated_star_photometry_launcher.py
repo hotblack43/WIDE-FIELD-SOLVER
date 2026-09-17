@@ -40,11 +40,11 @@ class RepeatedStarPhotometryLauncherTests(unittest.TestCase):
                 json.loads(capture.read_text()),
                 [
                     "run", "--project", str(ROOT), "--frozen", "python",
-                    str(ROOT / "scripts/plot_repeated_star_colours.py"),
+                    str(ROOT / "scripts/plot_repeated_apicam_photometry.py"),
                     "--database", str(ROOT / "results/stars.sqlite"),
                     "--gaia-catalogue",
                     str(ROOT / "v7/data/stars_gaia_dr3_g75.gaia-source.csv"),
-                    "--output", str(ROOT / "results/subaru-repeated-star-colours"),
+                    "--output", str(ROOT / "results/apicam-repeated-star-photometry"),
                 ],
             )
 
