@@ -169,6 +169,21 @@ Compression does not change the existing interpretation of observation-time
 headers; archive-specific clock errors still require an explicit corrected time
 when running a metadata-conditioned analysis.
 
+### Process several images
+
+Pass a shell-expanded wildcard, or list several paths explicitly:
+
+```sh
+./go10.sh /path/to/mmto/*.fits.bz2 --results-dir /path/to/results
+./go10.sh first.cr2 second.cr2
+```
+
+Inputs are validated before analysis begins, so an unmatched wildcard cannot
+start a partial batch. Images run sequentially with the same native-input
+options and each receives a unique run directory. If one analysis fails, its
+partial output and log are retained and later images still run. The launcher
+prints a final success/failure count and returns status 1 if any image failed.
+
 ### Results on a larger disk
 
 `go10.sh` stores both run folders and `stars.sqlite` under the

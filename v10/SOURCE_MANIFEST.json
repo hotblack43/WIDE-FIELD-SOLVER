@@ -6,7 +6,8 @@
     "Preserve the complete v9 runtime and investigator report changes in an independent v10 package.",
     "Decode Canon CR2 visible Bayer samples directly with rawpy/LibRaw into native R/G1/G2/B planes; never use the embedded JPEG preview.",
     "Keep capture time post-fit while recording exposure, ISO, camera, lens, black levels and white levels with native ADU.",
-    "Validate ZPN only over the saved image-derived sky footprint when present; mask non-sky compatible pixels and retain unchanged annotated native planes."
+    "Validate ZPN only over the saved image-derived sky footprint when present; mask non-sky compatible pixels and retain unchanged annotated native planes.",
+    "Accept multiple image paths and shell-expanded wildcards in the v10 launchers, processing each sequentially with shared options and an audited batch exit status."
   ],
   "sha256": {
     ".gitignore": "30fb581ec5cf1746fd5acf8749dceab068368f8375be97242e323a93e1baf5f8",
@@ -15,7 +16,7 @@
     "GOAL.md": "3bfe2d025927a51552d174eae526716a19cd38f47c72c05b43d5537f9bba3629",
     "HANDOFF.md": "33d73f296b20facf2d35380141cd7ecc35a491227c949002e7fb213ae01bbf14",
     "NOTICE.md": "5ae750e282eaa70c5752d2249575ba286ff8a430c177b5ce0dd1daadc7c06983",
-    "README.md": "d535bd3fccc34b5007d6202f424807cc043cff7fa1b2187c8d178e017b6cc97c",
+    "README.md": "4c692b6064e40f90549bf54e4e79ce3cacf15d1f22c97f4704c4c341e00db202",
     "analyse.sh": "26b3fd13c31100b3492d73f1663d3fcd6602c8e49a562911aa4755a27f3e1cac",
     "analyse_image.py": "4199ad09479d48340954a3b7f1110da0517d8cc0008368e38d76c5bf2832a37b",
     "barghini_model.py": "fd591084b407034907f03c3f9cca05126037fc06691c374c3cda3fc884d085af",
@@ -32,7 +33,7 @@
     "docs/BOOTSTRAP_FAILURES.md": "7cf19fd6c136c0b1baa7c615cae2ebd1adbb2a8e54afbc8f607358ce4ecca53e",
     "docs/COMPARISON.md": "012ca16042299ce6c0710ea487266590511c2f3af34726a2f1cdefc7da5dfbba",
     "docs/DATABASE.md": "78b982d314dc2f37864bcda1ae2e72e6a41dab16a9080665183d6fe366ee2bea",
-    "docs/FEATURE_STATUS.md": "02e70126f02cedd2c3820db51b1148be71e9115e4271b0627c4cb819ce15e842",
+    "docs/FEATURE_STATUS.md": "18d7d2f8a4220523ce5458b689411b3eab9185ad7800941c11876d864ae5beb2",
     "docs/FITS_EXPORT.md": "68cb4c80e6be002773912ec6c3a46b3ad4d6bbd6399bc879d7e98504bb1d7fb7",
     "docs/GAIA_V04.md": "4791518373e51e2dd698b34c007bc6c3cc305df704b02ebaf00f21c09c6f54c9",
     "docs/GAIA_V04_RESULTS.json": "34cfabd191ad0d3f3209c4c0879b21fbf9cffe8aee247d6e881ff419ce4c8bed",
@@ -100,7 +101,7 @@
     "point_star_time_bounds.py": "ba233c34f1656b4555962fcc9e1eb6ada17d746f532eb2abb345c6f0c419b5a3",
     "point_star_zenith.py": "b0617a53a6dfaad67e16d0c64058bc53b8a2e94d1377150a536c15a34ddd77bf",
     "pyproject.toml": "f25e9b550f11b4752ed54bb64d8b2e964c80f2dae167510bb4e3f9a1ba3548cf",
-    "run.sh": "0ff3d002d67db354b71ec5c5b7d32ec810b5015eb3f7dd259c6ecd17edff5052",
+    "run.sh": "bea6fc678ad647e132ce5f328a28970dcb19c4f7f05d30564b13bcf4c192ca6f",
     "scripts/benchmark_planet_search.py": "77f0d28d860e7ccdfb027751aed4890f3f95dcff7b3ede297a864845fe126dd4",
     "scripts/build_gaia_catalogue.py": "60374342198775880148c1e52aad981c197bb65deeab05bff749311ddd0b8cd9",
     "scripts/build_minor_planet_ephemeris.py": "a577489c7678c1ebc05a412d8163a8ec2402c19d6c26133e10a0e80a9d590655",

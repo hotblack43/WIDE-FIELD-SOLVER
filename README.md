@@ -82,6 +82,17 @@ embedded JPEG preview:
 ./go10.sh /full/path/to/image.cr2
 ```
 
+Shell-expanded wildcards process a batch sequentially with the same options:
+
+```bash
+./go10.sh raw_allsky_samples/mmto/mmto-skycam/*.fits.bz2 \
+  --results-dir /path/to/results
+```
+
+Each image gets its own run directory. A failed image does not prevent later
+images from running; the final batch summary and exit status report whether any
+failed. An unmatched wildcard is rejected before analysis starts.
+
 Each run gets a unique directory. The command prints the location of
 `analysis/report.pdf`, the run log and `stars.sqlite` when it starts and again
 when it finishes.

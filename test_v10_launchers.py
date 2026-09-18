@@ -48,13 +48,15 @@ class V10LauncherTests(unittest.TestCase):
         (root/PACKAGE/'data/stars_gaia_dr3_g75.csv').write_text('fixture')
         stub = root/PACKAGE/'analyse.sh'
         stub.write_text("#!/usr/bin/env python3\n"
-                        "import json, pathlib, sys\n"
+                        "import json, os, pathlib, sys\n"
                         "if sys.argv[1:] == ['--version']:\n"
                         f"    print('Wide-field solver {version}'); sys.exit()\n"
                         "args = sys.argv[1:]\n"
                         "output = pathlib.Path(args[args.index('--output') + 1])\n"
                         "output.mkdir(parents=True)\n"
                         "(output/'args.json').write_text(json.dumps(args))\n"
+                        "if pathlib.Path(args[0]).name == os.environ.get('WFS_TEST_FAIL_IMAGE'):\n"
+                        "    print('fixture analysis failure', file=sys.stderr); sys.exit(1)\n"
                         "(output/'report.pdf').write_bytes(b'fixture')\n")
         stub.chmod(0o755)
 
@@ -171,6 +173,69 @@ class V10LauncherTests(unittest.TestCase):
             for run in (root/'results/runs').iterdir():
                 args = json.loads((run/'analysis/args.json').read_text())
                 self.assertIn('--blind-planets', args)
+
+    def test_shell_expanded_images_are_each_analysed_with_shared_options(self):
+        with tempfile.TemporaryDirectory(prefix='solver batch ') as tmp:
+            root = Path(tmp)/'repo'
+            self.make_package(root)
+            images = [root/'first image.fits.bz2', root/'second image.fits.bz2']
+            for image in images:
+                image.write_bytes(b'fixture')
+            results = Path(tmp)/'batch results'
+            completed = subprocess.run(
+                [str(root/'go10.sh'), *map(str, images), '--results-dir', str(results),
+                 '--blind-planets'],
+                capture_output=True, text=True)
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            runs = sorted((results/'runs').iterdir())
+            self.assertEqual(len(runs), 2)
+            analysed = []
+            for run in runs:
+                args = json.loads((run/'analysis/args.json').read_text())
+                analysed.append(args[0])
+                self.assertIn('--blind-planets', args)
+                self.assertEqual(args[args.index('--database') + 1],
+                                 str(results/'stars.sqlite'))
+            self.assertCountEqual(analysed, map(str, images))
+            self.assertIn('Batch summary: 2 succeeded, 0 failed.', completed.stdout)
+
+    def test_batch_continues_after_failure_and_returns_failure_status(self):
+        with tempfile.TemporaryDirectory(prefix='solver batch failure ') as tmp:
+            root = Path(tmp)/'repo'
+            self.make_package(root)
+            bad = root/'bad.jpg'
+            good = root/'good.jpg'
+            bad.write_bytes(b'fixture')
+            good.write_bytes(b'fixture')
+            results = Path(tmp)/'batch results'
+            env = os.environ.copy()
+            env['WFS_TEST_FAIL_IMAGE'] = bad.name
+            completed = subprocess.run(
+                [str(root/'go10.sh'), str(bad), str(good),
+                 '--results-dir', str(results)],
+                env=env, capture_output=True, text=True)
+            self.assertEqual(completed.returncode, 1, completed.stdout+completed.stderr)
+            runs = list((results/'runs').iterdir())
+            self.assertEqual(len(runs), 2)
+            reports = list((results/'runs').glob('*/analysis/report.pdf'))
+            self.assertEqual(len(reports), 1)
+            successful_args = json.loads((reports[0].parent/'args.json').read_text())
+            self.assertEqual(successful_args[0], str(good))
+            self.assertIn('Batch summary: 1 succeeded, 1 failed.', completed.stdout)
+
+    def test_unmatched_wildcard_rejects_whole_batch_before_analysis(self):
+        with tempfile.TemporaryDirectory(prefix='solver unmatched wildcard ') as tmp:
+            root = Path(tmp)/'repo'
+            self.make_package(root)
+            good = root/'good.fits.bz2'
+            good.write_bytes(b'fixture')
+            unmatched = root/'missing-*.fits.bz2'
+            completed = subprocess.run(
+                [str(root/'go10.sh'), str(good), str(unmatched)],
+                capture_output=True, text=True)
+            self.assertEqual(completed.returncode, 2)
+            self.assertIn(f'Image file does not exist: {unmatched}', completed.stderr)
+            self.assertFalse((root/'results').exists())
 
     def test_version_mismatch_refuses_analysis(self):
         with tempfile.TemporaryDirectory() as tmp:
