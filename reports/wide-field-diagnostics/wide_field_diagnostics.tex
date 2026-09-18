@@ -30,6 +30,74 @@
   Peter Thejll \quad\textbullet\quad 13 September 2026
 \end{center}
 
+% Drop-in section. Requires natbib or equivalent citation commands.
+% The final paragraph assumes only the stated full-image, untrailed-star capability.
+\section{Previous work}
+\label{sec:previous-work}
+
+Astrometric analysis of a hemispheric fisheye image involves both identifying
+catalogue stars and determining the mapping between image coordinates and sky
+directions. These tasks should be distinguished when comparing methods: a
+calibration valid across the complete image may be obtained from star
+identifications established in smaller regions or supplied during an initial
+calibration. Blind plate solving, exemplified by Astrometry.net
+\citep{Lang2010}, establishes image--catalogue correspondences through geometric
+pattern matching and statistical verification. Whether this identification step
+operates on the complete fisheye field, and what information is required to
+initialise it, are therefore central to the comparison.
+
+Several all-sky pipelines use conventional plate solvers to establish local
+correspondences before deriving a global calibration. \citet{Hung2024} apply
+Astrometry.net to five selected $280\times280$-pixel subimages of their fisheye
+night-sky images. \citet{Yin2025} reproject regions of an all-sky image into
+views suitable for Astrometry.net, combine the resulting stellar
+identifications, and construct a global coordinate transformation. A related
+but distinct strategy is used in the FRIPON calibration of
+\citet{Jeanne2019}: SExtractor and SCAMP provide initial stellar
+identifications at elevations above $30^\circ$, where distortion is less severe,
+after which a fisheye model is fitted using stellar measurements accumulated
+across calibration exposures. Thus, a final transformation covering the full
+sky does not in itself imply that the initial plate solution was obtained from
+the entire hemispheric image in one operation.
+
+Other approaches perform global calibration with instrument or observational
+information available at initialisation. \citet{Barghini2019} describe an
+automated all-sky calibration in which a simplified projection model generates
+predicted catalogue-star positions, which are correlated with detected sources
+and progressively refined. Their initialisation uses an approximate plate
+scale, a prescribed image orientation, and the observing time and station
+coordinates. The ORION software of \citet{AntunaSanchez2022}
+likewise derives full-image angular-coordinate maps from stellar positions;
+its automatic star search uses a previous calibration or an approximate initial
+mapping. \citet{Yang2025} fit a global distortion model for super-wide-field
+images, beginning with 50 manually identified stars and expanding the matched
+set iteratively. These studies demonstrate that neither global fisheye
+calibration nor automated refinement of a whole-image model is, by itself,
+a new capability.
+
+Related work in celestial navigation addresses star identification in very
+wide fields with external assistance. \citet{Li2022} identify stars in
+$180^\circ$ fisheye imagery using precise point positioning and inertial
+navigation information to predict their image locations. The problem is thereby
+constrained by external estimates of position and attitude. Calibration from
+stellar motion provides another route: \citet{TeagueChahl2024} bootstrap camera
+geometry from two time-separated images, although their experimental cameras
+have a horizontal field of view of $53.5^\circ$. In the Auto-Cal preprint,
+\citet{Kapali2025} combine laboratory calibration of fisheye intrinsics with
+stellar tracks measured through image sequences to determine and update camera
+orientation. These temporal and instrument-assisted methods address related
+calibration problems but require inputs beyond an individual stellar image.
+
+The present work addresses plate solving of an entire $180^\circ$ fisheye image
+containing untrailed stellar sources, without dividing the image into
+independently solved patches. This distinguishes the processing strategy from
+the explicitly subdivided approaches described above, while the global methods
+of \citet{Barghini2019}, \citet{AntunaSanchez2022}, and \citet{Yang2025} remain
+relevant points of comparison. The comparison therefore concerns star identification, initialisation
+requirements, and performance across the hemispheric field.
+
+\section{Our code}
+
 An untrailed $1569\times1444$-pixel Milky Way image yields 3,688 measured
 sources and 3,653 fitted catalogue associations. The root-mean-square (RMS)
 positional residual is $0.398\px$, with median $0.249\px$.
@@ -74,7 +142,7 @@ A blind \href{https://github.com/esa/tetra3}{tetra3} pattern match supplies
 11 initial star associations from a small patch. Progressive matching against
 the frozen Tycho-2 catalogue, supplemented with bright Hipparcos stars, then
 expands the fitted field. The global projection uses the independent $O/Z$
-parametrisation of \citet{barghini2019}, equations (5), (6) and (11), with
+parametrisation of \citet{Barghini2019}, equations (5), (6) and (11), with
 the inherited fish-eye transform discussed on page~\pageref{sec:lineage}:
 \[
   u(r_O)=V r_O+S\bigl[\exp(D r_O)-1\bigr],
@@ -123,9 +191,22 @@ Further work should test other images and lenses, and evaluate a bright-star
 supplement plus Gaia DR3/DR4 in place of Tycho, with epoch propagation.
 
 \clearpage
+\section*{Planets as clock-calendars}
+\label{sec:planets}
+
+In images where bright planets are present we have the opportunity to accurately date the exposures. As an example we show in Figure~\ref{fig:planets} an image from Chile by Fred Espenak with Mars, Jupiter and Saturn in. Because there are three planets present it is possible to time the date of the exposure to within 13 minutes.
+
+\begin{center}
+  \includegraphics[width=.98\linewidth]{figures/planet_measured_vs_predicted_overlay.png}
+  \captionof{figure}{Mars, Jupiter and Saturn accurately time this exposure to just 13 minutes away from photographers stated time of capture (15 April 2018 at 06:55 UTC vs fitted epoch time 2018-04-15 at 07:08:16 UTC).}
+  \label{fig:planets}
+\end{center}
+
+
+\clearpage
 \section*{Scientific lineage and scope of this implementation}
 \label{sec:lineage}
-\citet{barghini2019} explicitly place their method within earlier fireball-camera
+\citet{Barghini2019} explicitly place their method within earlier fireball-camera
 astrometry in their Section~2. The principal development is:
 
 \textbf{Ceplecha (1987).}
@@ -152,7 +233,7 @@ Their Sections~4.2--5 identify strong coupling between optical-centre
 coordinates and the angular offset to the zenith. Replacing the latter by
 explicit detector coordinates of the zenith yields the $O/Z$ parameterisation
 used here. They also describe initialisation from meridian crossings,
-progressive source association and centroiding tests \citep{barghini2019}.
+progressive source association and centroiding tests \citep{Barghini2019}.
 Thus the radial projection has a clear lineage, while the 2019 work improves
 its parameterisation and practical calibration.
 

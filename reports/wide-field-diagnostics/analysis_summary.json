@@ -1,0 +1,24 @@
+{
+  "blind_date_tdb": "2018-04-15T00:00:00.000",
+  "blind_date_detection_ids": {
+    "mars": 36,
+    "jupiter": 8,
+    "saturn": 54
+  },
+  "best_epoch_utc": "2018-04-15T07:08:16.644",
+  "best_epoch_rms_deg": 0.04601550546605973,
+  "offset_from_published_minutes": 13.27740126026962,
+  "fitted_horizon_radius_px": 441.16513102163,
+  "timing_profile": {
+    "rms_below_0_1_deg_width_hours": 13.999999999999998,
+    "published_epoch_rms_deg": 0.04609856301580457,
+    "best_epoch_rms_deg": 0.04601550546605973
+  },
+  "empirical_timing_sensitivity": {
+    "bootstrap_count": 2000,
+    "offset_q16_hours": -2.9166666666666696,
+    "offset_median_hours": -0.0833333333333357,
+    "offset_q84_hours": 3.0,
+    "boundary_fraction": 0.0
+  }
+}

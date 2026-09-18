@@ -1,0 +1,103 @@
+{
+  "created_utc": "2026-09-18",
+  "original_dense_field": {
+    "input_sha256": "f06569c1397e92d60740d55cf9910113418f8bfc01ee0d9b24aa6cd1f8d467c2",
+    "fit_count": 3653,
+    "fit_rms_px": 0.39789212181523126,
+    "figures": [
+      {
+        "destination": "figures/astrometry_overlay.png",
+        "sha256": "d9d1ea44d4c2f33f98dd78c3dc02d2dd80c5819a07a9f73bf0c0517132d49d1b",
+        "role": "Measured centroids and fitted catalogue predictions at their true detector positions",
+        "plotting_caveat": "No cosmetic position shift or residual magnification"
+      },
+      {
+        "destination": "figures/astrometry_residuals.png",
+        "sha256": "0e448583c6e10736b73bde9e461b7ff8de3bbf561e92bb12ca456f4e3c964537",
+        "role": "Centre-to-edge fitted residual diagnostics",
+        "plotting_caveat": "Residual vectors are explicitly magnified by 20 for visibility"
+      }
+    ]
+  },
+  "mmto_single_exposure": {
+    "run_id": "2026_01_17__01_43_54.fits-v0.8.0-20260918T084259Z-UOeKW7",
+    "source": "/dmidata/projects/earthshine/MMTO/originals/2026-01-16/2026_01_17__01_43_54.fits.bz2",
+    "source_sha256": "a7d143e0144f887ba9e85bca13f653a3f58b487f20d9adfdaa868560b4cb03ea",
+    "format": "bz2-compressed plane-first R/G/B FITS",
+    "shape": [3, 1411, 1422],
+    "exposure_seconds": 20.0,
+    "detector_parity": "mirrored",
+    "detection_count": 1512,
+    "fit_count": 1385,
+    "fit_rms_px": 0.33758227691502485,
+    "fit_rms_arcmin": 2.6108266467593286,
+    "stellar_epoch_status": "not_identifiable",
+    "photometric_zenith_status": "not_identifiable",
+    "metadata_time_planet_match": {
+      "planet": "Jupiter",
+      "detection_id": 1,
+      "separation_px": 0.21824723923960265,
+      "saturated_channels": ["R", "G", "B"],
+      "interpretation": "Exact FITS-time association after the blind stellar fit was fixed; not blind epoch inference"
+    },
+    "figures": [
+      {
+        "destination": "figures/mmto_sky_overlay.png",
+        "source_product": "analysis/report_sky_overlay.png",
+        "sha256": "a2959bbbe4f913b3826bde24825eec9a9131c2cd063deab311395f0c89d99213",
+        "role": "Solved colour-FITS field, catalogue associations and post-fit planetary identification",
+        "plotting_caveat": "Symbols use saved measured and predicted coordinates"
+      },
+      {
+        "destination": "figures/mmto_astrometry_residuals.png",
+        "source_product": "analysis/astrometry_residuals.png",
+        "sha256": "7150040c6a7addabeac22bffb3cc2b2b3ac64953d683494b49229ffff42f9df5",
+        "role": "Angular and detector-plane fitted-residual diagnostics",
+        "plotting_caveat": "Fitted associations are not independent validation"
+      },
+      {
+        "destination": "figures/mmto_extinction_fit.png",
+        "source_product": "analysis/extinction_fit.png",
+        "sha256": "78988f9b931d5c61410e91837e18d55706f3f21db246e9b0efe9b11afb475128",
+        "role": "Instrumental magnitude-minus-catalogue magnitude against image-derived airmass",
+        "plotting_caveat": "Instrumental relation; zenith is not identifiable in this exposure"
+      },
+      {
+        "destination": "figures/mmto_zenith_profile.png",
+        "source_product": "analysis/photometric_zenith_profile.png",
+        "sha256": "8734191b61d357aa4ad1d8508e7fcb2de11896fc985a1fdd52211c709fc0d39c",
+        "role": "Photometric-zenith objective profile",
+        "plotting_caveat": "The minimum is conditional and explicitly classified as not identifiable"
+      }
+    ]
+  },
+  "mmto_repeated_photometry": {
+    "product_id": "20260918T091530117150Z",
+    "manifest_sha256": "8d910051800c2af8a4babe07f930a1456cfbf2f7c4c7626fae90f9429cd349c9",
+    "summary_sha256": "13f1106d0eb6e556186b7f3148f0ec3ccc936e760338262582a4303f19a43e62",
+    "database_runs": 66,
+    "duplicate_runs_omitted": 1,
+    "selected_runs": 65,
+    "input_photometry_rows": 86423,
+    "quality_rows_omitted": 152,
+    "usable_measurements": 86271,
+    "channel": "G",
+    "time_basis": "UTC exposure midpoint from hash-matched MMTO archive manifest",
+    "magnitude_definition": "-2.5 log10(unsaturated aperture ADU/s), arbitrary zero point",
+    "ensemble_star_count": 162,
+    "figures": [
+      {
+        "destination": "figures/mmto_lightcurves.png",
+        "sha256": "b3d32e782a44e8131fac3bdbfc4aacc6f4b61781efd33474556efee280284a57",
+        "role": "Representative repeated instrumental stellar light curves and polynomial residuals",
+        "plotting_caveat": "Trends combine atmospheric, instrumental, geometrical and possible intrinsic effects"
+      },
+      {
+        "destination": "figures/mmto_scatter_vs_magnitude.png",
+        "sha256": "523656cb8f486f6be1c2d0d6d4fc36ece13d3102a6aaeefabb2769f810f2b3f3",
+        "role": "Detrended residual scatter versus Gaia catalogue magnitude for all qualifying series",
+        "plotting_caveat": "Residual sample standard deviation is not an independent estimate of calibrated precision"
+      }
+    ]
+  }
+}

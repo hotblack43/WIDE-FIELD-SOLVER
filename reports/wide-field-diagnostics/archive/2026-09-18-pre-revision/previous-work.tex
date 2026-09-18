@@ -1,0 +1,65 @@
+% Drop-in section. Requires natbib or equivalent citation commands.
+% The final paragraph assumes only the stated full-image, untrailed-star capability.
+\section{Previous work}
+\label{sec:previous-work}
+
+Astrometric analysis of a hemispheric fisheye image involves both identifying
+catalogue stars and determining the mapping between image coordinates and sky
+directions. These tasks should be distinguished when comparing methods: a
+calibration valid across the complete image may be obtained from star
+identifications established in smaller regions or supplied during an initial
+calibration. Blind plate solving, exemplified by Astrometry.net
+\citep{Lang2010}, establishes image--catalogue correspondences through geometric
+pattern matching and statistical verification. Whether this identification step
+operates on the complete fisheye field, and what information is required to
+initialise it, are therefore central to the comparison.
+
+Several all-sky pipelines use conventional plate solvers to establish local
+correspondences before deriving a global calibration. \citet{Hung2024} apply
+Astrometry.net to five selected $280\times280$-pixel subimages of their fisheye
+night-sky images. \citet{Yin2025} reproject regions of an all-sky image into
+views suitable for Astrometry.net, combine the resulting stellar
+identifications, and construct a global coordinate transformation. A related
+but distinct strategy is used in the FRIPON calibration of
+\citet{Jeanne2019}: SExtractor and SCAMP provide initial stellar
+identifications at elevations above $30^\circ$, where distortion is less severe,
+after which a fisheye model is fitted using stellar measurements accumulated
+across calibration exposures. Thus, a final transformation covering the full
+sky does not in itself imply that the initial plate solution was obtained from
+the entire hemispheric image in one operation.
+
+Other approaches perform global calibration with instrument or observational
+information available at initialisation. \citet{Barghini2019} describe an
+automated all-sky calibration in which a simplified projection model generates
+predicted catalogue-star positions, which are correlated with detected sources
+and progressively refined. Their initialisation uses an approximate plate
+scale, a prescribed image orientation, and the observing time and station
+coordinates. The ORION software of \citet{AntunaSanchez2022}
+likewise derives full-image angular-coordinate maps from stellar positions;
+its automatic star search uses a previous calibration or an approximate initial
+mapping. \citet{Yang2025} fit a global distortion model for super-wide-field
+images, beginning with 50 manually identified stars and expanding the matched
+set iteratively. These studies demonstrate that neither global fisheye
+calibration nor automated refinement of a whole-image model is, by itself,
+a new capability.
+
+Related work in celestial navigation addresses star identification in very
+wide fields with external assistance. \citet{Li2022} identify stars in
+$180^\circ$ fisheye imagery using precise point positioning and inertial
+navigation information to predict their image locations. The problem is thereby
+constrained by external estimates of position and attitude. Calibration from
+stellar motion provides another route: \citet{TeagueChahl2024} bootstrap camera
+geometry from two time-separated images, although their experimental cameras
+have a horizontal field of view of $53.5^\circ$. In the Auto-Cal preprint,
+\citet{Kapali2025} combine laboratory calibration of fisheye intrinsics with
+stellar tracks measured through image sequences to determine and update camera
+orientation. These temporal and instrument-assisted methods address related
+calibration problems but require inputs beyond an individual stellar image.
+
+The present work addresses plate solving of an entire $180^\circ$ fisheye image
+containing untrailed stellar sources, without dividing the image into
+independently solved patches. This distinguishes the processing strategy from
+the explicitly subdivided approaches described above, while the global methods
+of \citet{Barghini2019}, \citet{AntunaSanchez2022}, and \citet{Yang2025} remain
+relevant points of comparison. The comparison therefore concerns star identification, initialisation
+requirements, and performance across the hemispheric field.
