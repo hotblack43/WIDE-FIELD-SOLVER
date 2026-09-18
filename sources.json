@@ -1,0 +1,119 @@
+{
+  "schema_version": 1,
+  "sources": [
+    {
+      "id": "mmto",
+      "aliases": ["mmt"],
+      "name": "MMT Observatory all-sky camera",
+      "status": "SUCCESS",
+      "adapter": "mmto",
+      "archive_roots": ["https://skycam.mmto.arizona.edu/skycam/archive/"],
+      "documentation": ["https://skycam.mmto.arizona.edu/skycam/archive/"],
+      "licensing": "Public download; no explicit reuse licence located",
+      "archive_coverage": "Dated raw directories verified through 2026-09-18; FITS archiving did not stop in June 2026",
+      "access_note": "Public directory listings expose cadence-selectable .fits.bz2 originals. Two nighttime originals were downloaded and inspected.",
+      "cameras": [
+        {
+          "id": "mmto-skycam",
+          "name": "MMT Observatory all-sky camera",
+          "timezone": "America/Phoenix",
+          "latitude_deg": 31.6866666667,
+          "longitude_deg": -110.8841666667,
+          "elevation_m": 2616
+        }
+      ]
+    },
+    {
+      "id": "trex_rgb",
+      "aliases": ["trex"],
+      "name": "University of Calgary TREx-RGB",
+      "status": "UNSUITABLE",
+      "adapter": "trex_rgb",
+      "archive_roots": ["https://data.phys.ucalgary.ca/sort_by_project/TREx/RGB/stream0/"],
+      "documentation": [
+        "https://data.phys.ucalgary.ca/data/datasets/trex_rgb.html",
+        "https://api.phys.ucalgary.ca/api/v1/data_distribution/datasets?name=TREX_RGB_RAW_NOMINAL",
+        "https://api.phys.ucalgary.ca/api/v1/data_distribution/observatories?instrument_array=trex_rgb"
+      ],
+      "licensing": "Open without authentication; citation is requested, but a reuse licence has not yet been identified",
+      "access_note": "Two official TREX_RGB_RAW_NOMINAL HDF5 bundles were downloaded and inspected. /data/images is uint8 RGB (480x553x3x20), so the public product does not meet the greater-than-8-bit requirement.",
+      "cameras": [
+        {"id": "atha_rgb-07", "name": "Athabasca, AB, Canada", "timezone": "America/Edmonton", "latitude_deg": 54.6, "longitude_deg": -113.64, "elevation_m": null},
+        {"id": "fsmi_rgb-09", "name": "Fort Smith, NWT, Canada", "timezone": "America/Yellowknife", "latitude_deg": 60.03, "longitude_deg": -111.93, "elevation_m": null},
+        {"id": "gill_rgb-04", "name": "Gillam, MB, Canada", "timezone": "America/Winnipeg", "latitude_deg": 56.38, "longitude_deg": -94.64, "elevation_m": null},
+        {"id": "luck_rgb-03", "name": "Lucky Lake, SK, Canada", "timezone": "America/Regina", "latitude_deg": 51.15, "longitude_deg": -107.26, "elevation_m": null},
+        {"id": "pina_rgb-02", "name": "Pinawa, MB, Canada (historical camera 02)", "timezone": "America/Winnipeg", "latitude_deg": 50.26, "longitude_deg": -95.87, "elevation_m": null},
+        {"id": "pina_rgb-05", "name": "Pinawa, MB, Canada (camera 05)", "timezone": "America/Winnipeg", "latitude_deg": 50.26, "longitude_deg": -95.87, "elevation_m": null},
+        {"id": "rabb_rgb-06", "name": "Rabbit Lake, SK, Canada", "timezone": "America/Regina", "latitude_deg": 58.23, "longitude_deg": -103.68, "elevation_m": null},
+        {"id": "yknf_rgb-08", "name": "Yellowknife, NWT, Canada", "timezone": "America/Yellowknife", "latitude_deg": 62.52, "longitude_deg": -114.31, "elevation_m": null}
+      ]
+    },
+    {
+      "id": "presente",
+      "aliases": ["goa-scan", "goascan"],
+      "name": "PRESENTE / GOA-SCAN",
+      "status": "ACCESS RESTRICTED",
+      "adapter": null,
+      "archive_roots": [],
+      "documentation": [
+        "https://allsky.opt.cie.uva.es/",
+        "https://goa.uva.es/contact/"
+      ],
+      "licensing": "Unknown",
+      "access_note": "Published system descriptions establish 14-bit undemosaiced Bayer data in 16-bit HDF5 arrays, but the public site exposes rendered JPEGs and no public HDF5 route was located. Request raw access from GOA at angel@goa.uva.es.",
+      "cameras": []
+    },
+    {
+      "id": "rubin",
+      "aliases": ["lsst"],
+      "name": "Rubin Observatory all-sky camera",
+      "status": "SUCCESS",
+      "adapter": "rubin_public_samples",
+      "archive_roots": ["https://drive.usercontent.google.com/download"],
+      "documentation": [
+        "https://smtn-005.lsst.io/",
+        "https://harvardwiki.atlassian.net/wiki/spaces/hufasstubbsgroup/pages/47454153/Rubin+All-sky+camera+data+and+access",
+        "https://drive.google.com/drive/folders/1eLiKl3Dz8b7w3err5kIUVHFWQP9D_ySK?usp=sharing"
+      ],
+      "licensing": "Public sample download; no explicit reuse licence located",
+      "access_note": "One verified nighttime CR2 is public in a two-file teaching set. The continuing USDF archive requires Rubin credentials and cannot support a public 20-minute cron feed.",
+      "cameras": [
+        {
+          "id": "rubin-asc",
+          "name": "Rubin Observatory all-sky camera",
+          "timezone": "America/Santiago",
+          "latitude_deg": -30.2446,
+          "longitude_deg": -70.7494,
+          "elevation_m": 2682
+        }
+      ]
+    },
+    {
+      "id": "oasi",
+      "aliases": [],
+      "name": "OASI all-sky camera",
+      "status": "RAW NOT FOUND",
+      "adapter": null,
+      "archive_roots": [],
+      "documentation": ["https://oasi.org.uk/Telescopes/allsky/allsky.php"],
+      "licensing": "Unknown",
+      "access_note": "The public pages document historical FITS acquisition, but the reachable current and historical products located were JPEG, PNG, or video; no original FITS file was found.",
+      "cameras": []
+    },
+    {
+      "id": "indi_allsky",
+      "aliases": ["indi"],
+      "name": "Public INDI-AllSky installations",
+      "status": "RAW NOT FOUND",
+      "adapter": null,
+      "archive_roots": [],
+      "documentation": [
+        "https://github.com/aaronwmorris/indi-allsky",
+        "https://allsky-map.com/"
+      ],
+      "licensing": "Varies by installation",
+      "access_note": "Five independent public INDI-AllSky viewers were checked through their public image-viewer APIs. Each advertised JPEG/panorama products and returned null FITS/raw fields; no publicly exposed original was found.",
+      "cameras": []
+    }
+  ]
+}

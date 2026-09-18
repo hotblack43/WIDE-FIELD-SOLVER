@@ -6,7 +6,7 @@ Peter Thejll and Chris Flynn
 
 [![Solver regression](https://github.com/hotblack43/WIDE-FIELD-SOLVER/actions/workflows/tests.yml/badge.svg)](https://github.com/hotblack43/WIDE-FIELD-SOLVER/actions/workflows/tests.yml)
 [![Python 3.12](https://img.shields.io/badge/Python-3.12-312E81)](pyproject.toml)
-[![Development line](https://img.shields.io/badge/development-v0.9.0-C026D3)](v9/README.md)
+[![Development line](https://img.shields.io/badge/development-v0.10.0-C026D3)](v10/README.md)
 [![MMTO astrometry](https://img.shields.io/badge/MMTO_RMS-0.327_px-F2B134)](docs/SCIENTIFIC_STATUS.md)
 [![License: BSD 3-Clause](https://img.shields.io/badge/license-BSD_3--Clause-312E81)](LICENSE)
 
@@ -65,14 +65,21 @@ The tested platform is Linux. Install
 ```bash
 git clone https://github.com/hotblack43/WIDE-FIELD-SOLVER.git
 cd WIDE-FIELD-SOLVER
-uv sync --project v9 --frozen
-./go9.sh /full/path/to/image.fits
+uv sync --project v10 --frozen
+./go10.sh /full/path/to/image.fits
 ```
 
 Compressed FITS input is accepted directly:
 
 ```bash
-./go9.sh /full/path/to/image.fits.bz2
+./go10.sh /full/path/to/image.fits.bz2
+```
+
+Canon CR2 input is decoded from the native 14-bit Bayer sensor data, not its
+embedded JPEG preview:
+
+```bash
+./go10.sh /full/path/to/image.cr2
 ```
 
 Each run gets a unique directory. The command prints the location of
@@ -104,7 +111,7 @@ zenith or observation epoch. Instrumental count rates are not calibrated fluxes.
 Metadata is not allowed to seed or tune the stellar astrometric fit; when used
 later for planetary analysis it is labelled as metadata-conditioned. See
 [the durable scientific goal](GOAL.md) and
-[the detailed v0.9.0 feature inventory](v9/docs/FEATURE_STATUS.md).
+[the detailed v0.10.0 feature inventory](v10/docs/FEATURE_STATUS.md).
 
 ## Citation, releases and reuse
 
@@ -114,9 +121,10 @@ and redistribute it under those terms. If you use WIDE-FIELD SOLVER in
 scientific work, please use the repository's [`CITATION.cff`](CITATION.cff);
 GitHub's **Cite this repository** menu supplies APA and BibTeX forms.
 
-The latest packaged release is v0.6.0; current development is in the preserved
-v0.9.0 line under `v9/`. Historical solvers remain available for reproducible
-comparison and are protected by recorded manifests and regression tests.
+The latest packaged release is v0.6.0; current development is v0.10.0 under
+`v10/`. The complete v9 runtime is preserved unchanged. Historical solvers
+remain available for reproducible comparison and are protected by recorded
+manifests and regression tests.
 
 The BSD licence covers project-authored software, not third-party code,
 catalogues or images. Those materials retain their own terms. Read
@@ -125,3 +133,51 @@ catalogues or images. Those materials retain their own terms. Read
 Analyses and publications using MMTO all-sky-camera data should acknowledge the
 MMT Observatory. We thank Tim Pickering and the Observatory for maintaining the
 camera and making its colour FITS archive available.
+
+## Raw colour all-sky acquisition
+
+`download_samples.py` lists archive metadata, applies deterministic cadence and
+the absolute file cap, and only then downloads selected originals. The default
+cadence is ten minutes; omitting it never means “download everything”. Existing
+files are checksum-verified through `raw_allsky_samples/manifest.sqlite`.
+
+Preview one MMTO night without downloading:
+
+```bash
+uv run --frozen python download_samples.py \
+  --site mmto --date 2026-09-18 --cadence 20m --max-files 20 --dry-run
+```
+
+Remove `--dry-run` to download. A date range and a particular camera can be
+selected in the same way:
+
+```bash
+uv run --frozen python download_samples.py \
+  --site mmto --start 2026-09-01 --end 2026-09-03 \
+  --cadence 30m --max-files 20 --dry-run
+
+uv run --frozen python download_samples.py \
+  --site trex --camera luck_rgb-03 --date 2026-01-15 \
+  --cadence 30m --max-files 15 --dry-run
+```
+
+Inspect downloaded FITS, HDF5 and camera-RAW originals without modifying them:
+
+```bash
+uv run --script inspect_allsky_samples.py
+```
+
+The script isolates `rawpy` and `h5py` from every preserved solver runtime.
+Inspection results go to `raw_allsky_samples/inspection.json`; display previews
+are derived products. See [the source audit](SOURCES.md) for exact URLs and
+scientific validation.
+
+The safe incremental MMTO command uses a 20-minute cadence, selects the newest
+slot, and permits at most one new raw file per invocation:
+
+```bash
+uv run --frozen python run_raw_allsky_cron.py --site mmto --dry-run
+```
+
+No cron entry is installed automatically. Site coordinates and UTC timestamps
+are retained so Moon-down and solar-altitude selection can be added later.

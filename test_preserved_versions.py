@@ -211,6 +211,47 @@ class PreservedVersionTests(unittest.TestCase):
                          'Every v9 runtime asset and launcher must exist in git clones:\n'
                          + tracked.stderr)
 
+    def test_v9_runtime_and_launchers_match_v10_parent_checkpoint(self):
+        record = json.loads((ROOT/'docs/v9-runtime.json').read_text())
+        self.assertEqual(record['version'], '0.9.0')
+        tracked = set(subprocess.run(
+            ['git', 'ls-files', 'v9'], cwd=ROOT, check=True,
+            capture_output=True, text=True).stdout.splitlines())
+        expected = tracked | {'go9.sh', 'go_v0.9.0.sh'}
+        self.assertEqual(set(record['sha256']), expected)
+        for name, expected_digest in record['sha256'].items():
+            with self.subTest(file=name):
+                self.assertEqual(
+                    hashlib.sha256((ROOT/name).read_bytes()).hexdigest(),
+                    expected_digest,
+                    'Preserved v9 changed: develop upgrades under v10/')
+
+    def test_v10_manifest_covers_runtime_and_packaged_data(self):
+        record = json.loads((ROOT/'v10/SOURCE_MANIFEST.json').read_text())
+        self.assertEqual(record['version'], '0.10.0')
+        self.assertEqual(record['based_on_version'], '0.9.0')
+        files = record['sha256']
+        for name, expected in files.items():
+            with self.subTest(file=name):
+                self.assertEqual(hashlib.sha256((ROOT/'v10'/name).read_bytes()).hexdigest(),
+                                 expected)
+        tracked = {path.removeprefix('v10/') for path in subprocess.run(
+            ['git', 'ls-files', 'v10'], cwd=ROOT, check=True,
+            capture_output=True, text=True).stdout.splitlines()}
+        tracked.discard('SOURCE_MANIFEST.json')
+        self.assertEqual(set(files), tracked)
+
+    def test_v10_package_and_launchers_are_tracked_for_clean_clones(self):
+        record = json.loads((ROOT/'v10/SOURCE_MANIFEST.json').read_text())
+        paths = ['v10/' + name for name in record['sha256']]
+        paths.extend(('v10/SOURCE_MANIFEST.json', 'go10.sh', 'go_v0.10.0.sh'))
+        tracked = subprocess.run(
+            ['git', 'ls-files', '--error-unmatch', '--', *paths], cwd=ROOT,
+            capture_output=True, text=True)
+        self.assertEqual(tracked.returncode, 0,
+                         'Every v10 runtime asset and launcher must exist in git clones:\n'
+                         + tracked.stderr)
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -52,9 +52,12 @@ package are frozen at the v9 boundary; their hashes are in
 also frozen; their hashes are in `docs/v8a-runtime.json`. Never replace a
 preserved version during an upgrade.
 
-Develop upgrades in `v9/`, launched by `go9.sh` or `go_v0.9.0.sh`, with its own
+`go9.sh`, `go_v0.9.0.sh`, and the complete `v9/` package are frozen at the v10
+boundary; their hashes are in `docs/v9-runtime.json`.
+
+Develop upgrades in `v10/`, launched by `go10.sh` or `go_v0.10.0.sh`, with its own
 catalogue, lockfile, ephemeris data and source manifest. All versions must work
-without `.worktrees`. Update the v9 manifest deliberately and test all preserved
+without `.worktrees`. Update the v10 manifest deliberately and test all preserved
 versions before publishing. Never merge a development worktree over a preserved
 runtime.
 

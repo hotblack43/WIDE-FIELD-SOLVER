@@ -1,0 +1,5 @@
+# Keep the bundled regression input and historical evidence in Git.
+!/examples/milky_way/input.jpeg
+!/examples/milky_way/diagnostics/astrometry_overlay.png
+!/examples/milky_way/diagnostics/astrometry_residuals.png
+!/examples/milky_way/reference/identified_40_stars.png

@@ -12,3 +12,6 @@ results/
 *.png
 *.jpg
 *.jpeg
+/raw_allsky_samples/.download.lock
+/raw_allsky_samples/derived/
+/raw_allsky_samples/*.log
