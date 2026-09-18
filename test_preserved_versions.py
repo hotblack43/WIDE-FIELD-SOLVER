@@ -1,4 +1,4 @@
-"""Keep the legacy through v6 runtimes separate from active v7 development."""
+"""Keep the legacy through v7 runtimes separate from active v8 development."""
 import hashlib
 import json
 from pathlib import Path
@@ -115,6 +115,53 @@ class PreservedVersionTests(unittest.TestCase):
                    if p.is_file() and p.suffix in ('.py', '.sh')}
         self.assertEqual(runtime, {name for name in files
                                   if '/' not in name and Path(name).suffix in ('.py', '.sh')})
+
+    def test_v7_manifest_files_are_tracked_for_clean_exports(self):
+        source = json.loads((ROOT/'v7/SOURCE_MANIFEST.json').read_text())
+        paths = ['v7/' + name for name in source['sha256']]
+        tracked = subprocess.run(
+            ['git', 'ls-files', '--error-unmatch', '--', *paths], cwd=ROOT,
+            capture_output=True, text=True)
+        self.assertEqual(tracked.returncode, 0,
+                         'Every v7 manifest asset must exist in git archives:\n' + tracked.stderr)
+
+    def test_v7_runtime_and_launchers_match_v8_parent_checkpoint(self):
+        record = json.loads((ROOT/'docs/v7-runtime.json').read_text())
+        self.assertEqual(record['version'], '0.7.0')
+        tracked = set(subprocess.run(
+            ['git', 'ls-files', 'v7'], cwd=ROOT, check=True,
+            capture_output=True, text=True).stdout.splitlines())
+        expected = tracked | {'go7.sh', 'go_v0.7.0.sh'}
+        self.assertEqual(set(record['sha256']), expected)
+        for name, expected_digest in record['sha256'].items():
+            with self.subTest(file=name):
+                self.assertEqual(
+                    hashlib.sha256((ROOT/name).read_bytes()).hexdigest(),
+                    expected_digest,
+                    'Preserved v7 changed: develop upgrades under v8/')
+
+    def test_v8_manifest_covers_runtime_and_packaged_data(self):
+        record = json.loads((ROOT/'v8/SOURCE_MANIFEST.json').read_text())
+        self.assertEqual(record['version'], '0.8.0')
+        self.assertEqual(record['based_on_version'], '0.7.0')
+        files = record['sha256']
+        for name, expected in files.items():
+            with self.subTest(file=name):
+                self.assertEqual(hashlib.sha256((ROOT/'v8'/name).read_bytes()).hexdigest(),
+                                 expected)
+        runtime = {p.name for p in (ROOT/'v8').iterdir()
+                   if p.is_file() and p.suffix in ('.py', '.sh')}
+        self.assertEqual(runtime, {name for name in files
+                                  if '/' not in name and Path(name).suffix in ('.py', '.sh')})
+
+    def test_v8_manifest_files_are_tracked_for_clean_exports(self):
+        record = json.loads((ROOT/'v8/SOURCE_MANIFEST.json').read_text())
+        paths = ['v8/' + name for name in record['sha256']]
+        tracked = subprocess.run(
+            ['git', 'ls-files', '--error-unmatch', '--', *paths], cwd=ROOT,
+            capture_output=True, text=True)
+        self.assertEqual(tracked.returncode, 0,
+                         'Every v8 manifest asset must exist in git archives:\n' + tracked.stderr)
 
 
 if __name__ == '__main__':
