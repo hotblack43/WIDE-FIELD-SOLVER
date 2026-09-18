@@ -211,6 +211,21 @@ class PreservedVersionTests(unittest.TestCase):
                          'Every v9 runtime asset and launcher must exist in git clones:\n'
                          + tracked.stderr)
 
+    def test_v9_runtime_and_launchers_match_v10_parent_checkpoint(self):
+        record = json.loads((ROOT/'docs/v9-runtime.json').read_text())
+        self.assertEqual(record['version'], '0.9.0')
+        tracked = set(subprocess.run(
+            ['git', 'ls-files', 'v9'], cwd=ROOT, check=True,
+            capture_output=True, text=True).stdout.splitlines())
+        expected = tracked | {'go9.sh', 'go_v0.9.0.sh'}
+        self.assertEqual(set(record['sha256']), expected)
+        for name, expected_digest in record['sha256'].items():
+            with self.subTest(file=name):
+                self.assertEqual(
+                    hashlib.sha256((ROOT/name).read_bytes()).hexdigest(),
+                    expected_digest,
+                    'Preserved v9 changed: develop upgrades under v10/')
+
 
 if __name__ == '__main__':
     unittest.main()

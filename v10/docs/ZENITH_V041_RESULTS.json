@@ -1,0 +1,47 @@
+{
+  "v0.4.0": {
+    "source_sha256": "f2990800eebdc902adba9853e4b9352d8ddb20cf0b71498b4bdce46b25b02e58",
+    "astrometric_fit": {
+      "count": 415,
+      "rms_px": 0.6376054026227291,
+      "median_px": 0.3372679056646328,
+      "p90_px": 0.9806389911264214
+    },
+    "saturated_astrometric_matches": 182,
+    "photometric_zenith": {
+      "status": "not_identifiable",
+      "reason": "primary zenith has weak angular information; primary fit lacks positive extinction evidence; primary minimum is limited by the altitude boundary; radial-response sensitivity fit lacks positive extinction evidence; radial-response sensitivity minimum is limited by the altitude boundary",
+      "fitted_count": 214,
+      "minimum_altitude_deg": 9.999999999402812,
+      "extinction_mag_per_airmass": 0.17592106456938925,
+      "extinction_sigma": 0.05949667370457672,
+      "conditional_sigma_deg": 5.0111947101296,
+      "radial_response_shift_deg": 1.4196806486101807,
+      "rms_mag": 0.9269093223152421
+    }
+  },
+  "v0.4.1": {
+    "source_sha256": "f2990800eebdc902adba9853e4b9352d8ddb20cf0b71498b4bdce46b25b02e58",
+    "astrometric_fit": {
+      "count": 415,
+      "rms_px": 0.6376054026227291,
+      "median_px": 0.3372679056646328,
+      "p90_px": 0.9806389911264214
+    },
+    "saturated_astrometric_matches": 182,
+    "photometric_zenith": {
+      "status": "conditional_zenith",
+      "reason": "Photometry constrains a conditional zenith",
+      "fitted_count": 233,
+      "minimum_altitude_deg": 8.424109563789704,
+      "extinction_mag_per_airmass": 0.25335427396758536,
+      "extinction_sigma": 0.04037113145714224,
+      "conditional_sigma_deg": 1.9158016633682233,
+      "radial_response_shift_deg": 0.6382220897738947,
+      "rms_mag": 0.905955813008031
+    }
+  },
+  "unchanged_camera": true,
+  "unchanged_astrometric_coordinates": true,
+  "limitation": "Single-image comparison; conditional robust-regression zenith, not independently validated physical zenith. OLS comparison and blind planet search remain unfinished."
+}
