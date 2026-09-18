@@ -21,9 +21,22 @@ Every rerun creates another entry, even for the same image. No duplicates or
 quality-flagged measurements are removed. Failed analyses retain their available
 partial products and error. See [database storage](docs/DATABASE.md).
 
-V10 accepts native-depth grayscale/RGB PNG and TIFF plus 2-D, RGB and
+V10 accepts Canon CR2 directly as native undemosaiced Bayer samples, plus
+native-depth grayscale/RGB PNG and TIFF and 2-D, RGB and
 `R/G1/G2/B` FITS images. Three- and four-plane FITS stacks may be plane-first or
 plane-last; named `R/G1/G2/B` and long-form colour extensions are also accepted.
+CR2 is decoded only with rawpy/LibRaw from `raw_image_visible`; an embedded JPEG
+preview is never used. The RGGB/BGGR/GRBG/GBRG mosaic is separated without
+interpolation into half-resolution `R/G1/G2/B` planes, preserving integer ADU.
+Black and white levels, exposure, ISO, camera and lens provenance are recorded.
+Black levels are not globally subtracted because local background estimates
+already remove offsets. Capture time is deliberately requested only after the
+blind stellar fit is fixed.
+
+```sh
+./go10.sh /path/to/exposure.cr2
+```
+
 For ambiguous FITS files use, for example:
 
 ```sh
@@ -35,6 +48,13 @@ The last three options are needed only when the file does not describe itself
 unambiguously. Scientific samples retain native depth. The 8-bit rendering in
 plots is a display-only stretch; `analysis/dots/input_image.json` records the
 exact loading, channel and saturation policy.
+
+When an image-derived footprint excludes a dark camera frame, FITS WCS
+validation is restricted to that measured sky domain. `solution.fits` contains
+NaN outside the accepted sky; `solution_annotated.fits` keeps every native plane
+unchanged and adds a `SKYMASK` extension. A mask cannot rescue a radial model
+that is non-invertible inside the accepted sky, and the 0.05-pixel export limit
+is unchanged. See the [Rubin CR2 acceptance record](docs/RUBIN_CR2_ACCEPTANCE.md).
 
 After the blind tetra3 bootstrap, v10 performs catalogue association and robust
 Barghini fitting in angular sky coordinates. Progressive great-circle gates end

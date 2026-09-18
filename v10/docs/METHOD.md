@@ -56,6 +56,22 @@ two-dimensional derived luminance image for colour input. Planet non-detection
 evidence reuses the mask, treating its exterior as unobserved rather than empty
 sky.
 
+Version 0.10.0 also accepts Canon CR2 through rawpy/LibRaw. It copies the native
+visible Bayer array, verifies an integer even-sized RGGB/BGGR/GRBG/GBRG mosaic,
+and separates its four cell positions into `R/G1/G2/B` without interpolation or
+resampling. LibRaw colour indices, rather than assumed list order, map both green
+black/white levels. Exposure, ISO, camera and lens may enter input provenance;
+observation time is excluded from this pre-fit request and read only later for
+the already-existing metadata-conditioned planet stage.
+
+For FITS publication, the same saved image-only footprint may restrict the
+radial interval over which ZPN invertibility and approximation error are
+validated. Every radius from the optical axis through the outermost valid sky
+pixel is checked, along with deterministic mask-interior and boundary samples.
+The required maximum added error remains 0.05 pixel. The compatible luminance
+image uses NaN outside sky; the annotated product preserves native planes and
+publishes the mask separately.
+
 In v6, a stricter second use of that saved mask recognises only a closed, broad,
 circular footprint centred on the detector. It requires a low-residual boundary
 circle fit, complete 72-bin azimuth coverage and fitted-camera boundary rays

@@ -1,6 +1,6 @@
 # FITS image, ZPN coordinates and selectable DS9 overlays
 
-`go7.sh` writes two FITS products after the scientific fits are fixed:
+`go10.sh` writes two FITS products after the scientific fits are fixed:
 
 - `solution.fits` is a conventional two-dimensional primary image with the
   validated ZPN WCS. It is intended for Astrometry.net `solve-field` and other
@@ -12,14 +12,17 @@
 No stars are refitted and image geometry is not resampled. Colour pixels are
 converted to floating Rec. 709 luminance only in the compatible
 `solution.fits`; the annotated file retains every original `R/G/B` or
-`R/G1/G2/B` plane. Legacy, v4 and v5 runtimes are unchanged.
+`R/G1/G2/B` plane. For a saved image-derived sky footprint, non-sky pixels in
+the compatible primary are NaN and the annotated file adds an exact uint8
+`SKYMASK`; native planes remain byte-for-byte numerically unchanged. Earlier
+runtimes are unchanged.
 
 ## Open the image with full overlays
 
 From the repository:
 
 ```sh
-./v7/view_fits.sh /path/to/analysis/solution_annotated.fits
+./v10/view_fits.sh /path/to/analysis/solution_annotated.fits
 ```
 
 In DS9, use **Region → Show** to switch the overlays off/on and **Region → Show
@@ -54,7 +57,9 @@ product.
 - Monochrome input in the primary HDU, or an empty primary followed by `RED`,
   `GREEN`, `BLUE` image extensions for RGB input and `RED`, `GREEN1`, `GREEN2`,
   `BLUE` for four-plane input. Each image has the same WCS; pixel values and
-  original row order are preserved.
+  original row order are unchanged.
+- When a saved footprint exists, `SKYMASK` contains 1 for accepted image-derived
+  sky and 0 outside it, with the same WCS as the native image planes.
 - `REGION`: basic shapes in a FITS binary table, with one-based pixel positions.
 - `DS9TEXT`: UTF-8 bytes of styled DS9 regions, including labels and leader lines.
 - `WFSINFO`: UTF-8 JSON containing the fixed camera, native input provenance,
@@ -84,11 +89,13 @@ produce overlap. This does not change the PDF's existing label placement.
 Only the inverse of the fixed Barghini radial law is approximated by a ZPN
 polynomial, choosing the first passing odd degree from 3 through 17. Validate
 both pixel-to-sky and sky-to-pixel mappings, round trips, and the radial inverse
-against the original camera. Tests cover a 137×131 independent grid, 1,027
-samples on each detector edge, O/Z, and 100,003 radial samples. Require a
-monotonic mapping across the full detector rectangle and maximum additional
-error below **0.05 native detector pixel**. This is finite numerical validation,
-not a continuum proof or an estimate of the original astrometric uncertainty.
+against the original camera. Without a saved mask, validation covers the full
+detector rectangle. With one, it covers deterministic accepted grid and boundary
+samples plus every radius from the optical axis through the furthest accepted
+pixel. O/Z and 100,003 radial samples are retained. Require a monotonic mapping
+through the declared domain and maximum additional error below **0.05 native
+detector pixel**. This is finite numerical validation, not a continuum proof or
+an estimate of the original astrometric uncertainty.
 
 `fits_export.json` records both filenames, success or why export was unavailable. A missing
 original, a checksum mismatch against the saved input, incompatible dimensions, unsupported palette/alpha mode or unsuitable
@@ -101,7 +108,7 @@ site, filename-derived epoch or other validation metadata to change the fit.
 To export an existing result without running the solver again:
 
 ```sh
-uv run --project v5 --frozen python v5/point_star_fits.py export /path/to/analysis
+uv run --project v10 --frozen python v10/point_star_fits.py export /path/to/analysis
 ```
 
 Use `--image /new/path/to/original.jpg` if the original has moved, and `--output
@@ -118,7 +125,7 @@ display, including RGB, Unicode labels, hollow markers, differing line widths,
 visibility toggles and the cursor's sky coordinates:
 
 ```sh
-WFS_TEST_XVFB=/path/to/Xvfb uv run --project v5 --frozen python -m unittest discover -s v5 -p 'test_point_star_fits*.py' -v
+WFS_TEST_XVFB=/path/to/Xvfb uv run --project v10 --frozen python -m unittest discover -s v10 -p 'test_point_star_fits*.py' -v
 ```
 
 Without `WFS_TEST_XVFB`, the GUI consumer test is skipped; no desktop windows open.
