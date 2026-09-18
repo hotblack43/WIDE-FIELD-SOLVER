@@ -1,12 +1,15 @@
 # Detailed guide: legacy Tycho-2 solver
 
 This page applies to `go.sh` and the preserved root commands. It does not describe
-`go4.sh`. Start with the [shared user guide](../README.md) to choose a version.
+`go4.sh`. Start with the
+[shared user guide](https://github.com/hotblack43/WIDE-FIELD-SOLVER#readme)
+to choose a version.
 Run the commands below from the repository root.
 
 The legacy analyser retains its historical metadata-assisted atmospheric and
 planet diagnostics. For blind planetary epoch inference, use `go4.sh` and read
-its [feature status](../v4/docs/FEATURE_STATUS.md).
+its
+[feature status](https://github.com/hotblack43/WIDE-FIELD-SOLVER/blob/main/v4/docs/FEATURE_STATUS.md).
 
 ## Solve another image
 
@@ -98,14 +101,15 @@ Each complete run produces:
 
 ## Does the fit deteriorate towards the edge?
 
-The [two-symbol overlay](../examples/milky_way/diagnostics/astrometry_overlay.png)
+The
+[two-symbol overlay](https://github.com/hotblack43/WIDE-FIELD-SOLVER/blob/main/examples/milky_way/diagnostics/astrometry_overlay.png)
 plots both coordinates independently for all 3,653 fitted associations, without
 magnifying their separation. Open the full-resolution image and zoom in.
 The plotting code applies no astrometric correction or cosmetic shift. Any
 future correction must come through the Barghini model and its exported
 coordinates; remaining discrepancies stay visible in the overlay.
 
-![Full-field residual vectors and centre-to-edge residual statistics](../examples/milky_way/diagnostics/astrometry_residuals.png)
+![Full-field residual vectors and centre-to-edge residual statistics](https://raw.githubusercontent.com/hotblack43/WIDE-FIELD-SOLVER/main/examples/milky_way/diagnostics/astrometry_residuals.png)
 
 The radial bands give:
 
@@ -147,7 +151,8 @@ growing its window to accommodate large saturated blobs. tetra3 supplies an
 initial blind star-pattern identification from a small patch. The global fit
 uses the [Barghini et al. (2019)](https://doi.org/10.1051/0004-6361/201935580)
 O/Z equations (5), (6), and (11), with progressive matching and a robust fit.
-See [method notes](METHOD.md) and [catalogue provenance](../data/README.md).
+See [method notes](METHOD.md) and
+[catalogue provenance](https://github.com/hotblack43/WIDE-FIELD-SOLVER/blob/main/data/README.md).
 
 The reported residuals describe fitted associations selected with a three-pixel
 matching gate. They are not independent accuracy estimates or a completeness

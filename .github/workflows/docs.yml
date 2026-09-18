@@ -1,0 +1,36 @@
+name: Documentation
+
+on:
+  push:
+    paths:
+      - "README.md"
+      - "REFERENCE.md"
+      - "mkdocs.yml"
+      - ".readthedocs.yaml"
+      - "docs/**"
+      - ".github/workflows/docs.yml"
+  pull_request:
+    paths:
+      - "README.md"
+      - "REFERENCE.md"
+      - "mkdocs.yml"
+      - ".readthedocs.yaml"
+      - "docs/**"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: "0.9.30"
+          python-version: "3.12"
+      - name: Build documentation with warnings as errors
+        run: uvx --with mkdocs-material==9.7.7 mkdocs==1.6.1 build --strict

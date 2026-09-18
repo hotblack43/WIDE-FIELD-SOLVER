@@ -1,0 +1,23 @@
+cff-version: 1.2.0
+message: >-
+  If you use WIDE-FIELD SOLVER in scientific work, please cite this software.
+title: WIDE-FIELD SOLVER
+type: software
+authors:
+  - family-names: Thejll
+    given-names: Peter
+  - family-names: Flynn
+    given-names: Chris
+version: 0.9.0
+repository-code: https://github.com/hotblack43/WIDE-FIELD-SOLVER
+url: https://github.com/hotblack43/WIDE-FIELD-SOLVER
+license: BSD-3-Clause
+abstract: >-
+  Blind full-frame point-source astrometry for fisheye and other extreme
+  wide-field images, using the Barghini O/Z lens model.
+keywords:
+  - astrometry
+  - fisheye
+  - all-sky camera
+  - wide-field imaging
+  - Barghini model

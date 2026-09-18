@@ -1,0 +1,72 @@
+site_name: WIDE-FIELD SOLVER
+site_description: Blind full-frame astrometry for fisheye and extreme wide-field images
+repo_url: https://github.com/hotblack43/WIDE-FIELD-SOLVER
+repo_name: hotblack43/WIDE-FIELD-SOLVER
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  language: en
+  features:
+    - content.code.copy
+    - navigation.footer
+    - navigation.indexes
+    - navigation.sections
+    - navigation.top
+    - search.highlight
+    - search.suggest
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: deep purple
+      accent: amber
+      toggle:
+        icon: material/weather-night
+        name: Use dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: deep purple
+      accent: amber
+      toggle:
+        icon: material/weather-sunny
+        name: Use light mode
+
+nav:
+  - Overview: index.md
+  - Quick start: QUICKSTART.md
+  - Results and outputs: RESULTS.md
+  - Scientific status: SCIENTIFIC_STATUS.md
+  - Method:
+      - Barghini model: METHOD.md
+      - Photometric zenith: PHOTOMETRY_ZENITH_EXTINCTION_NOTE.md
+      - Performance: PERFORMANCE.md
+      - Comparison with solve-field: COMPARISON.md
+      - Bootstrap troubleshooting: BOOTSTRAP_FAILURES.md
+  - Versions:
+      - Version guide: VERSIONS.md
+      - Legacy guide: LEGACY_GUIDE.md
+      - First release: RELEASE_v0.1.0.md
+  - Project record:
+      - Consolidation notes: CONSOLIDATION.md
+      - Deferred work: FOR_LATER.md
+  - Provenance: provenance.json
+
+exclude_docs: |
+  superpowers/**
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - tables
+
+extra_css:
+  - stylesheets/extra.css
+
+copyright: Copyright 2026 Peter Thejll and Chris Flynn. Software licensed under BSD 3-Clause.
+
+strict: true
