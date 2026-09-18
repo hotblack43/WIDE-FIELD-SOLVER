@@ -91,7 +91,7 @@ def _fits_candidates(path):
 
 
 def _exif_candidates(path):
-    if fits_image_suffix(path):
+    if fits_image_suffix(path) or path.suffix.lower() == '.cr2':
         return []
     try:
         with Image.open(path) as image:
@@ -108,6 +108,33 @@ def _exif_candidates(path):
             return rows
     except (OSError, ValueError, TypeError, UnidentifiedImageError):
         return []
+
+
+def _camera_raw_candidates(path):
+    if path.suffix.lower() != '.cr2':
+        return []
+    from point_star_raw import read_cr2_exif
+    metadata = read_cr2_exif(path, {
+        'datetime_original', 'datetime_digitized', 'datetime',
+        'offset_time_original', 'offset_time_digitized', 'offset_time'})
+    rows = []
+    definitions = (
+        ('datetime_original', 'DateTimeOriginal', 'offset_time_original'),
+        ('datetime_digitized', 'DateTimeDigitized', 'offset_time_digitized'),
+        ('datetime', 'DateTime', 'offset_time'),
+    )
+    for rank, (field, label, offset_field) in enumerate(definitions):
+        if field not in metadata:
+            continue
+        offset = metadata.get(offset_field) or metadata.get('offset_time')
+        try:
+            instant, assumed = _datetime_time(metadata[field], exif=True, offset=offset)
+        except (TypeError, ValueError):
+            continue
+        rows.append(_row(instant, source=f'cr2_exif:{label}', field=label,
+                         value=metadata[field], assumed_utc=assumed,
+                         priority=100+rank))
+    return rows
 
 
 def _filename_candidates(path):
@@ -138,6 +165,7 @@ def resolve_observation_time(path, explicit_time=None):
         rows.append(_row(instant, source='explicit_argument', field='observation_time',
                          value=explicit_time, assumed_utc=assumed, priority=-1))
     rows.extend(_fits_candidates(path))
+    rows.extend(_camera_raw_candidates(path))
     rows.extend(_exif_candidates(path))
     rows.extend(_filename_candidates(path))
     rows.sort(key=lambda row: row['_priority'])

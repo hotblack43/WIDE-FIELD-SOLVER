@@ -342,7 +342,7 @@ def load_scientific_image(path, *, fits_hdu=None, channel_order=None, saturation
         layout = 'bayer_cell_planes'
         details = dict(raw.details)
         exposure_seconds = details.get('exposure_seconds')
-        details['exposure'] = _exposure_record(exposure_seconds, 'cr2:ExposureTime')
+        details['exposure'] = _exposure_record(exposure_seconds, 'cr2_exif:ExposureTime')
         header_levels = {name: (level, 'camera_raw_white_level')
                          for name, level in raw.white_levels.items()}
         black_levels = dict(raw.black_levels)

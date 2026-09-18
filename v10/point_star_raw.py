@@ -3,12 +3,28 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping
 
+import exifread
 import numpy as np
 import rawpy
 
 
 PLANE_NAMES = ('R', 'G1', 'G2', 'B')
 SUPPORTED_CFA = {'RGGB', 'BGGR', 'GRBG', 'GBRG'}
+_EXIF_TAGS = {
+    'exposure_seconds': 'EXIF ExposureTime',
+    'iso': 'EXIF ISOSpeedRatings',
+    'camera_make': 'Image Make',
+    'camera_model': 'Image Model',
+    'lens': 'EXIF LensModel',
+    'datetime_original': 'EXIF DateTimeOriginal',
+    'datetime_digitized': 'EXIF DateTimeDigitized',
+    'datetime': 'Image DateTime',
+    'offset_time_original': 'EXIF OffsetTimeOriginal',
+    'offset_time_digitized': 'EXIF OffsetTimeDigitized',
+    'offset_time': 'EXIF OffsetTime',
+}
+_NUMERIC_EXIF_FIELDS = {'exposure_seconds', 'iso'}
+_PREFIT_EXIF_FIELDS = {'exposure_seconds', 'iso', 'camera_make', 'camera_model', 'lens'}
 
 
 @dataclass(frozen=True)
@@ -28,9 +44,39 @@ def _plain(value):
     return str(model if model else value)
 
 
+def _numeric_tag(tag):
+    values = getattr(tag, 'values', None)
+    value = values[0] if isinstance(values, (tuple, list)) and values else tag
+    return float(value)
+
+
+def read_cr2_exif(path: Path, fields) -> dict[str, object]:
+    """Return only explicitly requested normalized CR2 metadata fields."""
+    requested = set(fields)
+    selected = requested & set(_EXIF_TAGS)
+    if not selected:
+        return {}
+    try:
+        with Path(path).open('rb') as handle:
+            tags = exifread.process_file(handle, details=False, strict=False)
+    except (OSError, ValueError, TypeError):
+        return {}
+    answer = {}
+    for field in selected:
+        tag = tags.get(_EXIF_TAGS[field])
+        if tag is None:
+            continue
+        try:
+            answer[field] = _numeric_tag(tag) if field in _NUMERIC_EXIF_FIELDS else str(tag)
+        except (TypeError, ValueError, ZeroDivisionError):
+            continue
+    return answer
+
+
 def decode_cr2(path: Path) -> CameraRawImage:
     """Read visible native Bayer samples from a CR2 using LibRaw via rawpy."""
     path = Path(path)
+    exif = read_cr2_exif(path, _PREFIT_EXIF_FIELDS)
     with rawpy.imread(str(path)) as raw:
         mosaic = np.asarray(raw.raw_image_visible)
         if mosaic.ndim != 2:
@@ -95,11 +141,14 @@ def decode_cr2(path: Path) -> CameraRawImage:
             'sensor_visible_shape': [int(native.shape[0]), int(native.shape[1])],
             'stored_dtype': str(native.dtype),
             'white_level': global_white,
-            'exposure_seconds': _plain(getattr(raw, 'shutter', None)),
-            'iso': _plain(getattr(raw, 'iso_speed', None)),
-            'camera_make': _plain(getattr(raw, 'camera_make', None)),
-            'camera_model': _plain(getattr(raw, 'camera_model', None)),
-            'lens': _plain(getattr(raw, 'lens', None)),
+            'exposure_seconds': exif.get(
+                'exposure_seconds', _plain(getattr(raw, 'shutter', None))),
+            'iso': exif.get('iso', _plain(getattr(raw, 'iso_speed', None))),
+            'camera_make': exif.get(
+                'camera_make', _plain(getattr(raw, 'camera_make', None))),
+            'camera_model': exif.get(
+                'camera_model', _plain(getattr(raw, 'camera_model', None))),
+            'lens': exif.get('lens', _plain(getattr(raw, 'lens', None))),
         }
     return CameraRawImage(
         planes={name: by_name[name] for name in PLANE_NAMES},

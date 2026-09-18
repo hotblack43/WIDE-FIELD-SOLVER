@@ -3,6 +3,7 @@ import tempfile
 import bz2
 from pathlib import Path
 import unittest
+from unittest.mock import patch
 
 import numpy as np
 from astropy.io import fits
@@ -10,6 +11,19 @@ from PIL import Image
 
 
 class ObservationTimeMetadataTests(unittest.TestCase):
+    def test_cr2_original_time_is_read_only_by_postfit_resolver(self):
+        from point_star_metadata import resolve_observation_time
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory)/'image.cr2'
+            source.write_bytes(b'fixture')
+            with patch('point_star_raw.read_cr2_exif', return_value={
+                    'datetime_original': '2025:06:25 04:06:01'}):
+                result = resolve_observation_time(source)
+        self.assertEqual(result['status'], 'selected')
+        self.assertEqual(result['source'], 'cr2_exif:DateTimeOriginal')
+        self.assertEqual(result['time_utc'], '2025-06-25T04:06:01.000 UTC')
+        self.assertTrue(result['assumed_utc'])
+
     def test_fits_date_obs_is_selected_and_numeric_dates_are_audited(self):
         from point_star_metadata import resolve_observation_time
         with tempfile.TemporaryDirectory() as directory:

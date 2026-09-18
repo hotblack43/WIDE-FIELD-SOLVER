@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 import numpy as np
 
-from point_star_raw import decode_cr2
+from point_star_raw import decode_cr2, read_cr2_exif
 
 
 class FakeRaw:
@@ -82,6 +82,28 @@ class CameraRawTests(unittest.TestCase):
         with patch('rawpy.imread', return_value=raw):
             with self.assertRaisesRegex(ValueError, 'supported Bayer'):
                 decode_cr2(Path('fixture.cr2'))
+
+    def test_selected_exif_fields_do_not_leak_time_into_prefit_metadata(self):
+        tags = {
+            'EXIF DateTimeOriginal': '2025:06:25 04:06:01',
+            'EXIF ExposureTime': '30',
+            'EXIF ISOSpeedRatings': '400',
+            'Image Make': 'Canon',
+            'Image Model': 'Canon EOS 5D Mark IV',
+            'EXIF LensModel': 'EF8-15mm f/4L FISHEYE USM',
+        }
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder)/'fixture.cr2'
+            path.write_bytes(b'fixture')
+            with patch('exifread.process_file', return_value=tags):
+                selected = read_cr2_exif(
+                    path, {'exposure_seconds', 'iso', 'camera_make',
+                           'camera_model', 'lens'})
+        self.assertEqual(selected['exposure_seconds'], 30.)
+        self.assertEqual(selected['iso'], 400.)
+        self.assertEqual(selected['camera_model'], 'Canon EOS 5D Mark IV')
+        self.assertNotIn('datetime_original', selected)
+        self.assertFalse(any('time' in name for name in selected))
 
 
 if __name__ == '__main__':
