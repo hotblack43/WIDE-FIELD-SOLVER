@@ -378,6 +378,38 @@ class ReportTests(unittest.TestCase):
                       candidate_axis.get_title())
         self.assertIn('metadata-time planet match', candidate_legend)
 
+    def test_report_distinguishes_two_fixed_time_matches_from_one_planet_epoch_fit(self):
+        planets = {
+            'status': 'planet_epoch_not_identifiable', 'metadata_used': True,
+            'matches': [], 'match_count': 0, 'single_planet_candidate_count': 1,
+            'candidate_matches': [{
+                'planet': 'Jupiter', 'detection_id': 1,
+                'separation_arcmin': .69, 'separation_px': .096,
+                'unused_brightness_rank': 1}],
+            'metadata_matches': [
+                {'planet': 'Jupiter', 'detection_id': 1,
+                 'separation_arcmin': 1.23, 'separation_px': .17,
+                 'unused_brightness_rank': 1},
+                {'planet': 'Uranus', 'detection_id': 1480,
+                 'separation_arcmin': .35, 'separation_px': .05,
+                 'unused_brightness_rank': 1172}],
+            'observation_time_metadata': {
+                'time_utc': '2026-01-15T23:46:44.942 UTC',
+                'source': 'fits:PRIMARY:DATE-OBS'},
+        }
+
+        text = report_sections(self.sample_result(), {'planets': planets})['planets']
+        row = dict(table_rows(self.sample_result(), {'planets': planets}))['Planet epoch']
+
+        self.assertIn('2 measured-source matches at the fixed FITS time', text)
+        self.assertIn('Each exact ephemeris position', text)
+        self.assertIn('its measured source', text)
+        self.assertIn('one-planet Jupiter candidate', text)
+        self.assertIn('no multi-planet epoch-fit solution', text)
+        self.assertEqual(row,
+                         'Epoch fit: Jupiter only, unresolved; fixed FITS: Jupiter + Uranus')
+        self.assertNotIn('1 single-planet aliases', text)
+
     def test_collector_manifest_supplies_epoch_and_orm_site(self):
         with tempfile.TemporaryDirectory() as directory:
             feed = Path(directory)/'liverpool'

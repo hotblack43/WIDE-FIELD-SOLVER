@@ -98,6 +98,28 @@ def _planet_separation_text(row):
     return f"{_fmt(pixel, 2)} px"
 
 
+def _fixed_time_label(planets):
+    source = (planets.get('observation_time_metadata') or {}).get('source', '')
+    return 'FITS' if str(source).startswith('fits:') else 'metadata'
+
+
+def _independent_epoch_fit_summary(planets):
+    """Describe the free-date fit separately from fixed-time associations."""
+    selected = planets.get('matches') or []
+    candidates = planets.get('candidate_matches') or []
+    rows = selected or candidates
+    names = list(dict.fromkeys(row.get('planet', 'unknown') for row in rows))
+    if selected:
+        return (f"Independent epoch fit: {len(selected)}-planet candidate "
+                f"({', '.join(names)}); status "
+                f"{planets.get('status', 'unknown').replace('_', ' ')}.")
+    if len(names) == 1:
+        return (f"Independent epoch fit: one-planet {names[0]} candidate; "
+                "no multi-planet epoch-fit solution, so the epoch is not identifiable.")
+    return ("Independent epoch fit: no multi-planet epoch-fit solution; "
+            f"status {planets.get('status', 'unknown').replace('_', ' ')}.")
+
+
 def _camera_from_result(result):
     from point_star_barghini import BarghiniCamera
     return BarghiniCamera.from_serialised(result['camera'])
@@ -223,6 +245,8 @@ def report_sections(result, science=None, **legacy):
                                        planets.get('source_identity_alternatives', {}))
     if metadata_only:
         metadata = planets.get('observation_time_metadata') or {}
+        time_label = _fixed_time_label(planets)
+        match_word = 'match' if len(matches) == 1 else 'matches'
         descriptions = [
             f"{row['planet']} at source #{row['detection_id']} "
             f"({_planet_separation_text(row)}; source brightness rank "
@@ -230,11 +254,13 @@ def report_sections(result, science=None, **legacy):
             for row in matches
         ]
         planet_text = (
-            f"FITS-time positional match: {'; '.join(descriptions)}. "
-            f"The exact ephemeris position at {metadata.get('time_utc', '--')} from "
-            f"{metadata.get('source', '--')} is associated with the measured source. "
+            f"Separate fixed-time association ({time_label}-time): {len(matches)} "
+            f"measured-source {match_word} "
+            f"at the fixed {time_label} time: {'; '.join(descriptions)}. "
+            f"Each exact ephemeris position at {metadata.get('time_utc', '--')} from "
+            f"{metadata.get('source', '--')} is associated with its measured source. "
             "This metadata-conditioned identity does not infer the epoch from the image. "
-            f"The independent planetary epoch remains {planets.get('status', 'not_run').replace('_', ' ')}. ")
+            f"{_independent_epoch_fit_summary(planets)} ")
     elif candidate_only:
         descriptions = [
             f"{row['planet']} candidate at source #{row['detection_id']} "
@@ -353,9 +379,18 @@ def table_rows(result, science):
         planet_value = (f"Not identifiable; {planets.get('single_planet_candidate_count', 0)} "
                         "single-planet aliases; no multi-planet solution")
     if planets.get('metadata_matches'):
-        names = ', '.join(row['planet'] for row in planets['metadata_matches'])
-        planet_value += f"; metadata-time source match: {names}"
-    if planets.get('metadata_used'):
+        fixed_names = ' + '.join(row['planet'] for row in planets['metadata_matches'])
+        epoch_rows = planets.get('matches') or planets.get('candidate_matches') or []
+        epoch_names = ' + '.join(dict.fromkeys(row['planet'] for row in epoch_rows))
+        if planets.get('status') == 'planet_epoch_not_identifiable' and epoch_names:
+            epoch_value = f'{epoch_names} only, unresolved'
+        elif epoch_names:
+            epoch_value = f"{epoch_names}, {planets.get('status', 'unknown').replace('_', ' ')}"
+        else:
+            epoch_value = planets.get('status', 'unknown').replace('_', ' ')
+        planet_value = (f"Epoch fit: {epoch_value}; fixed {_fixed_time_label(planets)}: "
+                        f"{fixed_names}")
+    if planets.get('metadata_used') and not planets.get('metadata_matches'):
         planet_value = 'Metadata-conditioned; '+planet_value
     if by_channel:
         extinction_value = '; '.join(
