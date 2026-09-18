@@ -31,7 +31,7 @@ must not describe a proposal as working merely because related products exist.
 | Proper-motion propagation in the final astrometric solution | Added in 0.3.0 | Shared catalogue propagation, synthetic recovery and exported-coordinate checks |
 | Stellar epoch fitted with all associations; final camera saved | Added in 0.3.0 | All-star robust profile; conditional or provisional date status. If six proper-motion reassociation profiles do not settle, v6 now records `not_converged` and retains the last camera with the exact membership used to fit it rather than failing or pairing a camera with unfitted membership |
 | RGB instrumental photometry | Extended in v0.8.0 | Aperture counts, exposure-normalized count rates, per-channel saturation and separate wing models are retained for all detections and identified sources |
-| RGB-versus-catalogue report diagnostics | Preserved from final v0.5.0 | Third PDF page compares camera R/G/B instrumental magnitudes with Gaia RP/G/BP for finite unsaturated Gaia matches; passband mismatch and lack of calibration are explicit |
+| RGB-versus-catalogue report diagnostics | Extended in v0.10.0 | Third PDF page compares camera R/G/B instrumental magnitudes with Gaia RP/G/BP for finite unsaturated Gaia matches. Its displayed line uses soft-L1 robust least squares with a fixed 0.1-mag loss scale and reports MAD residual scatter; no OLS line or fallback is shown. Passband mismatch and lack of calibration are explicit. Regression: `test_point_star_report.py`; report-only numerical change |
 | Extinction as nuisance regression in blind zenith search | Added in 0.3.0 using robust regression | Fixed membership; no site/time-derived airmass; G plot uses the exact fitted line. The OLS reference specified in GOAL.md and its comparison remain unimplemented |
 | Zenith estimated by minimising photometric regression scatter | Added in 0.3.0; conditional component | Synthetic recovery and degeneracy tests; real example remains unresolved under the radial-response check |
 | Centred full-horizon geometric zenith | Added in v6 | A closed, broad circular boundary must pass circle-residual, complete-azimuth and fitted-camera 90-degree horizon checks before supplying the provisional image-centre zenith when extinction is not identifiable; crops, ellipses and round vignettes do not qualify. A photometric zenith that passes the existing strong-evidence checks retains authority |
@@ -353,12 +353,18 @@ has been implemented. See
 The investigator PDF has a third page comparing instrumental camera R, G and B
 magnitudes with the nearest available Gaia DR3 catalogue passbands: RP, G and BP
 respectively. The plots retain every finite unsaturated Gaia/channel pair,
-including photometric outliers, and show an ordinary least-squares diagnostic
-line without a potentially misleading one-to-one reference line. The three
+including photometric outliers, and show a soft-L1 robust least-squares diagnostic
+line with a fixed 0.1-mag loss scale and MAD residual scatter. No OLS fallback or
+potentially misleading one-to-one reference line is shown. The three
 channels share one landscape row. Both magnitude axes are inverted, so brighter
 (numerically smaller) magnitudes appear toward the upper right. Bright
 Tycho-2/Hipparcos supplements without Gaia BP/RP measurements are not silently
 assigned invented colours.
+
+This deliberately changes only the plotted diagnostic line and its reported
+scatter: a severe synthetic outlier that drove the former OLS slope from 1.5 to
+55.2 leaves the robust slope within 0.02 of 1.5. The reason is to keep individual
+photometric defects from determining the investigator-facing trend.
 
 The page is explicitly diagnostic rather than a photometric calibration. Gaia
 and camera/JPEG passbands differ, and colour terms, extinction, vignetting and

@@ -118,6 +118,10 @@ preserving raw aperture ADU. Saturated channels retain a labelled aperture lower
 bound plus a separate robust Moffat-wing total and centroid; modelled values are
 never used in the extinction/zenith fit.
 
+The report's RGB-versus-Gaia diagnostic uses soft-L1 robust least squares with
+a fixed 0.1-mag loss scale and reports MAD residual scatter. It does not display
+or silently fall back to an ordinary least-squares photometry line.
+
 Validation, from this directory:
 
 ```sh

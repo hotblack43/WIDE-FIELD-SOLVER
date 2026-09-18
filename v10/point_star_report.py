@@ -14,6 +14,7 @@ import matplotlib.image as mpimg
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 import numpy as np
+from scipy.optimize import least_squares
 
 from point_star_plotting import save_png
 from point_star_names import plot_label
@@ -740,8 +741,27 @@ def photometry_comparisons(output, *, catalogue_path=None):
     return answer
 
 
+def _robust_photometry_line(x, y, *, loss_scale_mag=.1):
+    """Fit intercept and slope with soft-L1 loss and return MAD scatter."""
+    x = np.asarray(x, dtype=float)
+    y = np.asarray(y, dtype=float)
+    if (x.shape != y.shape or x.ndim != 1 or len(x) < 2
+            or not np.isfinite(x).all() or not np.isfinite(y).all()
+            or float(np.ptp(x)) <= 0 or loss_scale_mag <= 0):
+        raise ValueError('Robust photometry line needs finite varying paired magnitudes')
+    initial = np.array([float(np.median(y-x)), 1.])
+    fitted = least_squares(
+        lambda parameters: parameters[0]+parameters[1]*x-y,
+        initial, loss='soft_l1', f_scale=loss_scale_mag)
+    intercept, slope = map(float, fitted.x)
+    residual = y-(intercept+slope*x)
+    centre = float(np.median(residual))
+    scatter = float(1.4826*np.median(np.abs(residual-centre)))
+    return intercept, slope, scatter
+
+
 def photometry_page(output):
-    """Draw camera RGB instrumental magnitudes against the nearest Gaia bands."""
+    """Draw robust camera RGB diagnostics against the nearest Gaia bands."""
     comparisons = photometry_comparisons(output)
     fig, axes = plt.subplots(1, 3, figsize=(11.69, 8.27), facecolor='white')
     fig.subplots_adjust(left=.07, right=.975, top=.82, bottom=.18, wspace=.32)
@@ -774,13 +794,11 @@ def photometry_page(output):
         span = np.linspace(float(np.min(x)), float(np.max(x)), 100)
         annotation = f'N={len(x):,}'
         if len(x) >= 2 and float(np.ptp(x)) > 0:
-            slope, intercept = np.polyfit(x, y, 1)
-            fitted = intercept+slope*x
-            rms = float(np.sqrt(np.mean((y-fitted)**2)))
+            intercept, slope, scatter = _robust_photometry_line(x, y)
             ax.plot(span, intercept+slope*span, color='black', linewidth=1.2,
-                    label='ordinary least-squares line')
-            annotation += (f'\nOLS: m(machine) = {intercept:.3f} + '
-                           f'{slope:.3f} m({band})\nRMS={rms:.3f} mag')
+                    label='robust soft-L1 line')
+            annotation += (f'\nRobust LS: m(machine) = {intercept:.3f} + '
+                           f'{slope:.3f} m({band})\nMAD scatter={scatter:.3f} mag')
         ax.text(.01, .98, annotation, transform=ax.transAxes, va='top', fontsize=8,
                 bbox=dict(boxstyle='round,pad=.25', fc='white', ec='.75', alpha=.9))
         if ax.lines:

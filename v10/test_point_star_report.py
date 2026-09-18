@@ -575,8 +575,36 @@ class ReportTests(unittest.TestCase):
                 self.assertEqual(axis.get_ylabel(),
                                  f'Camera {channel} instrumental magnitude [mag]')
                 self.assertEqual([line.get_label() for line in axis.lines],
-                                 ['ordinary least-squares line'])
+                                 ['robust soft-L1 line'])
             plt.close(figure)
+
+    def test_rgb_photometry_report_fit_resists_one_severe_outlier(self):
+        from point_star_report import photometry_page
+        catalogue = np.arange(10., dtype=float)
+        machine = 2.+1.5*catalogue
+        machine[-1] = 1000.
+        comparisons = {
+            channel: {
+                'catalogue_mag': catalogue,
+                'machine_mag': machine,
+                'catalogue_band': band,
+            }
+            for channel, band in zip('RGB', ('Gaia RP', 'Gaia G', 'Gaia BP'))
+        }
+
+        with patch('point_star_report.photometry_comparisons',
+                   return_value=comparisons):
+            figure = photometry_page(Path('.'))
+
+        for axis in figure.axes:
+            line = axis.lines[0]
+            slope = np.polyfit(line.get_xdata(), line.get_ydata(), 1)[0]
+            self.assertAlmostEqual(slope, 1.5, delta=.02)
+            annotation = ' '.join(text.get_text() for text in axis.texts)
+            self.assertIn('Robust LS:', annotation)
+            self.assertIn('MAD scatter=', annotation)
+            self.assertNotIn('OLS', annotation)
+        plt.close(figure)
 
     def test_pdf_preserves_embedded_png_resolution(self):
         from PIL import Image
