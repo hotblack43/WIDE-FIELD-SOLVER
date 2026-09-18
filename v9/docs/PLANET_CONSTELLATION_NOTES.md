@@ -71,8 +71,11 @@ The complete alternatives remain inspectable:
    planets.
 
 Candidates continue to rank first by matched-planet count and then positional
-cost. The nine-sigma-squared rule remains unchanged for isolated and two-body
-claims. Each recruited match records its Gaia identifier, catalogue residual,
+cost. In the historical v6 implementation reported here, that cost and the
+ordinary gate were expressed in detector pixels. V9 applies the same ordering
+and nine-sigma-squared competition rule to great-circle arcminutes instead,
+using a 30-arcminute gate and 3-arcminute uncertainty floor. Each recruited match
+records its Gaia identifier, catalogue residual,
 planet residual, improvement and `constellation_override` flag in JSON and CSV.
 This is a conservative deterministic rule, not a calibrated posterior or
 false-alarm probability.

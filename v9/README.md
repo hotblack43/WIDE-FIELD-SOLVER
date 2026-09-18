@@ -59,10 +59,25 @@ usable time, v9 falls back to the full blind search. Force that search with:
 
 When observation-time metadata is available, v9 also performs a separate exact
 association at that supplied instant after the blind astrometric fit is fixed.
-A measured source inside the positional and catalogue-competition gates is
-saved as `metadata_time_match`; visible ephemeris positions without a measured
-source are saved and labelled `predicted_no_detected_source`. This can identify
-a source such as Jupiter at the FITS time without claiming that the image
+Planet/source assignment, blind candidate fitting and Gaia competition all use
+great-circle residuals: the ordinary planet gate is 30 arcminutes and the
+positional-uncertainty floor is 3 arcminutes. Pixel residuals remain saved only
+as detector diagnostics. A measured source inside the angular and
+catalogue-competition gates is saved as `metadata_time_match`; visible ephemeris
+positions without a measured source are saved and labelled
+`predicted_no_detected_source`.
+
+For a metadata-predicted planet without an ordinary source, v9 may audit nearby
+maxima from the detector pass actually selected for the solution, rejected only
+as `too_sharp` or `too_small`. Maxima outside the saved sky footprint or
+overlapping an accepted source are excluded. A remaining maximum is
+recovered only when it is significant in at least two channels of a colour image
+(or the one channel of a monochrome image) and lies inside the same angular
+planet gate. It remains labelled `targeted_planet_recovery`, never enters the
+stellar camera fit, and retains its original rejection reason. Its per-channel
+aperture counts and count rates are appended to the photometry tables. This can
+recover an undersampled source such as Uranus without moving either the measured
+centroid or predicted ephemeris symbol, and without claiming that the image
 independently inferred the epoch.
 
 The root `go.sh` remains the preserved Tycho-2/Hipparcos workflow. The v4, v5,

@@ -86,6 +86,18 @@ def _fmt(value, digits=3, missing='--'):
         return missing
 
 
+def _planet_separation_text(row):
+    """Lead with the physical sky residual and retain pixels as a diagnostic."""
+    angular = row.get('separation_arcmin')
+    pixel = row.get('separation_px')
+    if angular is not None:
+        text = f"{_fmt(angular, 2)} arcmin"
+        if pixel is not None:
+            text += f"; {_fmt(pixel, 2)} px"
+        return text
+    return f"{_fmt(pixel, 2)} px"
+
+
 def _camera_from_result(result):
     from point_star_barghini import BarghiniCamera
     return BarghiniCamera.from_serialised(result['camera'])
@@ -213,7 +225,7 @@ def report_sections(result, science=None, **legacy):
         metadata = planets.get('observation_time_metadata') or {}
         descriptions = [
             f"{row['planet']} at source #{row['detection_id']} "
-            f"({_fmt(row['separation_px'], 2)} px; source brightness rank "
+            f"({_planet_separation_text(row)}; source brightness rank "
             f"{row.get('unused_brightness_rank', '--')})"
             for row in matches
         ]
@@ -226,7 +238,7 @@ def report_sections(result, science=None, **legacy):
     elif candidate_only:
         descriptions = [
             f"{row['planet']} candidate at source #{row['detection_id']} "
-            f"({_fmt(row['separation_px'], 2)} px; source brightness rank "
+            f"({_planet_separation_text(row)}; source brightness rank "
             f"{row.get('unused_brightness_rank', '--')})"
             for row in matches
         ]
@@ -239,7 +251,7 @@ def report_sections(result, science=None, **legacy):
     elif matches:
         descriptions = [
             f"{row['planet']} at source #{row['detection_id']} "
-            f"({_fmt(row['separation_px'], 2)} px; source brightness rank "
+            f"({_planet_separation_text(row)}; source brightness rank "
             f"{row.get('unused_brightness_rank', '--')})"
             for row in matches
         ]

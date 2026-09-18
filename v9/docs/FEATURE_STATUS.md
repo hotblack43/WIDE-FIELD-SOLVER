@@ -171,7 +171,9 @@ the search, candidate ranking, visibility checks or saved numerical results.
 All detections are considered, including saturated/broad objects. A previous
 catalogue association is a competing explanation: for an associated source a
 planet must improve positional chi-square by at least 9, using the astrometric RMS
-with a 0.5-pixel floor, in addition to the 3-pixel planet gate. This is a documented
+with the release's historical 0.5-pixel floor, in addition to its historical
+3-pixel planet gate. V9 supersedes those detector-unit constants with the angular
+rules documented below. This is a documented
 candidate-selection heuristic, not a posterior odds or significance calculation.
 The catalogue ID/residual and improvement remain in the planet records; this
 stage does not change the astrometric association or camera. This prevents a poor
@@ -375,7 +377,8 @@ After the blind stellar solution and image-derived zenith are fixed, a selected
 FITS, EXIF, filename or explicit observation time now drives a separate exact
 planet/source association. This is not epoch inference. Each of the nine
 searched bodies is projected at the supplied TDB instant, one-to-one source
-assignment uses the ordinary 3-pixel gate and Gaia competition rule, and an
+assignment uses the ordinary 30-arcminute great-circle gate and angular Gaia
+competition rule, and an
 accepted detection is stored as `metadata_time_match`. Visible bodies with no
 accepted detection remain distinct `predicted_no_detected_source` overlays.
 
@@ -386,3 +389,28 @@ labelled `Jupiter — FITS-time match` while the independent epoch result remain
 metadata epoch and retains its 20-second R/G/B count rates and saturated-wing
 models. This numerical change corrects presentation and identity bookkeeping;
 it does not change detections, the Barghini fit or the blind-epoch evidence.
+
+## V9 angular planet gates and targeted recovery
+
+V9 removes detector-pixel gates from planet/source decisions. The blind search,
+exact ephemeris refinement, one-to-one assignment, catalogue competition,
+constellation recruitment and supplied-time association all use great-circle
+separation. The ordinary gate is 30 arcminutes and the uncertainty floor is
+3 arcminutes; pixel residuals remain in JSON, CSV, plots and reports only as
+detector-sampling diagnostics. Interpolated proposals and authoritative passage
+refinement minimize great-circle residuals as well. Reports lead with angular
+separation, and both the predicted body and proposed measured source must lie
+above the fixed image-derived horizon.
+
+If a metadata-time prediction has no ordinary source, v9 can reconsider a nearby
+local maximum rejected only as `too_sharp` or `too_small` by the detector pass
+actually selected for the solution. Peaks outside the saved sky footprint and
+peaks overlapping an already accepted detection are excluded. The maximum must be
+significant in at least two channels of a colour image (or the single channel of
+a monochrome image), pass the same angular planet gate and survive one-to-one
+assignment. It is recorded as `targeted_planet_recovery` with its detector
+rejection reason and measured centroid. It is not admitted to the stellar
+astrometric fit and neither centroid nor ephemeris symbol is cosmetically moved.
+Its channel aperture measurements, exposure-normalized count rates and any
+saturation/wing diagnostics are appended to `source_photometry.csv` and
+`identified_source_photometry.csv`.

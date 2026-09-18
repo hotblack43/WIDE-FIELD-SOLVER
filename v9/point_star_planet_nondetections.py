@@ -20,7 +20,7 @@ def _true(value):
 
 class LocalDetectability:
     """Use fainter surrounding catalogue stars as empirical sensitivity witnesses."""
-    def __init__(self, pixels, detections, stars, *, gate_px=3., valid_mask=None):
+    def __init__(self, pixels, detections, stars, *, core_radius_px=3., valid_mask=None):
         self.pixels=np.asarray(pixels,dtype=float)
         if self.pixels.ndim==3:
             self.pixels=self.pixels[:,:,:3]@np.array([.2126,.7152,.0722])
@@ -29,7 +29,7 @@ class LocalDetectability:
         self.mask=np.isfinite(self.pixels) if valid_mask is None else np.asarray(valid_mask,bool)&np.isfinite(self.pixels)
         if self.mask.shape!=self.pixels.shape:
             raise ValueError('Visibility mask shape differs from image')
-        self.gate=float(gate_px)
+        self.core_radius=float(core_radius_px)
         self.xy=np.array([[float(r['x_px']),float(r['y_px'])] for r in detections]).reshape(-1,2)
         self.tree=cKDTree(self.xy) if len(self.xy) else None
         lookup={str(r['detection_id']):r for r in detections}
@@ -50,7 +50,7 @@ class LocalDetectability:
             self.references.append(dict(xy=point,magnitude=magnitude,peak=peak,sigma=sigma,id=int(star['detection_id'])))
         self.radius=max(40.,.05*np.linalg.norm(self.pixels.shape))
         self.sigma=float(np.median([s['sigma'] for s in self.references])) if self.references else 1.
-        self.probe_radius=max(2*self.gate,3*self.sigma)
+        self.probe_radius=max(2*self.core_radius,3*self.sigma)
         self.refxy=np.array([s['xy'] for s in self.references]).reshape(-1,2)
 
     def patch(self,point):
@@ -159,7 +159,7 @@ def apply_evidence(answer,evidence_rows):
     def solar_rejected(candidate):
         evidence = candidate.get('solar_evidence', {})
         return evidence.get('status') == 'solar_inconsistent' or evidence.get('requires_date_refinement', False)
-    candidates.sort(key=lambda c:(solar_rejected(c),bool(c['absence_penalty']),c['absence_penalty'],-c['match_count'],c['cost_px2'],c['jd_tdb']))
+    candidates.sort(key=lambda c:(solar_rejected(c),bool(c['absence_penalty']),c['absence_penalty'],-c['match_count'],c['cost_arcmin2'],c['jd_tdb']))
     out['negative_evidence']=dict(method='conservative bright-planet consistency screen',
         brightness_model=SOURCE,assessed_planets=list(BRIGHT_PLANETS),
         faint_planets_not_penalised=['uranus','neptune'],
@@ -171,20 +171,22 @@ def apply_evidence(answer,evidence_rows):
     best=candidates[0]
     if best['absence_penalty'] or solar_rejected(best):
         out.update(status='planet_epoch_inconsistent',confidence='all_candidates_contradicted',matches=[],match_count=0,
-            best_candidate_jd_tdb=None,best_candidate_epoch_tdb=None,rms_px=None,conditional_time_sigma_minutes=None,
+            best_candidate_jd_tdb=None,best_candidate_epoch_tdb=None,
+            rms_px=None,rms_arcmin=None,conditional_time_sigma_minutes=None,
             competing_candidates=0,reason='All positional candidates are contradicted by solar geometry or bright-planet absence')
         return out
     single_count=sum(c['match_count']==1 and not solar_rejected(c) for c in candidates)
     if best['match_count']<2:
         out.update(status='planet_epoch_not_identifiable',confidence='single_planet_aliases',matches=[],match_count=0,
-            best_candidate_jd_tdb=None,best_candidate_epoch_tdb=None,rms_px=None,conditional_time_sigma_minutes=None,
+            best_candidate_jd_tdb=None,best_candidate_epoch_tdb=None,
+            rms_px=None,rms_arcmin=None,conditional_time_sigma_minutes=None,
             competing_candidates=0,single_planet_candidate_count=single_count,
             candidate_matches=best['matches'],
             reason=f'Planetary epoch not identifiable: {single_count} single-planet aliases retained; no multi-planet solution')
         return out
-    sigma=out.get('positional_sigma_px',.5)
+    sigma=out.get('positional_sigma_arcmin',3.)
     peers=[c for c in candidates if not solar_rejected(c) and not c['absence_penalty'] and c['match_count']==best['match_count']
-           and c['cost_px2']<=best['cost_px2']+9*sigma*sigma]
+           and c['cost_arcmin2']<=best['cost_arcmin2']+9*sigma*sigma]
     # Negative evidence must not turn an already ambiguous search into a claimed date.
     ambiguous=(original_status=='planet_epoch_ambiguous' or best['match_count']<2 or len(peers)>1
                or best.get('boundary_limited',False)
@@ -195,6 +197,7 @@ def apply_evidence(answer,evidence_rows):
         confidence='ambiguous_candidates_with_absence_checks' if ambiguous else 'conditional_multiple_planets',
         matches=best['matches'],match_count=best['match_count'],best_candidate_jd_tdb=best['jd_tdb'],
         best_candidate_epoch_tdb=best['epoch_tdb'],rms_px=best['rms_px'],
+        rms_arcmin=best['rms_arcmin'],
         conditional_time_sigma_minutes=best.get('conditional_time_sigma_minutes'),competing_candidates=len(peers)-1,
         reason='Candidates ranked with bright-planet absence checks; remaining dates and identities are conditional')
     return out
@@ -212,7 +215,7 @@ def check_candidate_absences(image_path,answer,camera,detections,stars,vector_fu
         raise ValueError('Image shape differs from the fixed camera')
     native_mask=image.valid_mask
     valid_mask=native_mask if valid_mask is None else np.asarray(valid_mask,bool)&native_mask
-    local=LocalDetectability(pixels,detections,stars,gate_px=answer.get('gate_px',3.),valid_mask=valid_mask)
+    local=LocalDetectability(pixels,detections,stars,core_radius_px=3.,valid_mask=valid_mask)
     dates=np.array([c['jd_tdb'] for c in candidates])
     zenith=np.asarray(answer['visibility']['zenith_unit_vector'],float)
     zenith/=np.linalg.norm(zenith)

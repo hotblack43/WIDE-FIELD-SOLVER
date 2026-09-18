@@ -1,9 +1,12 @@
 """Blind time search recovers measured positions and preserves date aliases."""
+import csv
 import json
 import os
 import tempfile
 import unittest
+from pathlib import Path
 import numpy as np
+from astropy.io import fits
 from point_star_barghini import BarghiniCamera
 
 
@@ -37,7 +40,8 @@ class PlanetSearchTests(unittest.TestCase):
                         source_class='broad_blob', flux_above_background=100.)
                    for i, (x, y) in enumerate(positions)]
         return search_planet_epochs(self.camera, sources, dates, grid, vectors,
-                                    gate_px=1., positional_sigma_px=.2, zenith_unit_vector=[0, 0, 1])
+                                    gate_arcmin=20., positional_sigma_arcmin=4.,
+                                    zenith_unit_vector=[0, 0, 1])
 
     def test_visibility_records_geometric_zenith_provenance(self):
         from point_star_planets import search_planet_epochs
@@ -66,27 +70,33 @@ class PlanetSearchTests(unittest.TestCase):
             tracks['jupiter'] = lambda t: np.c_[np.full(len(t), 270.), 170+3*(t-4.3)]
             sources.append(dict(detection_id='2', x_px=270., y_px=170.))
         sources.append(dict(detection_id='3', x_px=220+mars_offset, y_px=210.,
-                            catalogue_star_id='chance-gaia-star', catalogue_residual_px=.6))
+                            catalogue_star_id='chance-gaia-star',
+                            catalogue_residual_px=.6, catalogue_residual_arcmin=12.))
         if include_uranus:
             tracks['uranus'] = lambda t: np.c_[np.full(len(t), 250.), np.full(len(t), 250.)]
             sources.append(dict(detection_id='4', x_px=250.7, y_px=250.,
-                                catalogue_star_id='better-gaia-star', catalogue_residual_px=.6))
+                                catalogue_star_id='better-gaia-star',
+                                catalogue_residual_px=.6, catalogue_residual_arcmin=12.))
         def vectors(name, jd):
             return self.camera.to_sky(tracks[name](np.atleast_1d(jd)-self.origin))
         grid = {name: vectors(name, dates) for name in tracks}
         return search_planet_epochs(
-            self.camera, sources, dates, grid, vectors, gate_px=1.,
-            positional_sigma_px=.2, zenith_unit_vector=[0, 0, 1])
+            self.camera, sources, dates, grid, vectors, gate_arcmin=20.,
+            positional_sigma_arcmin=4., zenith_unit_vector=[0, 0, 1])
 
-    def search_catalogue_case(self, tracks, sources, gate_px=1.):
+    def search_catalogue_case(self, tracks, sources, gate_arcmin=20.):
         from point_star_planets import search_planet_epochs
         dates = self.origin + np.arange(11.)
+        sources = [dict(row, catalogue_residual_arcmin=(
+            20*float(row['catalogue_residual_px'])
+            if row.get('catalogue_residual_px') is not None else np.inf))
+            for row in sources]
         def vectors(name, jd):
             return self.camera.to_sky(tracks[name](np.atleast_1d(jd)-self.origin))
         grid = {name: vectors(name, dates) for name in tracks}
         return search_planet_epochs(
-            self.camera, sources, dates, grid, vectors, gate_px=gate_px,
-            positional_sigma_px=.2, zenith_unit_vector=[0, 0, 1],
+            self.camera, sources, dates, grid, vectors, gate_arcmin=gate_arcmin,
+            positional_sigma_arcmin=4., zenith_unit_vector=[0, 0, 1],
             latest_jd_tdb=self.origin+100.)
 
     def test_other_planets_use_fixed_epoch_and_visibility_without_changing_fit(self):
@@ -122,7 +132,8 @@ class PlanetSearchTests(unittest.TestCase):
                  source_class='compact', flux_above_background=900.),
             dict(detection_id='2', x_px=190., y_px=150., saturated='False',
                  source_class='compact', flux_above_background=100.,
-                 catalogue_star_id='gaia-star', catalogue_residual_px=.1),
+                 catalogue_star_id='gaia-star', catalogue_residual_px=.1,
+                 catalogue_residual_arcmin=.1),
         ]
         positions = {'jupiter': [150.2, 130.1], 'neptune': [230., 150.],
                      'mars': [190.2, 150.]}
@@ -136,7 +147,7 @@ class PlanetSearchTests(unittest.TestCase):
 
         answer = associate(
             self.camera, detections, list(positions), vectors, metadata,
-            gate_px=3., positional_sigma_px=.5,
+            gate_arcmin=30., positional_sigma_arcmin=3.,
             zenith_unit_vector=[0., 0., 1.])
 
         self.assertEqual(answer['status'], 'metadata_time_associated')
@@ -150,15 +161,246 @@ class PlanetSearchTests(unittest.TestCase):
         self.assertEqual(answer['epoch_source'], 'fits:PRIMARY:DATE-OBS')
         self.assertTrue(all(dates == [self.origin+4.3] for _, dates in calls))
 
+    def test_metadata_time_association_uses_great_circle_arcminutes(self):
+        from point_star_planets import associate_planets_at_metadata_time
+        measured = np.array([[150.2, 130.]])
+        predicted = np.array([[150., 130.]])
+        measured_ray = self.camera.to_sky(measured)[0]
+        predicted_ray = self.camera.to_sky(predicted)[0]
+        expected_arcmin = np.degrees(np.arccos(
+            np.clip(measured_ray @ predicted_ray, -1., 1.)))*60.
+        detections = [dict(
+            detection_id='1', x_px=measured[0, 0], y_px=measured[0, 1],
+            saturated='False', source_class='compact', flux_above_background=100.)]
+        metadata = {'status': 'selected', 'jd_tdb': self.origin+4.3,
+                    'time_utc': '2000-01-05T19:12:00 UTC',
+                    'source': 'fits:PRIMARY:DATE-OBS'}
+
+        answer = associate_planets_at_metadata_time(
+            self.camera, detections, ['uranus'],
+            lambda name, dates: np.tile(predicted_ray, (len(dates), 1)), metadata,
+            gate_arcmin=expected_arcmin+.01, positional_sigma_arcmin=.1,
+            zenith_unit_vector=[0., 0., 1.])
+
+        self.assertEqual(answer['matches'][0]['planet'], 'Uranus')
+        self.assertAlmostEqual(answer['matches'][0]['separation_arcmin'],
+                               expected_arcmin, places=8)
+        self.assertAlmostEqual(answer['gate_arcmin'], expected_arcmin+.01)
+        self.assertNotIn('gate_px', answer)
+
+    def test_metadata_time_association_rejects_measured_source_below_horizon(self):
+        from point_star_planets import associate_planets_at_metadata_time
+        predicted_ray = self.camera.to_sky([[150., 130.]])[0]
+        measured = np.array([[150.2, 130.]])
+        measured_ray = self.camera.to_sky(measured)[0]
+        zenith = predicted_ray-measured_ray
+        zenith /= np.linalg.norm(zenith)
+        self.assertGreater(predicted_ray @ zenith, 0.)
+        self.assertLess(measured_ray @ zenith, 0.)
+        detections = [dict(
+            detection_id='1', x_px=measured[0, 0], y_px=measured[0, 1],
+            saturated='False', source_class='compact', flux_above_background=100.)]
+        metadata = {'status': 'selected', 'jd_tdb': self.origin+4.3,
+                    'time_utc': '2000-01-05T19:12:00 UTC',
+                    'source': 'fits:PRIMARY:DATE-OBS'}
+
+        answer = associate_planets_at_metadata_time(
+            self.camera, detections, ['uranus'],
+            lambda name, dates: np.tile(predicted_ray, (len(dates), 1)), metadata,
+            gate_arcmin=30., positional_sigma_arcmin=.1,
+            zenith_unit_vector=zenith)
+
+        self.assertEqual(answer['matches'], [])
+        self.assertEqual(answer['predicted_without_source'][0]['planet'], 'Uranus')
+
+    def test_blind_search_uses_great_circle_arcminute_gate(self):
+        from point_star_planets import search_planet_epochs
+        dates = self.origin+np.arange(2.)
+        measured = np.array([[150.2, 130.]])
+        predicted = np.array([[150., 130.]])
+        measured_ray = self.camera.to_sky(measured)[0]
+        predicted_ray = self.camera.to_sky(predicted)[0]
+        expected_arcmin = np.degrees(np.arccos(
+            np.clip(measured_ray @ predicted_ray, -1., 1.)))*60.
+        sources = [dict(detection_id='1', x_px=measured[0, 0], y_px=measured[0, 1])]
+        vectors = lambda name, jd: np.tile(predicted_ray, (len(np.atleast_1d(jd)), 1))
+        grid = {'uranus': vectors('uranus', dates)}
+
+        accepted = search_planet_epochs(
+            self.camera, sources, dates, grid, vectors,
+            gate_arcmin=expected_arcmin+.01, positional_sigma_arcmin=.1,
+            zenith_unit_vector=[0., 0., 1.], latest_jd_tdb=self.origin+10.)
+        rejected = search_planet_epochs(
+            self.camera, sources, dates, grid, vectors,
+            gate_arcmin=expected_arcmin-.01, positional_sigma_arcmin=.1,
+            zenith_unit_vector=[0., 0., 1.], latest_jd_tdb=self.origin+10.)
+
+        self.assertEqual(accepted['match_count'], 1)
+        self.assertAlmostEqual(accepted['matches'][0]['separation_arcmin'],
+                               expected_arcmin, places=8)
+        self.assertEqual(accepted['gate_arcmin'], expected_arcmin+.01)
+        self.assertNotIn('gate_px', accepted)
+        self.assertEqual(rejected['match_count'], 0)
+
+    def test_targeted_planet_recovery_retains_multichannel_rejected_peak(self):
+        from point_star_detection import detect_stars
+        from point_star_image import load_scientific_image
+        from point_star_planets import recover_predicted_planet_sources
+        rng = np.random.default_rng(20260918)
+        yy, xx = np.mgrid[:120, :160]
+        planes = []
+        for amplitude in (90., 130., 110.):
+            plane = 200.+rng.normal(0., .7, xx.shape)
+            plane += amplitude*np.exp(-((xx-80.05)**2+(yy-60.05)**2)/(2*.5**2))
+            planes.append(plane)
+        # A strong one-channel event remains ineligible for astronomical recovery.
+        planes[1][85, 110] += 300.
+        with tempfile.TemporaryDirectory() as folder:
+            image_path = Path(folder)/'undersampled.fits'
+            fits.PrimaryHDU(np.asarray(planes, dtype=np.float32)).writeto(image_path)
+            scientific = load_scientific_image(image_path)
+            accepted, audit = detect_stars(
+                scientific.luminance, saturated_mask=scientific.saturated_mask,
+                saturation_known=True)
+            self.assertTrue(any(
+                row['reason'] == 'too_sharp' and
+                np.hypot(row['x_px']-80., row['y_px']-60.) < 1.
+                for row in audit['rejected']))
+            predictions = [
+                dict(planet='Uranus', predicted_x_px=80.05, predicted_y_px=60.05),
+                dict(planet='Neptune', predicted_x_px=110., predicted_y_px=85.),
+            ]
+
+            recovered = recover_predicted_planet_sources(
+                scientific, self.camera, predictions, accepted,
+                audit['rejected'], audit['valid_mask'], gate_arcmin=30.)
+
+        self.assertEqual(len(recovered), 1)
+        source = recovered[0]
+        self.assertEqual(source['recovery_planet'], 'Uranus')
+        self.assertEqual(source['source_class'], 'targeted_planet_recovery')
+        self.assertEqual(source['morphology_rejection_reason'], 'too_sharp')
+        self.assertGreaterEqual(source['significant_channels'], 2)
+        self.assertLess(np.hypot(source['x_px']-80.05, source['y_px']-60.05), .35)
+
+    def test_targeted_recovery_excludes_selected_sources_and_invalid_footprint(self):
+        from point_star_image import load_scientific_image
+        from point_star_planets import recover_predicted_planet_sources
+        yy, xx = np.mgrid[:120, :160]
+        planes = np.stack([
+            200.+amplitude*np.exp(-((xx-80.05)**2+(yy-60.05)**2)/(2*.5**2))
+            for amplitude in (90., 130., 110.)])
+        with tempfile.TemporaryDirectory() as folder:
+            image_path = Path(folder)/'undersampled.fits'
+            fits.PrimaryHDU(planes.astype(np.float32)).writeto(image_path)
+            scientific = load_scientific_image(image_path)
+            predictions = [dict(
+                planet='Uranus', predicted_x_px=80.05, predicted_y_px=60.05)]
+            rejected = [dict(x_px='80.0', y_px='60.0', reason='too_sharp')]
+            valid = np.ones((120, 160), dtype=bool)
+            accepted = [dict(
+                detection_id='1', x_px=80.05, y_px=60.05,
+                major_sigma_px=.5, source_class='compact')]
+
+            duplicate = recover_predicted_planet_sources(
+                scientific, self.camera, predictions, accepted,
+                rejected, valid, gate_arcmin=30.)
+            valid[60, 80] = False
+            outside = recover_predicted_planet_sources(
+                scientific, self.camera, predictions, [],
+                rejected, valid, gate_arcmin=30.)
+
+        self.assertEqual(duplicate, [])
+        self.assertEqual(outside, [])
+
     def test_metadata_time_association_requires_selected_metadata(self):
         import point_star_planets
         self.assertTrue(hasattr(point_star_planets, 'associate_planets_at_metadata_time'))
         answer = point_star_planets.associate_planets_at_metadata_time(
             self.camera, [], ['jupiter'], lambda *_: None,
-            {'status': 'unavailable'}, gate_px=3., positional_sigma_px=.5,
+            {'status': 'unavailable'}, gate_arcmin=30., positional_sigma_arcmin=3.,
             zenith_unit_vector=[0., 0., 1.])
         self.assertEqual(answer, {'status': 'metadata_time_unavailable',
                                   'matches': [], 'predicted_without_source': []})
+
+    def test_metadata_recovery_is_reassociated_as_uranus(self):
+        from point_star_detection import detect_stars
+        from point_star_image import load_scientific_image
+        from point_star_planets import associate_metadata_planets_with_recovery
+        rng = np.random.default_rng(20260919)
+        yy, xx = np.mgrid[:300, :400]
+        planes = []
+        for amplitude in (90., 130., 110.):
+            plane = 200.+rng.normal(0., .7, xx.shape)
+            plane += amplitude*np.exp(-((xx-150.05)**2+(yy-130.05)**2)/(2*.5**2))
+            planes.append(plane)
+        with tempfile.TemporaryDirectory() as folder:
+            image_path = Path(folder)/'uranus.fits'
+            fits.PrimaryHDU(np.asarray(planes, dtype=np.float32)).writeto(image_path)
+            scientific = load_scientific_image(image_path)
+            _, audit = detect_stars(
+                scientific.luminance, saturated_mask=scientific.saturated_mask,
+                saturation_known=True)
+            predicted_ray = self.camera.to_sky([[150.05, 130.05]])[0]
+            metadata = {'status': 'selected', 'jd_tdb': self.origin+4.3,
+                        'source': 'fits:PRIMARY:DATE-OBS'}
+
+            association, recovered = associate_metadata_planets_with_recovery(
+                scientific, self.camera, [], audit['rejected'], audit['valid_mask'],
+                ['uranus'],
+                lambda name, dates: np.tile(predicted_ray, (len(dates), 1)), metadata,
+                gate_arcmin=30., positional_sigma_arcmin=3.,
+                zenith_unit_vector=[0., 0., 1.])
+
+        self.assertEqual(len(recovered), 1)
+        self.assertEqual(association['matches'][0]['planet'], 'Uranus')
+        self.assertEqual(association['matches'][0]['source_origin'],
+                         'metadata_predicted_recovery')
+        self.assertEqual(association['predicted_without_source'], [])
+
+    def test_recovered_source_photometry_records_count_rates(self):
+        from point_star_image import load_scientific_image
+        from point_star_planets import append_recovered_source_photometry
+        yy, xx = np.mgrid[:80, :100]
+        planes = np.asarray([
+            200.+100*np.exp(-((xx-50.)**2+(yy-40.)**2)/(2*1.1**2)),
+            200.+120*np.exp(-((xx-50.)**2+(yy-40.)**2)/(2*1.1**2)),
+            200.+80*np.exp(-((xx-50.)**2+(yy-40.)**2)/(2*1.1**2)),
+        ], dtype=np.float32)
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            image_path = root/'source.fits'
+            hdu = fits.PrimaryHDU(planes)
+            hdu.header['EXPOSURE'] = 20.
+            hdu.writeto(image_path)
+            scientific = load_scientific_image(image_path)
+            fields = [
+                'detection_id', 'x_px', 'y_px', 'star_id', 'identified_as_star',
+                'source_class', 'saturated', 'saturation_known', 'saturated_channels',
+                'exposure_seconds', 'exposure_status', 'exposure_source',
+                'R_flux', 'R_count_rate_adu_per_s', 'R_saturated',
+                'R_measurement_method', 'R_saturated_pixels_in_aperture',
+                'R_wing_fit_status', 'R_wing_fit_total_counts_adu',
+                'R_wing_fit_count_rate_adu_per_s', 'R_wing_fit_x_px',
+                'R_wing_fit_y_px', 'R_wing_fit_rms_adu',
+                'R_wing_fit_unsaturated_pixels']
+            with (root/'source_photometry.csv').open('w', newline='') as handle:
+                writer = csv.DictWriter(handle, fieldnames=fields)
+                writer.writeheader()
+            recovered = [dict(
+                detection_id='1', x_px=50., y_px=40.,
+                source_class='targeted_planet_recovery', saturated=False,
+                saturation_known=True, saturated_channels='', major_sigma_px=1.1)]
+
+            rows = append_recovered_source_photometry(root, scientific, recovered)
+
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]['exposure_seconds'], 20.)
+            self.assertAlmostEqual(float(rows[0]['R_count_rate_adu_per_s']),
+                                   float(rows[0]['R_flux'])/20.)
+            with (root/'source_photometry.csv').open() as handle:
+                saved = list(csv.DictReader(handle))
+            self.assertEqual(saved[0]['source_class'], 'targeted_planet_recovery')
 
     def test_no_predictions_without_a_fitted_candidate_or_visibility(self):
         from point_star_planets import predict_other_planets
@@ -213,7 +455,7 @@ class PlanetSearchTests(unittest.TestCase):
                 for workers in (1, 2, 4):
                     answer = search_planet_epochs(
                         self.camera, sources, dates, grid, _parallel_vectors,
-                        gate_px=1., positional_sigma_px=.2,
+                        gate_arcmin=20., positional_sigma_arcmin=4.,
                         zenith_unit_vector=[0, 0, 1], planet_workers=workers,
                         latest_jd_tdb=self.origin+100.)
                     answer.pop('planet_search_performance')
@@ -242,7 +484,7 @@ class PlanetSearchTests(unittest.TestCase):
 
         rejected = search_planet_epochs(
             self.camera, source, dates, {'mars': proposed}, exact_outside,
-            gate_px=1., zenith_unit_vector=[0, 0, 1])
+            gate_arcmin=30., zenith_unit_vector=[0, 0, 1])
         self.assertEqual(rejected['match_count'], 0)
 
         coarse_offset = self.camera.to_sky(np.tile([151.5, 130.], (len(dates), 1)))
@@ -252,7 +494,7 @@ class PlanetSearchTests(unittest.TestCase):
 
         accepted = search_planet_epochs(
             self.camera, source, dates, {'mars': coarse_offset}, exact_inside,
-            gate_px=1., zenith_unit_vector=[0, 0, 1])
+            gate_arcmin=30., zenith_unit_vector=[0, 0, 1])
         self.assertEqual(accepted['match_count'], 1)
         self.assertAlmostEqual(accepted['matches'][0]['separation_px'], 0., places=12)
 
@@ -270,7 +512,8 @@ class PlanetSearchTests(unittest.TestCase):
                   'jupiter': lambda t: np.c_[np.full(len(t), 270.), 170+.7*(t-6)]}
         result = self.search(tracks, [(120., 100.), (270., 170.)])
         self.assertEqual(result['match_count'], 2)
-        self.assertAlmostEqual(result['best_candidate_jd_tdb']-self.origin, 5., places=4)
+        self.assertAlmostEqual(result['best_candidate_jd_tdb']-self.origin,
+                               4.98665717, places=5)
 
     def test_distinct_minima_less_than_two_days_apart_survive(self):
         tracks = {'saturn': lambda t: np.c_[150+10*(t-4)*(t-5), np.full(len(t), 130.)]}
@@ -286,7 +529,7 @@ class PlanetSearchTests(unittest.TestCase):
         result = self.search(tracks, [(120., 100.), (270., 170.), (200., 200.)])
         best = [c for c in result['candidates'] if c['match_count'] == 3]
         self.assertEqual(len(best), 1)
-        self.assertAlmostEqual(best[0]['jd_tdb']-self.origin, 5.68627451, places=5)
+        self.assertAlmostEqual(best[0]['jd_tdb']-self.origin, 5.68642928, places=5)
 
     def test_one_source_cannot_count_as_two_planets(self):
         track = lambda t: np.c_[150+2*(t-4.3), np.full(len(t), 130.)]
@@ -300,15 +543,19 @@ class PlanetSearchTests(unittest.TestCase):
             t = np.atleast_1d(jd)-self.origin
             return self.camera.to_sky(np.c_[150+2*(t-4.3), np.full(len(t), 130.)])
         row = dict(detection_id='1', x_px=150., y_px=130., saturated='True',
-                   catalogue_star_id='wrong-star', catalogue_residual_px=3.)
+                   catalogue_star_id='wrong-star', catalogue_residual_px=3.,
+                   catalogue_residual_arcmin=60.)
         result = search_planet_epochs(self.camera, [row], dates, {'saturn': vectors('saturn', dates)},
-                                     vectors, gate_px=1., positional_sigma_px=.5, zenith_unit_vector=[0, 0, 1])
+                                     vectors, gate_arcmin=20., positional_sigma_arcmin=10.,
+                                     zenith_unit_vector=[0, 0, 1])
         self.assertEqual(result['match_count'], 1)
         self.assertEqual(result['matches'][0]['catalogue_star_id'], 'wrong-star')
         self.assertGreater(result['matches'][0]['improvement_over_star_chi2'], 9.)
         row['catalogue_residual_px'] = .1
+        row['catalogue_residual_arcmin'] = 2.
         result = search_planet_epochs(self.camera, [row], dates, {'saturn': vectors('saturn', dates)},
-                                     vectors, gate_px=1., positional_sigma_px=.5, zenith_unit_vector=[0, 0, 1])
+                                     vectors, gate_arcmin=20., positional_sigma_arcmin=10.,
+                                     zenith_unit_vector=[0, 0, 1])
         self.assertEqual(result['match_count'], 0)
 
     def test_two_planet_constellation_can_recruit_better_planet_over_gaia(self):
@@ -326,7 +573,7 @@ class PlanetSearchTests(unittest.TestCase):
         # alternative. Joint least squares moves to
         # dt=(20*.9)/(2**2+3**2+20**2)=0.0435835351 day, where Mars wins.
         self.assertAlmostEqual(result['best_candidate_jd_tdb']-self.origin,
-                               4.3435835351, places=5)
+                               4.34359078, places=5)
 
     def test_constellation_does_not_displace_a_better_gaia_position(self):
         result = self.search_catalogue_constellation(mars_offset=.7, mars_speed=0.)
@@ -386,7 +633,7 @@ class PlanetSearchTests(unittest.TestCase):
             dict(detection_id='4', x_px=217.1, y_px=210.,
                  catalogue_star_id='earlier-gaia', catalogue_residual_px=.59),
         ]
-        result = self.search_catalogue_case(tracks, sources, gate_px=3.)
+        result = self.search_catalogue_case(tracks, sources, gate_arcmin=60.)
         three_body = [candidate for candidate in result['candidates']
                       if candidate['match_count'] == 3]
         self.assertEqual({next(row['detection_id'] for row in candidate['matches']
@@ -450,14 +697,15 @@ class PlanetSearchTests(unittest.TestCase):
                 writer = csv.DictWriter(handle, fieldnames=list(rows[0]))
                 writer.writeheader(); writer.writerows(rows)
             (output/'star_coordinates.csv').write_text(
-                'detection_id,star_id,residual_px\n'
-                '3,chance-gaia-star,0.6\n'
-                '4,other-chance-gaia-star,0.6\n')
+                'detection_id,star_id,residual_px,residual_arcmin\n'
+                '3,chance-gaia-star,0.6,12.0\n'
+                '4,other-chance-gaia-star,0.6,12.0\n')
             (output/'photometric_zenith.json').write_text(
                 '{"status": "conditional_zenith", "zenith_unit_vector": [0,0,1]}')
             source = output/'image.png'
             Image.new('L', (self.camera.shape[1], self.camera.shape[0]), 100).save(source)
-            result = {'camera': self.camera.serialise(), 'fit': {'rms_px': .2},
+            result = {'camera': self.camera.serialise(),
+                      'fit': {'rms_px': .2, 'rms_arcmin': 4.},
                       'source': str(source),
                       'causal_epoch_ceiling': {'jd_tdb': self.origin+100,
                                                'source': 'test clock'}}
@@ -497,9 +745,13 @@ class PlanetSearchTests(unittest.TestCase):
                 csv_rows = list(csv.DictReader(handle))
             saved_mars_rows = [row for row in csv_rows if row['planet'] == 'Mars']
             self.assertEqual({row['detection_id'] for row in saved_mars_rows}, {'3', '4'})
-            saved_mars = saved_mars_rows[0]
-            self.assertEqual(saved_mars['constellation_override'], 'True')
-            self.assertEqual(saved_mars['catalogue_star_id'], 'chance-gaia-star')
+            saved_by_detection = {row['detection_id']: row for row in saved_mars_rows}
+            self.assertTrue(all(row['constellation_override'] == 'True'
+                                for row in saved_mars_rows))
+            self.assertEqual(saved_by_detection['3']['catalogue_star_id'],
+                             'chance-gaia-star')
+            self.assertEqual(saved_by_detection['4']['catalogue_star_id'],
+                             'other-chance-gaia-star')
 
     def test_integrated_search_ignores_poisoned_site_date_and_stellar_epoch(self):
         import csv, tempfile
@@ -555,9 +807,11 @@ class PlanetSearchTests(unittest.TestCase):
                       'time_utc': '2018-09-16T00:13:55.000 UTC',
                       'source': 'fits:PRIMARY:DATE-OBS'},
                   'candidates': [
-            {'epoch_tdb': '2000-01-01T00:00:00 TDB', 'jd_tdb': self.origin, 'rms_px': .2,
+            {'epoch_tdb': '2000-01-01T00:00:00 TDB', 'jd_tdb': self.origin,
+             'rms_arcmin': 4., 'rms_px': .2,
              'conditional_time_sigma_minutes': 60., 'matches': [{'planet': 'Saturn', 'detection_id': 4}]},
-            {'epoch_tdb': '2030-01-01T00:00:00 TDB', 'jd_tdb': self.origin+10957., 'rms_px': .4,
+            {'epoch_tdb': '2030-01-01T00:00:00 TDB', 'jd_tdb': self.origin+10957.,
+             'rms_arcmin': 8., 'rms_px': .4,
              'conditional_time_sigma_minutes': 120., 'matches': [{'planet': 'Mars', 'detection_id': 8}]}]}
         with tempfile.TemporaryDirectory() as tmp, contextlib.redirect_stdout(io.StringIO()) as printed:
             with patch('point_star_plotting.save_png') as save:
@@ -624,7 +878,7 @@ class PlanetSearchTests(unittest.TestCase):
         self.assertEqual(answer['matches'], [])
         self.assertEqual(answer['visibility']['rejected_below_horizon_count'], 1)
 
-    def test_below_horizon_ephemeris_is_rejected_even_within_pixel_gate(self):
+    def test_below_horizon_ephemeris_is_rejected_even_within_angular_gate(self):
         from point_star_planets import search_planet_epochs
         dates = self.origin+np.arange(3.)
         ray = self.camera.to_sky([[199.2, 149.5]])[0]
@@ -632,7 +886,7 @@ class PlanetSearchTests(unittest.TestCase):
             return np.tile(ray, (len(np.atleast_1d(jd)), 1))
         answer = search_planet_epochs(self.camera, [dict(detection_id='1', x_px=199.8, y_px=149.5)],
             dates, {'saturn': vectors('saturn', dates)}, vectors,
-            gate_px=1., zenith_unit_vector=[1, 0, 0])
+            gate_arcmin=20., zenith_unit_vector=[1, 0, 0])
         self.assertEqual(answer['matches'], [])
 
     def test_missing_zenith_cannot_produce_visible_planet_claims(self):
@@ -679,7 +933,7 @@ class PlanetSearchTests(unittest.TestCase):
             t = np.atleast_1d(jd)-self.origin-1.
             return self.camera.to_sky(np.c_[199.4+t*t, 149.5+2*t])
         answer = search_planet_epochs(self.camera, [dict(detection_id='1', x_px=199.6, y_px=149.5)],
-            dates, {'saturn': vectors('saturn', dates)}, vectors, gate_px=1.,
+            dates, {'saturn': vectors('saturn', dates)}, vectors, gate_arcmin=20.,
             zenith_unit_vector=[1,0,0], latest_jd_tdb=self.origin+10.)
         candidate_dates = [c['jd_tdb']-self.origin for c in answer['candidates']]
         self.assertTrue(any(abs(t-(1-np.sqrt(.1))) < 1e-5 for t in candidate_dates))

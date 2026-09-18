@@ -213,7 +213,8 @@ class ReportTests(unittest.TestCase):
                 'status': 'local_planet_epoch_compared',
                 'planet_minus_metadata_seconds': -42.5,
                 'absolute_timing_error_seconds': 42.5},
-            'matches': [{'planet': 'Mars', 'detection_id': 7, 'separation_px': .4,
+            'matches': [{'planet': 'Mars', 'detection_id': 7,
+                         'separation_arcmin': 1.25, 'separation_px': .4,
                          'unused_brightness_rank': 1}],
         }
         science = {'planets': planets}
@@ -222,6 +223,7 @@ class ReportTests(unittest.TestCase):
         self.assertIn('Metadata-conditioned', text)
         self.assertIn('2018-09-16T00:13:55.000 UTC', text)
         self.assertIn('fits:PRIMARY:DATE-OBS', text)
+        self.assertIn('1.25 arcmin; 0.40 px', text)
         self.assertIn('-42.5 s', text)
         self.assertIn('conditional on the metadata-supplied local interval', text)
         self.assertNotIn('Blind positional candidates', text)

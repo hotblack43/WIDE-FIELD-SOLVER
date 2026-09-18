@@ -455,7 +455,7 @@ def planet_confidence(match_count, random_expectation, bright_single=True):
     return 'none'
 
 
-def fit_planet_epoch(image_path, solution, result, stellar_epoch, gate_px=3., *,
+def fit_planet_epoch(image_path, solution, result, stellar_epoch, gate_arcmin=30., *,
                      force_blind=False):
     """Use post-fit time metadata by default, with a full blind fallback."""
     from point_star_metadata import planet_search_context
@@ -467,7 +467,7 @@ def fit_planet_epoch(image_path, solution, result, stellar_epoch, gate_px=3., *,
         latest_jd_tdb=ceiling)
     return fit_blind_planet_epoch(
         image_path, solution, result, epoch_limits=context['epoch_limits'],
-        gate_px=gate_px, search_context=context)
+        gate_arcmin=gate_arcmin, search_context=context)
 
 
 def analyse_existing(image_path, solution, result, catalogue_path, *,

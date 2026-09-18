@@ -111,6 +111,46 @@ class WorkerSelectionTests(unittest.TestCase):
 
 
 class CubicProposalTests(unittest.TestCase):
+    def test_refinement_minimizes_great_circle_not_distorted_detector_distance(self):
+        from point_star_planet_refinement import RefinementContext, Visit, refine_planet_visits
+
+        class NonuniformCamera:
+            shape = (300, 400)
+
+            def project(self, vectors):
+                vectors = np.asarray(vectors, dtype=float)
+                u = vectors[:, 0]/vectors[:, 2]
+                v = vectors[:, 1]/vectors[:, 2]
+                return np.c_[u, v*(1.+4.*u)]
+
+            def to_sky(self, points):
+                points = np.asarray(points, dtype=float)
+                rays = np.c_[points[:, 0], points[:, 1], np.ones(len(points))]
+                return rays/np.linalg.norm(rays, axis=1)[:, None]
+
+        class Provider(RecordingProvider):
+            @staticmethod
+            def _vectors(dates):
+                u = np.asarray(dates, dtype=float)-.5
+                rays = np.c_[u, np.full(len(u), .2), np.ones(len(u))]
+                return rays/np.linalg.norm(rays, axis=1)[:, None]
+
+            def exact(self, name, dates):
+                dates = np.asarray(dates, dtype=float)
+                self.calls.append(dates.copy())
+                return self._vectors(dates)
+
+            def interpolated(self, name, dates):
+                dates = np.asarray(dates, dtype=float)
+                self.calls.append(('interpolated', dates.copy()))
+                return self._vectors(dates)
+
+        result = refine_planet_visits(
+            'uranus', [Visit('uranus', 0, 0., 1., 0., 1.)],
+            RefinementContext(NonuniformCamera(), np.array([[0., 0.]])), Provider())
+
+        self.assertAlmostEqual(result.passages[0].date, .5, places=5)
+
     def test_interpolated_optimizer_proposes_a_date_for_exact_evaluation(self):
         from point_star_barghini import BarghiniCamera
         from point_star_planet_refinement import RefinementContext, Visit, refine_planet_visits

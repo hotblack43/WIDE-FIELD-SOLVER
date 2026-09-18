@@ -53,6 +53,22 @@ def _altitudes(vectors, zenith):
     return np.rad2deg(np.arcsin(np.clip(vectors @ zenith, -1., 1.)))
 
 
+def _angular_separation_matrix_arcmin(first, second):
+    """Pairwise great-circle separations between unit-vector rows."""
+    first = np.asarray(first, dtype=float)
+    second = np.asarray(second, dtype=float)
+    dots = np.clip(first @ second.T, -1., 1.)
+    return np.rad2deg(np.arccos(dots))*60.
+
+
+def _paired_angular_separations_arcmin(first, second):
+    """Great-circle separations between corresponding unit-vector rows."""
+    first = np.asarray(first, dtype=float)
+    second = np.asarray(second, dtype=float)
+    dots = np.clip(np.sum(first*second, axis=-1), -1., 1.)
+    return np.rad2deg(np.arccos(dots))*60.
+
+
 def _visible_projection(camera, vectors, zenith):
     """Reject below-horizon, off-detector and non-invertible projections."""
     vectors = np.asarray(vectors, dtype=float)
@@ -81,7 +97,7 @@ def _record_empty_performance(output, search_started, requested_workers):
 
 
 def search_planet_epochs(camera, detections, jd_grid, sky_grid, vector_function, *,
-                         gate_px=3., positional_sigma_px=.5, zenith_unit_vector=None,
+                         gate_arcmin=30., positional_sigma_arcmin=3., zenith_unit_vector=None,
                          zenith_status='conditional_zenith', zenith_source='photometric_extinction',
                          latest_jd_tdb=None,
                          planet_workers=1, solar_constraint=None,
@@ -96,7 +112,7 @@ def search_planet_epochs(camera, detections, jd_grid, sky_grid, vector_function,
     jd = np.asarray(jd_grid, dtype=float)
     if len(jd) < 2 or not np.isfinite(jd).all() or np.any(np.diff(jd) <= 0):
         raise ValueError('Planet search needs increasing finite reference dates')
-    if gate_px <= 0 or positional_sigma_px <= 0:
+    if gate_arcmin <= 0 or positional_sigma_arcmin <= 0:
         raise ValueError('Planet gate and positional uncertainty must be positive')
     from point_star_time_bounds import capture_time_ceiling
     if latest_jd_tdb is None:
@@ -110,9 +126,9 @@ def search_planet_epochs(camera, detections, jd_grid, sky_grid, vector_function,
                   search_start_tdb=_date_text(jd[0]), search_end_tdb=_date_text(last_date), search_end_jd_tdb=last_date,
                   causal_latest_jd_tdb=float(latest_jd_tdb),
                   search_step_days=float(np.max(np.diff(jd))), searched_planets=names,
-                  tested_sources=len(detections), gate_px=gate_px,
+                  tested_sources=len(detections), gate_arcmin=gate_arcmin,
                   star_competition_delta_chi2=9.,
-                  positional_sigma_px=positional_sigma_px,
+                  positional_sigma_arcmin=positional_sigma_arcmin,
                   method='blind trajectory-segment search, cubic proposals and batched exact positional time refinement',
                   limitation='Conditional on the saved camera and geocentric apparent ephemerides. '
                     'No site, image date or stellar epoch seeds this search. Topocentric parallax, '
@@ -151,11 +167,15 @@ def search_planet_epochs(camera, detections, jd_grid, sky_grid, vector_function,
     xy = np.array([[float(r['x_px']), float(r['y_px'])] for r in detections])
     if not np.isfinite(xy).all():
         raise ValueError('Planet sources need finite measured detector positions')
-    star_residual = np.array([float(row.get('catalogue_residual_px', np.inf)) for row in detections])
+    star_residual = np.array([
+        float(row.get('catalogue_residual_arcmin', np.inf)) for row in detections])
+    star_residual_px = np.array([
+        float(row.get('catalogue_residual_px', np.inf)) for row in detections])
     # A catalogue match is an alternative explanation, not an irreversible veto.
     # Associated sources need a >=9 improvement in positional chi-square before
     # they can count toward a planet hypothesis; all flags remain in the exports.
-    source_gate2 = np.minimum(gate_px**2, star_residual**2-9*positional_sigma_px**2)
+    source_gate2 = np.minimum(
+        gate_arcmin**2, star_residual**2-9*positional_sigma_arcmin**2)
     eligible = source_gate2 > 0
     output['unassociated_sources'] = int(np.isinf(star_residual).sum())
     output['sources_with_competitive_planet_hypothesis'] = int(eligible.sum())
@@ -181,13 +201,11 @@ def search_planet_epochs(camera, detections, jd_grid, sky_grid, vector_function,
         for i, row in enumerate(detections)]
     coarse_started = time.perf_counter()
     tree = cKDTree(measured_rays)
-    # Convert the detector gate conservatively to angular distance using local
-    # camera derivatives. Search on the sphere, avoiding off-detector projection
-    # folds. A 0.1-degree daily curvature guard exceeds measured Mercury curvature
-    # in the reference ephemeris tests; exact ephemerides set the final pixel gate.
-    scales = [np.linalg.norm(camera.to_sky(xy+offset)-measured_rays, axis=1)
-              for offset in ([1., 0.], [0., 1.])]
-    angular_gate = 2*gate_px*float(np.max(scales)) + np.deg2rad(.1)
+    # Search on the sphere, avoiding off-detector projection folds. A 0.1-degree
+    # daily curvature guard exceeds measured Mercury curvature in the reference
+    # ephemeris tests; exact ephemerides set the final great-circle gate.
+    gate_chord = 2*np.sin(np.deg2rad(gate_arcmin/60.)/2.)
+    angular_gate = gate_chord + np.deg2rad(.1)
     tracks = {name: np.asarray(values) for name, values in sky_grid.items()}
     output['coarse_curvature_guard_deg'] = .1
     windows = []
@@ -266,6 +284,11 @@ def search_planet_epochs(camera, detections, jd_grid, sky_grid, vector_function,
     def prediction(name, date):
         return _visible_projection(camera, vector_function(name, np.atleast_1d(date)), zenith)[0]
 
+    def angular_residual_arcmin(name, date, source):
+        ray = np.asarray(vector_function(name, [date]), dtype=float)
+        return float(_paired_angular_separations_arcmin(
+            ray, measured_rays[source:source+1])[0])
+
     def refine(assignments, start, stop, *, all_options=False):
         def objective(offset):
             total = 0.
@@ -275,7 +298,7 @@ def search_planet_epochs(camera, detections, jd_grid, sky_grid, vector_function,
                 predicted = _project(camera, vector_function(name, [start+offset]))[0]
                 if not np.isfinite(predicted).all():
                     return 1e100
-                total += float(np.sum((predicted-xy[source])**2))
+                total += angular_residual_arcmin(name, start+offset, source)**2
             return total
         optimum = minimize_scalar(objective, bounds=(0., stop-start), method='bounded',
                                   options={'xatol': 1e-7})
@@ -303,14 +326,21 @@ def search_planet_epochs(camera, detections, jd_grid, sky_grid, vector_function,
     # Refine individual passages without choosing a planet identity or date.
     def gate_interval(name, source, date, first, last):
         def excess(t):
-            value = float(np.sum((prediction(name, t)-xy[source])**2)-source_gate2[source])
+            if not np.isfinite(prediction(name, t)).all():
+                return 1e100
+            value = angular_residual_arcmin(name, t, source)**2-source_gate2[source]
             return value if np.isfinite(value) else 1e100
         bounds = []
         for end in (first, last):
             # Find the first gate crossing on either side, preserving separate
             # visits even when a loop's two minima share one coarse window.
             sample = np.r_[date, np.linspace(date, end, max(2, int(abs(end-date)/.5)+2))[1:]]
-            residuals = np.sum((_visible_projection(camera, vector_function(name, sample), zenith)-xy[source])**2, axis=1)-source_gate2[source]
+            vectors = vector_function(name, sample)
+            points = _visible_projection(camera, vectors, zenith)
+            residuals = (_paired_angular_separations_arcmin(
+                vectors, np.repeat(measured_rays[source][None, :], len(sample), axis=0))**2
+                - source_gate2[source])
+            residuals[~np.isfinite(points).all(axis=1)] = 1e100
             residuals[~np.isfinite(residuals)] = 1e100
             outside = np.flatnonzero(residuals > 0)
             if len(outside):
@@ -360,12 +390,13 @@ def search_planet_epochs(camera, detections, jd_grid, sky_grid, vector_function,
                     for date in (max(start, crossing-1e-7), crossing,
                                  min(stop, crossing+1e-7)):
                         predicted = prediction(name, date)
-                        cost = float(np.sum((predicted-xy[source])**2))
+                        cost = angular_residual_arcmin(name, date, source)**2
                         options.append((date, cost, altitude(date),
                                         bool(np.isfinite(predicted).all())))
             for date, cost, _, is_visible in options:
                 if not is_visible:
                     continue
+                cost = angular_residual_arcmin(name, date, source)**2
                 if cost > source_gate2[source]:
                     continue
                 interval = gate_interval(name, source, date, visit_start, visit_stop)
@@ -384,8 +415,11 @@ def search_planet_epochs(camera, detections, jd_grid, sky_grid, vector_function,
                 print(f'{search_label}: {visit_index}/{len(windows)} visits refined', flush=True)
     output['refined_visit_count'] = len(windows)
     individual_seconds = time.perf_counter()-individual_started
-    output['source_candidates'] = [dict(planet=name.title(), detection_id=int(detections[source]['detection_id']),
-        jd_tdb=float(date), epoch_tdb=_date_text(date), separation_px=float(np.sqrt(cost)))
+    output['source_candidates'] = [dict(
+        planet=name.title(), detection_id=int(detections[source]['detection_id']),
+        jd_tdb=float(date), epoch_tdb=_date_text(date),
+        separation_px=float(np.linalg.norm(prediction(name, date)-xy[source])),
+        separation_arcmin=float(np.sqrt(cost)))
         for date, name, source, cost, interval in passages]
     if not passages:
         output['reason'] = 'No competitive positional planet match survived the source and catalogue checks'
@@ -394,12 +428,14 @@ def search_planet_epochs(camera, detections, jd_grid, sky_grid, vector_function,
 
     def assign(date, forced=()):
         predictions = np.array([prediction(name, date) for name in names])
-        distance2 = np.sum((predictions[:, None, :]-xy[None, :, :])**2, axis=2)
+        planet_rays = np.array([vector_function(name, [date])[0] for name in names])
+        distance2 = _angular_separation_matrix_arcmin(planet_rays, measured_rays)**2
+        distance2[~np.isfinite(predictions).all(axis=1), :] = 1e100
         distance2[~np.isfinite(distance2)] = 1e100
         # Dummy columns allow unmatched planets; cardinality dominates residual.
         costs = np.full((len(names), len(xy)+len(names)), 1.)
         costs[:, :len(xy)] = np.where(distance2 <= source_gate2[None, :],
-                                      distance2/((len(names)+1)*gate_px**2), 1e6)
+                                      distance2/((len(names)+1)*gate_arcmin**2), 1e6)
         for name, source in forced:
             row = names.index(name)
             if distance2[row, source] > source_gate2[source]*(1+1e-8):
@@ -424,12 +460,16 @@ def search_planet_epochs(camera, detections, jd_grid, sky_grid, vector_function,
         if not remaining_planets or not override_sources:
             return []
         predictions = np.array([prediction(name, date) for name in remaining_planets])
-        distance2 = np.sum((predictions[:, None, :]-xy[override_sources][None, :, :])**2, axis=2)
+        planet_rays = np.array([
+            vector_function(name, [date])[0] for name in remaining_planets])
+        distance2 = _angular_separation_matrix_arcmin(
+            planet_rays, measured_rays[override_sources])**2
+        distance2[~np.isfinite(predictions).all(axis=1), :] = 1e100
         # The anchor-only date can place a faster third planet farther from its
         # source than the Gaia alternative. Admit ordinary-gate proposals here;
         # assignment_is_valid applies the Gaia comparison after the common epoch
         # has been refitted with the complete constellation.
-        valid = distance2 <= gate_px**2
+        valid = distance2 <= gate_arcmin**2
         choices = [[override_sources[column] for column in np.flatnonzero(valid[row])]
                    for row in range(len(remaining_planets))]
         memberships = []
@@ -456,11 +496,11 @@ def search_planet_epochs(camera, detections, jd_grid, sky_grid, vector_function,
         predicted = prediction(name, date)
         if not np.isfinite(predicted).all():
             return False
-        distance2 = float(np.sum((predicted-xy[source])**2))
+        distance2 = angular_residual_arcmin(name, date, source)**2
         if eligible[source]:
             return distance2 <= source_gate2[source]*(1+1e-8)
         return (visible[source] and np.isfinite(star_residual[source]) and
-                distance2 <= gate_px**2*(1+1e-8) and
+                distance2 <= gate_arcmin**2*(1+1e-8) and
                 distance2 < star_residual[source]**2)
 
     joint_started = time.perf_counter()
@@ -476,28 +516,37 @@ def search_planet_epochs(camera, detections, jd_grid, sky_grid, vector_function,
         for name, source in assignments:
             predicted = prediction(name, date)
             # The local derivative is geometric, even at a visibility boundary.
-            nearby = _project(camera, vector_function(name, [date-.001, date+.001]))
-            speed = (nearby[1]-nearby[0])/.002
-            speed_squared += float(speed@speed)
+            nearby_rays = vector_function(name, [date-.001, date+.001])
+            speed = float(_paired_angular_separations_arcmin(
+                nearby_rays[:1], nearby_rays[1:])[0]/.002)
+            speed_squared += speed**2
             row = detections[source]
+            separation_arcmin = angular_residual_arcmin(name, date, source)
+            separation_px = float(np.linalg.norm(predicted-xy[source]))
             matches.append(dict(planet=name.title(), detection_id=int(row['detection_id']),
                 measured_x_px=float(xy[source, 0]), measured_y_px=float(xy[source, 1]),
                 predicted_x_px=float(predicted[0]), predicted_y_px=float(predicted[1]),
-                separation_px=float(np.linalg.norm(predicted-xy[source])),
+                separation_px=separation_px, separation_arcmin=separation_arcmin,
                 saturated=str(row.get('saturated', False)).lower() == 'true',
                 source_class=row.get('source_class', 'unknown'),
                 measured_altitude_deg=float(max(0., measured_altitudes[source])),
                 predicted_altitude_deg=float(max(0., _altitudes(vector_function(name, [date]), zenith)[0])),
                 catalogue_star_id=row.get('catalogue_star_id'),
-                catalogue_residual_px=(float(star_residual[source]) if np.isfinite(star_residual[source]) else None),
-                improvement_over_star_chi2=(float((star_residual[source]**2-np.sum((predicted-xy[source])**2))/positional_sigma_px**2)
+                catalogue_residual_px=(float(star_residual_px[source])
+                                       if np.isfinite(star_residual_px[source]) else None),
+                catalogue_residual_arcmin=(float(star_residual[source])
+                                           if np.isfinite(star_residual[source]) else None),
+                improvement_over_star_chi2=(float(
+                    (star_residual[source]**2-separation_arcmin**2)/
+                    positional_sigma_arcmin**2)
                                             if np.isfinite(star_residual[source]) else None),
                 constellation_override=bool(not eligible[source]),
                 unused_brightness_rank=rank[source],
                 flux_above_background=float(row.get('flux_above_background', 0))))
         if not matches:
             return
-        cost = sum(match['separation_px']**2 for match in matches)
+        cost = sum(match['separation_arcmin']**2 for match in matches)
+        cost_px = sum(match['separation_px']**2 for match in matches)
         # An enclosing interval for this connected positional hypothesis. Every
         # independently eligible anchor must remain inside its acceptance span;
         # recruited overrides can only shrink this interval, never enlarge it.
@@ -511,10 +560,12 @@ def search_planet_epochs(camera, detections, jd_grid, sky_grid, vector_function,
         candidate = dict(jd_tdb=float(date), epoch_tdb=_date_text(date), matches=matches,
                          positional_interval_jd_tdb=list(map(float, interval)),
                          solar_boundary_refinement=solar_boundary_refinement,
-                         match_count=len(matches), cost_px2=cost,
+                         match_count=len(matches), cost_arcmin2=cost, cost_px2=cost_px,
                          constellation_override_count=sum(match['constellation_override'] for match in matches),
-                         rms_px=float(np.sqrt(cost/len(matches))),
-                         conditional_time_sigma_minutes=(float(1440*positional_sigma_px/np.sqrt(speed_squared))
+                         rms_px=float(np.sqrt(cost_px/len(matches))),
+                         rms_arcmin=float(np.sqrt(cost/len(matches))),
+                         conditional_time_sigma_minutes=(float(
+                             1440*positional_sigma_arcmin/np.sqrt(speed_squared))
                                                          if speed_squared > 1e-16 else None),
                          boundary_limited=bool(date-jd[0] < 1e-5 or jd[-1]-date < 1e-5))
         identity = {(match['planet'], match['detection_id']) for match in matches}
@@ -524,7 +575,7 @@ def search_planet_epochs(camera, detections, jd_grid, sky_grid, vector_function,
                            for match in existing['matches']} == identity), None)
         if duplicate is None:
             candidates.append(candidate)
-        elif cost < duplicate['cost_px2']:
+        elif cost < duplicate['cost_arcmin2']:
             duplicate.update(candidate)
 
     seeds = [(date, ((name, source),), interval) for date, name, source, _, interval in passages]
@@ -560,7 +611,8 @@ def search_planet_epochs(camera, detections, jd_grid, sky_grid, vector_function,
             start, stop = common_interval(assignments, date)
             for _ in range(6):
                 refined_date, _ = refine(assignments, start, stop)
-                if all(np.sum((prediction(n, refined_date)-xy[i])**2) <= source_gate2[i]*(1+1e-8)
+                if all(angular_residual_arcmin(n, refined_date, i)**2 <=
+                       source_gate2[i]*(1+1e-8)
                        for n, i in assignments):
                     date = refined_date
                 else:
@@ -594,13 +646,13 @@ def search_planet_epochs(camera, detections, jd_grid, sky_grid, vector_function,
                     exact = solar_constraint.assess(date)
                     if exact['status'] != 'solar_inconsistent':
                         retain_candidate(assignments, date, solar_boundary_refinement=True)
-    candidates.sort(key=lambda c: (-c['match_count'], c['cost_px2'], c['jd_tdb']))
+    candidates.sort(key=lambda c: (-c['match_count'], c['cost_arcmin2'], c['jd_tdb']))
     if not candidates:
         record_performance(time.perf_counter()-joint_started)
         return output
     best = candidates[0]
     peers = [c for c in candidates if c['match_count'] == best['match_count'] and
-             c['cost_px2'] <= best['cost_px2']+9*positional_sigma_px**2]
+             c['cost_arcmin2'] <= best['cost_arcmin2']+9*positional_sigma_arcmin**2]
     ambiguous = (best['match_count'] < 2 or len(peers) > 1 or best['boundary_limited']
                  or zenith_status != 'conditional_zenith'
                  or min(m['predicted_altitude_deg'] for m in best['matches']) < .01)
@@ -609,7 +661,8 @@ def search_planet_epochs(camera, detections, jd_grid, sky_grid, vector_function,
                   candidates=candidates, matches=best['matches'], match_count=best['match_count'],
                   candidate_count=len(candidates), competing_candidates=len(peers)-1,
                   best_candidate_jd_tdb=best['jd_tdb'], best_candidate_epoch_tdb=best['epoch_tdb'],
-                  rms_px=best['rms_px'], conditional_time_sigma_minutes=best['conditional_time_sigma_minutes'],
+                  rms_px=best['rms_px'], rms_arcmin=best['rms_arcmin'],
+                  conditional_time_sigma_minutes=best['conditional_time_sigma_minutes'],
                   reason='Competing dates/identities remain; no unique planetary epoch' if ambiguous else
                          'Multiple measured sources give a conditional positional epoch; false-alarm probability uncalibrated')
     record_performance(time.perf_counter()-joint_started)
@@ -642,8 +695,8 @@ def predict_other_planets(camera, answer, vector_function):
 
 
 def associate_planets_at_metadata_time(camera, detections, planet_names,
-                                       vector_function, metadata, *, gate_px=3.,
-                                       positional_sigma_px=.5,
+                                       vector_function, metadata, *, gate_arcmin=30.,
+                                       positional_sigma_arcmin=3.,
                                        zenith_unit_vector=None):
     """Associate measured sources at the supplied time without inferring an epoch."""
     empty = dict(status='metadata_time_unavailable', matches=[],
@@ -667,6 +720,7 @@ def associate_planets_at_metadata_time(camera, detections, planet_names,
         if (np.isfinite(point).all() and altitude >= -1e-7
                 and 0 <= point[0] <= width-1 and 0 <= point[1] <= height-1):
             projected.append(dict(planet=str(name).title(), _name=str(name),
+                                  _ray=vectors[0],
                                   predicted_x_px=float(point[0]),
                                   predicted_y_px=float(point[1]),
                                   predicted_altitude_deg=max(0., altitude),
@@ -678,18 +732,24 @@ def associate_planets_at_metadata_time(camera, detections, planet_names,
     xy = np.array([[float(row['x_px']), float(row['y_px'])]
                    for row in detections], dtype=float).reshape((-1, 2))
     star_residual = np.array([
-        float(row.get('catalogue_residual_px', np.inf)) for row in detections], dtype=float)
-    source_gate2 = np.minimum(gate_px**2,
-                              star_residual**2-9*positional_sigma_px**2)
+        float(row.get('catalogue_residual_arcmin', np.inf)) for row in detections], dtype=float)
+    source_gate2 = np.minimum(gate_arcmin**2,
+                              star_residual**2-9*positional_sigma_arcmin**2)
     source_gate2[source_gate2 <= 0] = -1.
     planet_xy = np.array([[row['predicted_x_px'], row['predicted_y_px']]
                           for row in projected])
     if len(detections):
-        distance2 = np.sum((planet_xy[:, None, :]-xy[None, :, :])**2, axis=2)
+        measured_rays = camera.to_sky(xy)
+        measured_altitudes = _altitudes(measured_rays, zenith)
+        measured_visible = measured_altitudes >= -1e-7
+        planet_rays = np.asarray([row['_ray'] for row in projected])
+        distance_arcmin = _angular_separation_matrix_arcmin(planet_rays, measured_rays)
+        distance2 = distance_arcmin**2
+        distance2[:, ~measured_visible] = np.inf
         costs = np.full((len(projected), len(detections)+len(projected)), 1.)
         costs[:, :len(detections)] = np.where(
             distance2 <= source_gate2[None, :],
-            distance2/((len(projected)+1)*gate_px**2), 1e6)
+            distance2/((len(projected)+1)*gate_arcmin**2), 1e6)
         planet_indices, source_indices = linear_sum_assignment(costs)
         assignments = [(int(p), int(s)) for p, s in zip(planet_indices, source_indices)
                        if s < len(detections)
@@ -712,14 +772,22 @@ def associate_planets_at_metadata_time(camera, detections, planet_names,
             measured_y_px=float(xy[source_index, 1]),
             predicted_x_px=prediction['predicted_x_px'],
             predicted_y_px=prediction['predicted_y_px'],
-            separation_px=float(np.sqrt(distance2[planet_index, source_index])),
+            separation_px=float(np.linalg.norm(
+                planet_xy[planet_index]-xy[source_index])),
+            separation_arcmin=float(np.sqrt(distance2[planet_index, source_index])),
             saturated=str(source.get('saturated', False)).lower() == 'true',
             source_class=source.get('source_class', 'unknown'),
             predicted_altitude_deg=prediction['predicted_altitude_deg'],
+            measured_altitude_deg=float(measured_altitudes[source_index]),
             catalogue_star_id=source.get('catalogue_star_id'),
-            catalogue_residual_px=(float(residual) if np.isfinite(residual) else None),
+            catalogue_residual_px=(float(source['catalogue_residual_px'])
+                                   if source.get('catalogue_residual_px') not in (None, '')
+                                   else None),
+            catalogue_residual_arcmin=(float(residual) if np.isfinite(residual) else None),
             unused_brightness_rank=rank[source_index],
             flux_above_background=float(source.get('flux_above_background', 0)),
+            source_origin=source.get('source_origin', 'general_detection'),
+            morphology_rejection_reason=source.get('morphology_rejection_reason'),
             association_status='metadata_time_match', jd_tdb=jd_tdb,
             epoch_tdb=prediction['epoch_tdb'], epoch_source=metadata.get('source')))
     matched_planets = {planet_index for planet_index, _ in assignments}
@@ -731,9 +799,219 @@ def associate_planets_at_metadata_time(camera, detections, planet_names,
                         else 'metadata_time_no_source_match'),
                 matches=matches, predicted_without_source=predictions,
                 epoch_tdb=_date_text(jd_tdb), epoch_source=metadata.get('source'),
-                time_utc=metadata.get('time_utc'), gate_px=float(gate_px),
+                time_utc=metadata.get('time_utc'), gate_arcmin=float(gate_arcmin),
+                positional_sigma_arcmin=float(positional_sigma_arcmin),
                 method='exact ephemeris positions at supplied observation metadata time',
                 limitation='Source identities are conditioned on supplied metadata; the image did not infer this epoch.')
+
+
+def _targeted_peak_measurement(scientific, x, y):
+    """Measure a detector-rejected peak without making it a stellar detection."""
+    from scipy.ndimage import label
+    x, y = int(round(float(x))), int(round(float(y)))
+    half = 4
+    if min(x, y, scientific.shape[1]-1-x, scientific.shape[0]-1-y) < half+1:
+        return None
+    gy, gx = np.mgrid[-half:half+1, -half:half+1]
+    annulus = np.maximum(abs(gx), abs(gy)) == half
+    cut = np.asarray(scientific.luminance[y-half:y+half+1, x-half:x+half+1], float)
+    signal = cut-np.median(cut[annulus])
+    peak = float(signal[half, half])
+    component, _ = label(signal > max(0., .15*peak))
+    centre = component[half, half]
+    mask = component == centre if centre else np.zeros(signal.shape, bool)
+    if mask.sum() < 1:
+        return None
+    weights = np.where(mask, np.maximum(signal, 0.), 0.)
+    flux = float(weights.sum())
+    if not np.isfinite(flux) or flux <= 0:
+        return None
+    cx = float((weights*gx).sum()/flux)
+    cy = float((weights*gy).sum()/flux)
+    dx, dy = gx-cx, gy-cy
+    covariance = np.array([
+        [(weights*dx*dx).sum(), (weights*dx*dy).sum()],
+        [(weights*dx*dy).sum(), (weights*dy*dy).sum()],
+    ])/flux
+    _, major2 = np.linalg.eigvalsh(covariance)
+    significant = 0
+    for plane in scientific.planes.values():
+        values = np.asarray(plane[y-half:y+half+1, x-half:x+half+1], float)
+        border = values[annulus]
+        noise = max(1.4826*float(np.median(abs(border-np.median(border)))), 1e-6)
+        significant += values[half, half]-np.median(border) > 3*noise
+    required = 1 if len(scientific.planes) == 1 else 2
+    if significant < required:
+        return None
+    px, py = float(x+cx), float(y+cy)
+    saturated_channels = [
+        name for name, saturated in scientific.plane_saturated_masks.items()
+        if np.any(saturated[y-half:y+half+1, x-half:x+half+1][mask])]
+    return dict(
+        x_px=px, y_px=py, flux_above_background=flux,
+        peak_above_background=peak, area_px=int(mask.sum()),
+        major_sigma_px=float(np.sqrt(max(major2, 0.))),
+        saturated=bool(saturated_channels),
+        saturation_known=bool(scientific.provenance()['saturation_known']),
+        saturated_channels=','.join(saturated_channels),
+        source_class='targeted_planet_recovery',
+        measurement_half_window_px=half,
+        significant_channels=int(significant),
+        source_origin='metadata_predicted_recovery')
+
+
+def recover_predicted_planet_sources(
+        scientific, camera, predictions, detections, rejected_candidates,
+        valid_mask, *, gate_arcmin=30.):
+    """Recover strong multichannel peaks rejected only by stellar morphology."""
+    if not predictions or not rejected_candidates:
+        return []
+    valid_mask = np.asarray(valid_mask, dtype=bool)
+    if valid_mask.shape != scientific.luminance.shape:
+        raise ValueError('Targeted recovery validity mask differs from image')
+    rejected = []
+    for row in rejected_candidates:
+        if row.get('reason') not in ('too_sharp', 'too_small'):
+            continue
+        x, y = int(round(float(row['x_px']))), int(round(float(row['y_px'])))
+        if (0 <= y < valid_mask.shape[0] and 0 <= x < valid_mask.shape[1]
+                and valid_mask[y, x]):
+            rejected.append(row)
+    measured = []
+    for row in rejected:
+        source = _targeted_peak_measurement(scientific, row['x_px'], row['y_px'])
+        if source is not None:
+            source['morphology_rejection_reason'] = row['reason']
+            duplicate = any(
+                np.hypot(source['x_px']-float(accepted['x_px']),
+                         source['y_px']-float(accepted['y_px'])) <
+                max(1., float(source.get('major_sigma_px', .5))+
+                    float(accepted.get('major_sigma_px', .5)))
+                for accepted in detections)
+            if not duplicate:
+                measured.append(source)
+    if not predictions or not measured:
+        return []
+    predicted_xy = np.array([[row['predicted_x_px'], row['predicted_y_px']]
+                             for row in predictions], dtype=float)
+    measured_xy = np.array([[row['x_px'], row['y_px']] for row in measured], dtype=float)
+    distance = _angular_separation_matrix_arcmin(
+        camera.to_sky(predicted_xy), camera.to_sky(measured_xy))
+    costs = np.where(distance <= gate_arcmin, distance, 1e6)
+    planet_indices, source_indices = linear_sum_assignment(costs)
+    next_id = max([int(row['detection_id']) for row in detections] or [0])+1
+    recovered = []
+    for planet_index, source_index in zip(planet_indices, source_indices):
+        if distance[planet_index, source_index] > gate_arcmin:
+            continue
+        source = measured[source_index]
+        source.update(
+            detection_id=str(next_id),
+            recovery_planet=predictions[planet_index]['planet'],
+            recovery_separation_arcmin=float(distance[planet_index, source_index]))
+        recovered.append(source)
+        next_id += 1
+    return recovered
+
+
+def associate_metadata_planets_with_recovery(
+        scientific, camera, detections, rejected_candidates, valid_mask,
+        planet_names, vector_function, metadata, *,
+        gate_arcmin=30., positional_sigma_arcmin=3., zenith_unit_vector=None):
+    """Associate ordinary detections, then reconsider only predicted rejected peaks."""
+    association = associate_planets_at_metadata_time(
+        camera, detections, planet_names, vector_function, metadata,
+        gate_arcmin=gate_arcmin, positional_sigma_arcmin=positional_sigma_arcmin,
+        zenith_unit_vector=zenith_unit_vector)
+    recovered = recover_predicted_planet_sources(
+        scientific, camera, association.get('predicted_without_source', []), detections,
+        rejected_candidates, valid_mask,
+        gate_arcmin=gate_arcmin)
+    if recovered:
+        association = associate_planets_at_metadata_time(
+            camera, [*detections, *recovered], planet_names, vector_function, metadata,
+            gate_arcmin=gate_arcmin, positional_sigma_arcmin=positional_sigma_arcmin,
+            zenith_unit_vector=zenith_unit_vector)
+    association['targeted_recovered_sources'] = len(recovered)
+    return association, recovered
+
+
+def append_recovered_source_photometry(output, scientific, recovered):
+    """Append aperture/count-rate records for metadata-targeted recovered sources."""
+    output = Path(output)
+    path = output/'source_photometry.csv'
+    if not recovered or not path.is_file():
+        return []
+    with path.open(newline='') as handle:
+        reader = csv.DictReader(handle)
+        fields = list(reader.fieldnames or [])
+        existing = list(reader)
+    existing_ids = {str(row.get('detection_id')) for row in existing}
+    if scientific.rgb is None:
+        channel_data = {name: scientific.luminance for name in 'RGB'}
+    else:
+        channel_data = {name: scientific.rgb[..., index]
+                        for index, name in enumerate('RGB')}
+    for name in ('G1', 'G2'):
+        if name in scientific.planes:
+            channel_data[name] = scientific.planes[name].astype(float)
+    if set(scientific.planes) == {'R', 'G1', 'G2', 'B'}:
+        channel_masks = {
+            'R': scientific.plane_saturated_masks['R'],
+            'G': (scientific.plane_saturated_masks['G1'] |
+                  scientific.plane_saturated_masks['G2']),
+            'B': scientific.plane_saturated_masks['B'],
+            'G1': scientific.plane_saturated_masks['G1'],
+            'G2': scientific.plane_saturated_masks['G2'],
+        }
+    elif scientific.rgb is None:
+        channel_masks = {name: scientific.plane_saturated_masks['L'] for name in 'RGB'}
+    else:
+        channel_masks = {name: scientific.plane_saturated_masks[name] for name in 'RGB'}
+    exposure = scientific.provenance().get('exposure') or {}
+    exposure_seconds = exposure.get('seconds') if exposure.get('status') == 'available' else None
+    from point_star_photometry import measure_channel
+    added = []
+    for source in recovered:
+        if str(source['detection_id']) in existing_ids:
+            continue
+        row = {field: '' for field in fields}
+        row.update({
+            'detection_id': str(source['detection_id']),
+            'x_px': source['x_px'], 'y_px': source['y_px'],
+            'star_id': '', 'identified_as_star': False,
+            'source_class': source['source_class'],
+            'saturated': source.get('saturated', False),
+            'saturation_known': source.get(
+                'saturation_known', scientific.provenance()['saturation_known']),
+            'saturated_channels': source.get('saturated_channels', ''),
+            'exposure_seconds': exposure_seconds if exposure_seconds is not None else '',
+            'exposure_status': exposure.get('status', 'unavailable'),
+            'exposure_source': exposure.get('source') or '',
+        })
+        aperture_radius = min(9., max(3., 2.5*float(source.get('major_sigma_px', 1.5))))
+        for channel, pixels in channel_data.items():
+            if f'{channel}_flux' not in fields:
+                continue
+            measured = measure_channel(
+                pixels, scientific.valid_mask, channel_masks[channel],
+                x=float(source['x_px']), y=float(source['y_px']),
+                aperture_radius=aperture_radius, exposure_seconds=exposure_seconds)
+            row[f'{channel}_flux'] = measured['aperture_counts_adu']
+            prefix = f'{channel}_'
+            for field in fields:
+                if field.startswith(prefix) and field != f'{channel}_flux':
+                    key = field[len(prefix):]
+                    if key in measured:
+                        row[field] = measured[key]
+        existing.append(row)
+        added.append(row)
+        existing_ids.add(str(source['detection_id']))
+    with path.open('w', newline='') as handle:
+        writer = csv.DictWriter(handle, fieldnames=fields)
+        writer.writeheader()
+        writer.writerows(existing)
+    return added
 
 
 def annotate_metadata_accuracy(answer):
@@ -874,7 +1152,7 @@ def _attach_identified_photometry(output, answer):
 
 
 def fit_blind_planet_epoch(image_path, solution, result, *, epoch_limits=(1850., 2036.),
-                           gate_px=3., search_context=None):
+                           gate_arcmin=30., search_context=None):
     """Search positions, check local bright-planet absences, then select and plot."""
     from point_star_planet_ephemeris import load_ephemeris, planet_vectors
     from point_star_planet_refinement import planet_worker_count
@@ -888,7 +1166,10 @@ def fit_blind_planet_epoch(image_path, solution, result, *, epoch_limits=(1850.,
     for row in detections:
         if row['detection_id'] in used:
             star = used[row['detection_id']]
-            row.update(catalogue_star_id=star['star_id'], catalogue_residual_px=float(star['residual_px']))
+            row.update(catalogue_star_id=star['star_id'],
+                       catalogue_residual_px=float(star['residual_px']),
+                       catalogue_residual_arcmin=float(
+                           star.get('residual_arcmin', np.inf)))
     from point_star_time_bounds import capture_time_ceiling
     ceiling = result.get('causal_epoch_ceiling') or capture_time_ceiling()
     zenith_path = output/'photometric_zenith.json'
@@ -911,7 +1192,9 @@ def fit_blind_planet_epoch(image_path, solution, result, *, epoch_limits=(1850.,
     workers = planet_worker_count(nonempty_groups=len(grid)) if parallel_safe else 1
     metadata_conditioned = bool(search_context and search_context.get('metadata_used'))
     answer = search_planet_epochs(_camera_from_result(result), detections, jd, grid, planet_vectors,
-                                 gate_px=gate_px, positional_sigma_px=max(float(result['fit']['rms_px']), .5),
+                                 gate_arcmin=gate_arcmin,
+                                 positional_sigma_arcmin=max(
+                                     float(result['fit'].get('rms_arcmin', 3.)), 3.),
                                  zenith_unit_vector=photometric_zenith.get('zenith_unit_vector'),
                                  zenith_status=photometric_zenith.get('status', 'unresolved'),
                                  zenith_source=photometric_zenith.get('zenith_source'),
@@ -952,12 +1235,28 @@ def fit_blind_planet_epoch(image_path, solution, result, *, epoch_limits=(1850.,
     evidence_seconds = time.perf_counter()-evidence_started-solar_seconds
     write_evidence(output, answer)
     write_solar_evidence(output, answer)
-    metadata_association = associate_planets_at_metadata_time(
-        _camera_from_result(result), detections, answer.get('searched_planets', []),
-        counted_planet_vectors, answer.get('observation_time_metadata') or {},
-        gate_px=gate_px, positional_sigma_px=max(float(result['fit']['rms_px']), .5),
+    from point_star_science import load_recorded_image
+    scientific = load_recorded_image(image_path, output)
+    rejection_path = output/'dots/rejected_candidates.csv'
+    if rejection_path.is_file():
+        with rejection_path.open() as handle:
+            rejected_candidates = list(csv.DictReader(handle))
+    else:
+        rejected_candidates = []
+    recovery_valid_mask = _load_sky_footprint(output)
+    metadata_association, recovered = associate_metadata_planets_with_recovery(
+        scientific, _camera_from_result(result), detections,
+        rejected_candidates, recovery_valid_mask,
+        answer.get('searched_planets', []), counted_planet_vectors,
+        answer.get('observation_time_metadata') or {},
+        gate_arcmin=gate_arcmin,
+        positional_sigma_arcmin=max(float(result['fit'].get('rms_arcmin', 3.)), 3.),
         zenith_unit_vector=(answer.get('visibility') or {}).get('zenith_unit_vector'))
+    if recovered:
+        append_recovered_source_photometry(output, scientific, recovered)
+        detections.extend(recovered)
     answer['metadata_planet_association'] = metadata_association
+    answer['metadata_recovered_sources'] = recovered
     answer['metadata_matches'] = metadata_association['matches']
     answer['predicted_planets'] = (
         metadata_association['predicted_without_source']
@@ -1018,10 +1317,12 @@ def fit_blind_planet_epoch(image_path, solution, result, *, epoch_limits=(1850.,
     fields = ['candidate_rank', 'positional_rank', 'missing_bright_planets', 'solar_status', 'solar_reason',
               'solar_selection_eligible', 'solar_boundary_refinement',
               'sun_altitude_deg', 'sun_minimum_altitude_deg', 'sun_maximum_altitude_deg',
-              'epoch_tdb', 'metadata_offset_seconds', 'match_count', 'rms_px', 'planet', 'detection_id',
-              'measured_x_px', 'measured_y_px', 'predicted_x_px', 'predicted_y_px', 'separation_px',
+              'epoch_tdb', 'metadata_offset_seconds', 'match_count', 'rms_arcmin', 'rms_px',
+              'planet', 'detection_id', 'measured_x_px', 'measured_y_px',
+              'predicted_x_px', 'predicted_y_px', 'separation_arcmin', 'separation_px',
               'saturated', 'source_class', 'unused_brightness_rank', 'flux_above_background',
-              'catalogue_star_id', 'catalogue_residual_px', 'improvement_over_star_chi2',
+              'catalogue_star_id', 'catalogue_residual_arcmin', 'catalogue_residual_px',
+              'improvement_over_star_chi2',
               'constellation_override', 'measured_altitude_deg', 'predicted_altitude_deg',
               *photometry_fields]
     with (output/'planet_candidates.csv').open('w') as handle:
@@ -1039,9 +1340,13 @@ def fit_blind_planet_epoch(image_path, solution, result, *, epoch_limits=(1850.,
                                      sun_maximum_altitude_deg=solar_row.get('maximum_solar_altitude_deg'),
                                      epoch_tdb=candidate['epoch_tdb'],
                                      metadata_offset_seconds=candidate.get('metadata_offset_seconds'),
-                                     match_count=candidate['match_count'], rms_px=candidate['rms_px'], **match))
+                                     match_count=candidate['match_count'],
+                                     rms_arcmin=candidate['rms_arcmin'],
+                                     rms_px=candidate['rms_px'], **match))
     with (output/'planet_source_candidates.csv').open('w') as handle:
-        writer = csv.DictWriter(handle, fieldnames=['planet', 'detection_id', 'jd_tdb', 'epoch_tdb', 'separation_px'])
+        writer = csv.DictWriter(handle, fieldnames=[
+            'planet', 'detection_id', 'jd_tdb', 'epoch_tdb',
+            'separation_arcmin', 'separation_px'])
         writer.writeheader(); writer.writerows(answer['source_candidates'])
     with (output/'planet_visibility.csv').open('w') as handle:
         writer = csv.DictWriter(handle, fieldnames=['detection_id', 'x_px', 'y_px', 'altitude_deg', 'visible', 'rejection_reason'])
@@ -1105,7 +1410,7 @@ def write_epoch_diagnostics(output, answer):
     heading = ('Metadata-conditioned planetary candidates'
                if conditioned else 'Blind planetary epoch candidates')
     lines = [f"{heading}: {len(candidates)} ({answer['status']})",
-             'Fit rank | Candidate epoch (TDB)       | Planet/source                   | RMS px | local sigma (h) | Missing bright planets | Solar status']
+             'Fit rank | Candidate epoch (TDB)       | Planet/source                   | RMS arcmin | local sigma (h) | Missing bright planets | Solar status']
     metadata = answer.get('observation_time_metadata') or {}
     if conditioned:
         lines.insert(1, f"Metadata time: {metadata.get('time_utc', '--')} from {metadata.get('source', '--')}; local search only, not blind epoch inference.")
@@ -1122,7 +1427,7 @@ def write_epoch_diagnostics(output, answer):
         solar_status = candidate.get('solar_evidence', {}).get('status', 'not_checked')
         if candidate.get('solar_evidence', {}).get('requires_date_refinement'):
             solar_status += ' (epoch needs refit)'
-        lines.append(f"{rank:8d} | {candidate['epoch_tdb']:27s} | {bodies:31s} | {candidate['rms_px']:6.3f} | {sigma_text} | {', '.join(candidate.get('missing_bright_planets', [])) or '--'} | {solar_status}")
+        lines.append(f"{rank:8d} | {candidate['epoch_tdb']:27s} | {bodies:31s} | {candidate['rms_arcmin']:10.3f} | {sigma_text} | {', '.join(candidate.get('missing_bright_planets', [])) or '--'} | {solar_status}")
     if answer.get('negative_evidence'):
         lines.append('Candidates with missing bright planets rank below uncontradicted trials; unknown detectability is neutral. See planet_non_detections.json.')
     if answer.get('solar_evidence'):
@@ -1140,7 +1445,7 @@ def write_epoch_diagnostics(output, answer):
         group = [c for c in candidates if ' / '.join(m['planet'] for m in c['matches']) == label]
         years = Time([c['jd_tdb'] for c in group], format='jd', scale='tdb').jyear
         uncertainty = np.array([(c.get('conditional_time_sigma_minutes') or 0.)/(1440*365.25) for c in group])
-        ax.errorbar(years, [c['rms_px'] for c in group], xerr=uncertainty,
+        ax.errorbar(years, [c['rms_arcmin'] for c in group], xerr=uncertainty,
                     fmt='o', ms=4, capsize=2, alpha=.8, label=label)
     if candidates:
         ax.legend(fontsize=8)
@@ -1148,7 +1453,7 @@ def write_epoch_diagnostics(output, answer):
         ax.text(.5, .5, 'No competitive planet/date candidate', ha='center', transform=ax.transAxes)
     plot_heading = ('Metadata-conditioned planetary dates'
                     if conditioned else 'Blind planetary dates')
-    ax.set(xlabel='Candidate epoch (Julian year, TDB)', ylabel='Positional RMS (pixels)',
+    ax.set(xlabel='Candidate epoch (Julian year, TDB)', ylabel='Positional RMS (arcmin)',
            title=f"{plot_heading}: {len(candidates)} retained candidates\n{answer['status'].replace('_', ' ')}")
     ax.grid(alpha=.25)
     fig.text(.5, .01, 'Horizontal bars: conditional local 1-sigma only; global date/identity ambiguities remain.',

@@ -107,6 +107,24 @@ measure global date/identity ambiguity. `--blind-planets` bypasses metadata and
 runs the complete 1850-to-present search; the same full search is the automatic
 fallback for undated inputs.
 
+Planet/source acceptance and ranking use great-circle separation, with a
+30-arcminute ordinary gate and a 3-arcminute positional-uncertainty floor. The
+coarse index converts that angle to a unit-sphere chord; interpolated and exact refinement,
+one-to-one assignment, constellation recruitment and metadata-time association
+all minimize or gate on angular residuals. Both a predicted planet and its
+proposed measured source must be above the image-derived horizon. Projected
+pixel residuals are retained only as sampling diagnostics.
+
+After the fitted stellar and photometric results are fixed, an unmatched
+metadata-predicted planet can trigger a narrow audit of detector maxima rejected
+only as `too_sharp` or `too_small` in the detector pass actually selected for
+the solution. Peaks outside the saved footprint or overlapping an accepted
+detection are excluded. Recovery requires significance in at least two recorded
+colour channels (one for monochrome), uses the same angular gate, and does not
+add the recovered maximum to the stellar astrometric sample. The
+measured centroid, original morphology rejection and targeted origin are saved,
+and ordinary per-channel aperture or saturated-wing photometry is then appended.
+
 ## Global lens fit
 
 `barghini_model.py` implements the independent O and Z parametrisation of

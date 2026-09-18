@@ -200,11 +200,13 @@ class RankingTests(unittest.TestCase):
         candidates=[]
         for i in range(2):
             candidates.append(dict(jd_tdb=2459000.+i,epoch_tdb=f'date {i}',matches=[dict(planet='Mercury',detection_id=i+1)],
-                match_count=1,cost_px2=.01+i*.01,rms_px=.1+i*.01,conditional_time_sigma_minutes=2.,boundary_limited=False))
+                match_count=1,cost_arcmin2=.01+i*.01,cost_px2=.01+i*.01,
+                rms_arcmin=.1+i*.01,rms_px=.1+i*.01,
+                conditional_time_sigma_minutes=2.,boundary_limited=False))
         return dict(status='planet_epoch_ambiguous',candidates=candidates,matches=copy.deepcopy(candidates[0]['matches']),
             best_candidate_jd_tdb=2459000.,best_candidate_epoch_tdb='date 0',
             predicted_planets=[dict(planet='Jupiter',epoch_tdb='date 0')],
-            visibility=dict(zenith_status='conditional_zenith'),positional_sigma_px=.5)
+            visibility=dict(zenith_status='conditional_zenith'),positional_sigma_arcmin=.5)
 
     def test_single_planet_aliases_are_audited_without_selecting_an_epoch(self):
         import copy

@@ -118,7 +118,9 @@ class SolarRankingTests(unittest.TestCase):
     def test_solar_rejection_precedes_planet_count_and_preserves_audit(self):
         from point_star_planet_nondetections import apply_evidence
         candidates = [dict(jd_tdb=2451545.+i, epoch_tdb=str(i), match_count=n,
-                           matches=[dict(planet='Mars')]*n, cost_px2=.1, rms_px=.1,
+                           matches=[dict(planet='Mars')]*n,
+                           cost_arcmin2=.1, cost_px2=.1,
+                           rms_arcmin=.1, rms_px=.1,
                            solar_evidence=dict(status=status))
                       for i, n, status in [(0, 3, 'solar_inconsistent'),
                                             (1, 2, 'solar_consistent')]]
@@ -135,7 +137,8 @@ class SolarRankingTests(unittest.TestCase):
         from point_star_planet_nondetections import apply_evidence
         answer = dict(status='planet_epoch_ambiguous', candidates=[dict(
             jd_tdb=2451545., epoch_tdb='date', match_count=2, matches=[],
-            cost_px2=.1, rms_px=.1, solar_evidence=dict(status='solar_inconsistent'))])
+            cost_arcmin2=.1, cost_px2=.1, rms_arcmin=.1, rms_px=.1,
+            solar_evidence=dict(status='solar_inconsistent'))])
         result = apply_evidence(answer, [[]])
         self.assertEqual(result['status'], 'planet_epoch_inconsistent')
         self.assertEqual(result['matches'], [])
@@ -145,7 +148,8 @@ class SolarRankingTests(unittest.TestCase):
         from point_star_planet_nondetections import apply_evidence
         candidates = [dict(jd_tdb=2451545.+i, epoch_tdb=str(i), match_count=2,
                            matches=[dict(planet='Mars'), dict(planet='Venus')],
-                           cost_px2=.1+i, rms_px=.1+i,
+                           cost_arcmin2=.1+i, cost_px2=.1+i,
+                           rms_arcmin=.1+i, rms_px=.1+i,
                            solar_evidence=dict(status='solar_unresolved', requires_date_refinement=(i==0)))
                       for i in range(2)]
         result = apply_evidence(dict(status='planet_epoch_ambiguous', candidates=candidates), [[], []])
@@ -186,13 +190,14 @@ class SolarPipelineTests(unittest.TestCase):
                    for i, (x, y) in enumerate([[150, 150], [250, 250]])]
         answer = search_planet_epochs(camera, sources, dates,
             {name: planets(name, dates) for name in ('venus', 'saturn')}, planets,
-            gate_px=2., zenith_unit_vector=[0, 0, 1], latest_jd_tdb=origin+40,
+            gate_arcmin=40., zenith_unit_vector=[0, 0, 1], latest_jd_tdb=origin+40,
             solar_constraint=solar)
         self.assertTrue(any(abs(c['jd_tdb']-origin-4)<1e-4 for c in answer['candidates']))
         alternatives = [c for c in answer['candidates'] if c.get('solar_boundary_refinement')]
         self.assertTrue(alternatives)
         self.assertTrue(any(c['jd_tdb']-origin > 10 for c in alternatives))
-        self.assertTrue(all(m['separation_px'] <= 2 for c in alternatives for m in c['matches']))
+        self.assertTrue(all(m['separation_arcmin'] <= 40
+                            for c in alternatives for m in c['matches']))
 
     def test_real_pipeline_rejects_daylight_and_exports_evidence_without_refit(self):
         import csv

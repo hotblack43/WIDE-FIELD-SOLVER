@@ -207,6 +207,24 @@ def _project(camera, vectors):
         return points
 
 
+def _angular_costs_arcmin2(vectors, measured_rays):
+    """Paired great-circle residuals, squared, in arcminutes."""
+    vectors = np.asarray(vectors, dtype=np.float64)
+    measured_rays = np.asarray(measured_rays, dtype=np.float64)
+    vector_norm = np.linalg.norm(vectors, axis=1)
+    measured_norm = np.linalg.norm(measured_rays, axis=1)
+    valid = ((vector_norm > 0) & (measured_norm > 0)
+             & np.isfinite(vectors).all(axis=1)
+             & np.isfinite(measured_rays).all(axis=1))
+    values = np.full(len(vectors), np.inf)
+    if np.any(valid):
+        dots = np.sum(vectors[valid]*measured_rays[valid], axis=1)
+        dots /= vector_norm[valid]*measured_norm[valid]
+        angles = np.arccos(np.clip(dots, -1., 1.))*60.*180./np.pi
+        values[valid] = angles**2
+    return values
+
+
 def refine_planet_visits(name: str, visits: Sequence[Visit],
                          context: RefinementContext, provider) -> PlanetRefinementResult:
     """Propose cheaply, then refine every passage with exact batched vectors."""
@@ -215,11 +233,11 @@ def refine_planet_visits(name: str, visits: Sequence[Visit],
     before = provider.counts()
     proposal_started = time.perf_counter()
     xy = np.asarray(context.xy, dtype=np.float64)
+    measured_rays = context.camera.to_sky(xy)
 
     def objective(dates, vectors, active_visits):
-        points = _project(context.camera, vectors)
-        measured = xy[[visit.source for visit in active_visits]]
-        return np.sum((points-measured)**2, axis=1)
+        measured = measured_rays[[visit.source for visit in active_visits]]
+        return _angular_costs_arcmin2(vectors, measured)
 
     try:
         proposal_dates, _ = batched_interpolated_minima(
@@ -239,7 +257,8 @@ def refine_planet_visits(name: str, visits: Sequence[Visit],
     option_vectors = provider.exact(name, option_dates)
     option_points = _project(context.camera, option_vectors)
     option_sources = np.tile([visit.source for visit in visits], 4)
-    option_costs = np.sum((option_points-xy[option_sources])**2, axis=1)
+    option_costs = _angular_costs_arcmin2(
+        option_vectors, measured_rays[option_sources])
     option_altitudes = np.full(4*count, np.nan)
     option_visible = np.isfinite(option_points).all(axis=1)
     if context.zenith is not None:
