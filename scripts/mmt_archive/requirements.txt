@@ -1,0 +1,5 @@
+# Python 3.11+; standalone, does not modify the solver environment or uv.lock.
+astropy==7.2.0
+numpy==2.4.4
+scipy==1.17.1
+requests==2.34.2
