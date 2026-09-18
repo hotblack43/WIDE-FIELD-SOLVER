@@ -365,3 +365,21 @@ matches and epoch are empty, and no unmatched-planet constellation is projected
 onto the image. This prevents an arbitrary closest one-body crossing from
 looking like a recovered planetary arrangement. Conditional multi-planet
 candidates retain the measured and predicted overlays.
+
+## Exact supplied-time planet/source association
+
+After the blind stellar solution and image-derived zenith are fixed, a selected
+FITS, EXIF, filename or explicit observation time now drives a separate exact
+planet/source association. This is not epoch inference. Each of the nine
+searched bodies is projected at the supplied TDB instant, one-to-one source
+assignment uses the ordinary 3-pixel gate and Gaia competition rule, and an
+accepted detection is stored as `metadata_time_match`. Visible bodies with no
+accepted detection remain distinct `predicted_no_detected_source` overlays.
+
+For `MMTO.fits`, source 1 is 0.172115 pixels from Jupiter at the FITS
+`DATE-OBS`; every other body is hundreds of pixels away. It is therefore
+labelled `Jupiter — FITS-time match` while the independent epoch result remains
+`planet_epoch_not_identifiable`. The identified-source CSV uses the exact
+metadata epoch and retains its 20-second R/G/B count rates and saturated-wing
+models. This numerical change corrects presentation and identity bookkeeping;
+it does not change detections, the Barghini fit or the blind-epoch evidence.

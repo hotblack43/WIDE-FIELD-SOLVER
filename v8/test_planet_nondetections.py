@@ -218,6 +218,8 @@ class RankingTests(unittest.TestCase):
         self.assertEqual(after['confidence'],'single_planet_aliases')
         self.assertEqual(after['matches'],[])
         self.assertEqual(after['match_count'],0)
+        self.assertEqual(after.get('candidate_matches'),
+                         after['candidates'][0]['matches'])
         self.assertEqual(after['single_planet_candidate_count'],2)
         self.assertEqual(after['candidates'][0]['positional_rank'],2)
         for candidate in after['candidates']:
@@ -232,6 +234,7 @@ class RankingTests(unittest.TestCase):
         self.assertEqual(after['status'],'planet_epoch_inconsistent')
         self.assertIsNone(after['best_candidate_jd_tdb'])
         self.assertEqual(after['matches'],[])
+        self.assertEqual(after.get('candidate_matches'),[])
         self.assertFalse(after.get('predicted_planets'))
         self.assertEqual(len(after['candidates']),2)
 

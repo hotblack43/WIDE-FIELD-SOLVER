@@ -146,6 +146,7 @@ def apply_evidence(answer,evidence_rows):
     """Rank inconsistent candidates below the others, retaining every original fit."""
     out=copy.deepcopy(answer)
     out['predicted_planets']=[]  # Reproject only after selecting the new best epoch.
+    out['candidate_matches']=[]  # Display-only hypotheses; never imply a fitted epoch.
     candidates=out.get('candidates') or []
     if len(evidence_rows)!=len(candidates):
         raise ValueError('Evidence must cover every positional candidate')
@@ -178,6 +179,7 @@ def apply_evidence(answer,evidence_rows):
         out.update(status='planet_epoch_not_identifiable',confidence='single_planet_aliases',matches=[],match_count=0,
             best_candidate_jd_tdb=None,best_candidate_epoch_tdb=None,rms_px=None,conditional_time_sigma_minutes=None,
             competing_candidates=0,single_planet_candidate_count=single_count,
+            candidate_matches=best['matches'],
             reason=f'Planetary epoch not identifiable: {single_count} single-planet aliases retained; no multi-planet solution')
         return out
     sigma=out.get('positional_sigma_px',.5)

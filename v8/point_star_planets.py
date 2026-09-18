@@ -641,6 +641,101 @@ def predict_other_planets(camera, answer, vector_function):
     return rows
 
 
+def associate_planets_at_metadata_time(camera, detections, planet_names,
+                                       vector_function, metadata, *, gate_px=3.,
+                                       positional_sigma_px=.5,
+                                       zenith_unit_vector=None):
+    """Associate measured sources at the supplied time without inferring an epoch."""
+    empty = dict(status='metadata_time_unavailable', matches=[],
+                 predicted_without_source=[])
+    if metadata.get('status') != 'selected' or metadata.get('jd_tdb') is None:
+        return empty
+    if zenith_unit_vector is None:
+        return dict(status='metadata_time_visibility_unresolved', matches=[],
+                    predicted_without_source=[])
+    zenith = np.asarray(zenith_unit_vector, dtype=float)
+    if zenith.shape != (3,) or not np.isfinite(zenith).all() or np.linalg.norm(zenith) < 1e-12:
+        raise ValueError('Metadata-time planet association needs a finite nonzero zenith vector')
+    zenith /= np.linalg.norm(zenith)
+    jd_tdb = float(metadata['jd_tdb'])
+    height, width = camera.shape
+    projected = []
+    for name in planet_names:
+        vectors = np.asarray(vector_function(name, [jd_tdb]), dtype=float)
+        point = _visible_projection(camera, vectors, zenith)[0]
+        altitude = float(_altitudes(vectors, zenith)[0])
+        if (np.isfinite(point).all() and altitude >= -1e-7
+                and 0 <= point[0] <= width-1 and 0 <= point[1] <= height-1):
+            projected.append(dict(planet=str(name).title(), _name=str(name),
+                                  predicted_x_px=float(point[0]),
+                                  predicted_y_px=float(point[1]),
+                                  predicted_altitude_deg=max(0., altitude),
+                                  jd_tdb=jd_tdb, epoch_tdb=_date_text(jd_tdb)))
+    if not projected:
+        return dict(status='metadata_time_no_visible_planets', matches=[],
+                    predicted_without_source=[], epoch_tdb=_date_text(jd_tdb),
+                    epoch_source=metadata.get('source'), time_utc=metadata.get('time_utc'))
+    xy = np.array([[float(row['x_px']), float(row['y_px'])]
+                   for row in detections], dtype=float).reshape((-1, 2))
+    star_residual = np.array([
+        float(row.get('catalogue_residual_px', np.inf)) for row in detections], dtype=float)
+    source_gate2 = np.minimum(gate_px**2,
+                              star_residual**2-9*positional_sigma_px**2)
+    source_gate2[source_gate2 <= 0] = -1.
+    planet_xy = np.array([[row['predicted_x_px'], row['predicted_y_px']]
+                          for row in projected])
+    if len(detections):
+        distance2 = np.sum((planet_xy[:, None, :]-xy[None, :, :])**2, axis=2)
+        costs = np.full((len(projected), len(detections)+len(projected)), 1.)
+        costs[:, :len(detections)] = np.where(
+            distance2 <= source_gate2[None, :],
+            distance2/((len(projected)+1)*gate_px**2), 1e6)
+        planet_indices, source_indices = linear_sum_assignment(costs)
+        assignments = [(int(p), int(s)) for p, s in zip(planet_indices, source_indices)
+                       if s < len(detections)
+                       and distance2[p, s] <= source_gate2[s]*(1+1e-8)]
+    else:
+        distance2 = np.empty((len(projected), 0))
+        assignments = []
+    brightness = sorted(range(len(detections)),
+                        key=lambda i: float(detections[i].get('flux_above_background', 0)),
+                        reverse=True)
+    rank = {source: index+1 for index, source in enumerate(brightness)}
+    matches = []
+    for planet_index, source_index in assignments:
+        prediction = projected[planet_index]
+        source = detections[source_index]
+        residual = star_residual[source_index]
+        matches.append(dict(
+            planet=prediction['planet'], detection_id=int(source['detection_id']),
+            measured_x_px=float(xy[source_index, 0]),
+            measured_y_px=float(xy[source_index, 1]),
+            predicted_x_px=prediction['predicted_x_px'],
+            predicted_y_px=prediction['predicted_y_px'],
+            separation_px=float(np.sqrt(distance2[planet_index, source_index])),
+            saturated=str(source.get('saturated', False)).lower() == 'true',
+            source_class=source.get('source_class', 'unknown'),
+            predicted_altitude_deg=prediction['predicted_altitude_deg'],
+            catalogue_star_id=source.get('catalogue_star_id'),
+            catalogue_residual_px=(float(residual) if np.isfinite(residual) else None),
+            unused_brightness_rank=rank[source_index],
+            flux_above_background=float(source.get('flux_above_background', 0)),
+            association_status='metadata_time_match', jd_tdb=jd_tdb,
+            epoch_tdb=prediction['epoch_tdb'], epoch_source=metadata.get('source')))
+    matched_planets = {planet_index for planet_index, _ in assignments}
+    predictions = [dict((key, value) for key, value in row.items() if not key.startswith('_'))
+                   | {'association_status': 'predicted_no_detected_source',
+                      'epoch_source': metadata.get('source')}
+                   for index, row in enumerate(projected) if index not in matched_planets]
+    return dict(status=('metadata_time_associated' if matches
+                        else 'metadata_time_no_source_match'),
+                matches=matches, predicted_without_source=predictions,
+                epoch_tdb=_date_text(jd_tdb), epoch_source=metadata.get('source'),
+                time_utc=metadata.get('time_utc'), gate_px=float(gate_px),
+                method='exact ephemeris positions at supplied observation metadata time',
+                limitation='Source identities are conditioned on supplied metadata; the image did not infer this epoch.')
+
+
 def annotate_metadata_accuracy(answer):
     """Compare locally fitted planetary dates with the metadata reference time."""
     if not answer.get('metadata_used'):
@@ -698,8 +793,18 @@ def _attach_identified_photometry(output, answer):
         if measurement:
             for name in measurement_fields:
                 match[name] = measurement.get(name, '')
+    for match in answer.get('metadata_matches', []):
+        measurement = source_rows.get(str(match['detection_id']))
+        if measurement:
+            for name in measurement_fields:
+                match[name] = measurement.get(name, '')
     selected = {(str(row['detection_id']), row['planet'])
                 for row in answer.get('matches', [])}
+    metadata_selected = {(str(row['detection_id']), row['planet'])
+                         for row in answer.get('metadata_matches', [])}
+    metadata_by_identity = {
+        (str(row['detection_id']), row['planet']): row
+        for row in answer.get('metadata_matches', [])}
     fields = ['identity_type', 'identity_name', 'identity_status',
               'candidate_rank', 'epoch_tdb', 'detection_id', 'x_px', 'y_px',
               'source_class', 'saturated', 'saturation_known',
@@ -719,23 +824,44 @@ def _attach_identified_photometry(output, answer):
                     saturation_known=source.get('saturation_known', ''),
                     saturated_channels=source.get('saturated_channels', ''),
                     **{name: source.get(name, '') for name in measurement_fields}))
+    written_planets = set()
     for rank, candidate in enumerate(answer.get('candidates', []), 1):
         for match in candidate.get('matches', []):
             identity = (str(match['detection_id']), match['planet'])
             source = source_rows.get(identity[0], {})
+            written_planets.add(identity)
             rows.append(dict(
                 identity_type=('minor_planet' if match['planet'].lower() in ('ceres', 'vesta')
                                else 'major_planet'),
                 identity_name=match['planet'],
-                identity_status=('selected_planet_match' if identity in selected
-                                 else 'planet_candidate'),
-                candidate_rank=rank, epoch_tdb=candidate.get('epoch_tdb', ''),
+                identity_status=('metadata_time_match' if identity in metadata_selected
+                                 else ('selected_planet_match' if identity in selected
+                                       else 'planet_candidate')),
+                candidate_rank=rank,
+                epoch_tdb=(metadata_by_identity[identity].get('epoch_tdb', '')
+                           if identity in metadata_by_identity
+                           else candidate.get('epoch_tdb', '')),
                 detection_id=identity[0], x_px=source.get('x_px', ''),
                 y_px=source.get('y_px', ''), source_class=source.get('source_class', ''),
                 saturated=source.get('saturated', ''),
                 saturation_known=source.get('saturation_known', ''),
                 saturated_channels=source.get('saturated_channels', ''),
                 **{name: source.get(name, '') for name in measurement_fields}))
+    for identity, match in metadata_by_identity.items():
+        if identity in written_planets:
+            continue
+        source = source_rows.get(identity[0], {})
+        rows.append(dict(
+            identity_type=('minor_planet' if match['planet'].lower() in ('ceres', 'vesta')
+                           else 'major_planet'),
+            identity_name=match['planet'], identity_status='metadata_time_match',
+            candidate_rank='', epoch_tdb=match.get('epoch_tdb', ''),
+            detection_id=identity[0], x_px=source.get('x_px', ''),
+            y_px=source.get('y_px', ''), source_class=source.get('source_class', ''),
+            saturated=source.get('saturated', ''),
+            saturation_known=source.get('saturation_known', ''),
+            saturated_channels=source.get('saturated_channels', ''),
+            **{name: source.get(name, '') for name in measurement_fields}))
     with (output/'identified_source_photometry.csv').open('w', newline='') as handle:
         writer = csv.DictWriter(handle, fieldnames=fields)
         writer.writeheader(); writer.writerows(rows)
@@ -826,8 +952,19 @@ def fit_blind_planet_epoch(image_path, solution, result, *, epoch_limits=(1850.,
     evidence_seconds = time.perf_counter()-evidence_started-solar_seconds
     write_evidence(output, answer)
     write_solar_evidence(output, answer)
-    answer['predicted_planets'] = predict_other_planets(
-        _camera_from_result(result), answer, counted_planet_vectors)
+    metadata_association = associate_planets_at_metadata_time(
+        _camera_from_result(result), detections, answer.get('searched_planets', []),
+        counted_planet_vectors, answer.get('observation_time_metadata') or {},
+        gate_px=gate_px, positional_sigma_px=max(float(result['fit']['rms_px']), .5),
+        zenith_unit_vector=(answer.get('visibility') or {}).get('zenith_unit_vector'))
+    answer['metadata_planet_association'] = metadata_association
+    answer['metadata_matches'] = metadata_association['matches']
+    answer['predicted_planets'] = (
+        metadata_association['predicted_without_source']
+        if metadata_association['status'] in
+        ('metadata_time_associated', 'metadata_time_no_source_match')
+        else predict_other_planets(_camera_from_result(result), answer,
+                                   counted_planet_vectors))
     identities = {}
     for candidate in answer['source_candidates']:
         identities.setdefault(candidate['detection_id'], set()).add(candidate['planet'])
@@ -920,19 +1057,39 @@ def _plot_candidates(image_path, output, answer):
     from point_star_plotting import save_png
     fig, ax = plt.subplots(figsize=(10, 9))
     ax.imshow(load_recorded_image(image_path, output).display_rgb)
-    for row in answer['matches']:
+    metadata_matches = answer.get('metadata_matches') or []
+    selected = answer.get('matches') or []
+    metadata_only = bool(metadata_matches)
+    candidate_only = not metadata_only and not selected
+    displayed = metadata_matches or selected or answer.get('candidate_matches') or []
+    for row in displayed:
         x, y = row['measured_x_px'], row['measured_y_px']
         ax.plot(x, y, '*', mfc='none', mec='magenta', mew=1.4, ms=12)
-        ax.annotate(row['planet'], (x, y), xytext=(7, 7), textcoords='offset points', color='white',
+        label = (row['planet'] + ' — metadata-time match' if metadata_only else
+                 row['planet'] + (' candidate' if candidate_only else ''))
+        ax.annotate(label, (x, y), xytext=(7, 7), textcoords='offset points', color='white',
                     bbox=dict(fc='black', alpha=.7))
     from point_star_report import _draw_predicted_planets
+    from matplotlib.lines import Line2D
+    handles = []
+    if displayed:
+        handles.append(Line2D([], [], marker='*', linestyle='none', markersize=11,
+                              markerfacecolor='none', markeredgecolor='magenta',
+                              markeredgewidth=1.4,
+                              label=('metadata-time planet match' if metadata_only else
+                                     'planet candidate' if candidate_only else 'matched planet')))
     prediction_handle = _draw_predicted_planets(ax, answer.get('predicted_planets', []))
     if prediction_handle is not None:
-        ax.legend(handles=[prediction_handle], loc='lower left', fontsize=8)
+        handles.append(prediction_handle)
+    if handles:
+        ax.legend(handles=handles, loc='lower left', fontsize=8)
     heading = ('Metadata-conditioned planet candidates'
                if answer.get('metadata_used') else 'Blind planet candidates')
     ax.set_title(heading+': '+answer['status'].replace('_', ' ')+'\n'+
-                 (answer.get('best_candidate_epoch_tdb') or 'No supported candidate')+'; alternatives in planet_candidates.csv')
+                 (answer.get('best_candidate_epoch_tdb') or
+                  ('Metadata-time source match shown; epoch not inferred' if metadata_only else
+                   'Candidate identity shown; no identifiable epoch' if displayed else
+                   'No supported candidate'))+'; alternatives in planet_candidates.csv')
     ax.axis('off'); fig.tight_layout()
     save_png(fig, output/'planet_candidates.png', dpi=180); plt.close(fig)
 

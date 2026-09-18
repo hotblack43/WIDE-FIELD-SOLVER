@@ -199,13 +199,44 @@ def report_sections(result, science=None, **legacy):
     else:
         atmosphere += ' The image lacks a usable airmass-based extinction fit.'
 
-    matches = planets.get('matches') or []
+    metadata_matches = planets.get('metadata_matches') or []
+    selected_matches = planets.get('matches') or []
+    metadata_only = bool(metadata_matches)
+    candidate_only = not metadata_only and not selected_matches and bool(planets.get('candidate_matches'))
+    matches = metadata_matches or selected_matches or planets.get('candidate_matches') or []
     metadata_conditioned = bool(planets.get('metadata_used'))
     planet_prefix = ('Metadata-conditioned positional candidates'
                      if metadata_conditioned else 'Blind positional candidates')
     identity_alternatives = planets.get('surviving_source_identity_alternatives',
                                        planets.get('source_identity_alternatives', {}))
-    if matches:
+    if metadata_only:
+        metadata = planets.get('observation_time_metadata') or {}
+        descriptions = [
+            f"{row['planet']} at source #{row['detection_id']} "
+            f"({_fmt(row['separation_px'], 2)} px; source brightness rank "
+            f"{row.get('unused_brightness_rank', '--')})"
+            for row in matches
+        ]
+        planet_text = (
+            f"FITS-time positional match: {'; '.join(descriptions)}. "
+            f"The exact ephemeris position at {metadata.get('time_utc', '--')} from "
+            f"{metadata.get('source', '--')} is associated with the measured source. "
+            "This metadata-conditioned identity does not infer the epoch from the image. "
+            f"The independent planetary epoch remains {planets.get('status', 'not_run').replace('_', ' ')}. ")
+    elif candidate_only:
+        descriptions = [
+            f"{row['planet']} candidate at source #{row['detection_id']} "
+            f"({_fmt(row['separation_px'], 2)} px; source brightness rank "
+            f"{row.get('unused_brightness_rank', '--')})"
+            for row in matches
+        ]
+        planet_text = (
+            f"{planet_prefix}: {'; '.join(descriptions)}. "
+            f"Planetary epoch not identifiable: {planets.get('single_planet_candidate_count', 0)} "
+            "single-planet date/identity aliases retained; no multi-planet solution. "
+            "The label is a positional identity candidate, not a confirmed epoch. "
+            "See planet_candidates.csv and planet_source_candidates.csv.")
+    elif matches:
         descriptions = [
             f"{row['planet']} at source #{row['detection_id']} "
             f"({_fmt(row['separation_px'], 2)} px; source brightness rank "
@@ -309,6 +340,9 @@ def table_rows(result, science):
     if planets.get('status') == 'planet_epoch_not_identifiable':
         planet_value = (f"Not identifiable; {planets.get('single_planet_candidate_count', 0)} "
                         "single-planet aliases; no multi-planet solution")
+    if planets.get('metadata_matches'):
+        names = ', '.join(row['planet'] for row in planets['metadata_matches'])
+        planet_value += f"; metadata-time source match: {names}"
     if planets.get('metadata_used'):
         planet_value = 'Metadata-conditioned; '+planet_value
     if by_channel:
@@ -406,16 +440,26 @@ def _draw_predicted_planets(ax, predictions):
     """Draw expected positions without implying a measured planet identification."""
     if not predictions:
         return None
+    width = np.asarray(ax.images[0].get_array()).shape[1] if ax.images else np.inf
     for row in predictions:
         x, y = row['predicted_x_px'], row['predicted_y_px']
         ax.plot(x, y, marker='*', ms=15, mfc='none', mec='#ff3bd5', mew=.6)
-        ax.annotate(row['planet'] + ' (predicted)', (x, y), xytext=(10, -12),
-                    textcoords='offset points', va='top', fontsize=8, color='#ff3bd5',
+        suffix = (' (predicted—no detected source)'
+                  if row.get('association_status') == 'predicted_no_detected_source'
+                  else ' (predicted)')
+        right = x < .72*width
+        ax.annotate(row['planet'] + suffix, (x, y),
+                    xytext=(10 if right else -10, -12),
+                    textcoords='offset points', ha='left' if right else 'right',
+                    va='top', fontsize=8, color='#ff3bd5',
                     bbox=dict(boxstyle='round,pad=.2', fc='black', ec='none', alpha=.7))
     from matplotlib.lines import Line2D
     return Line2D([], [], marker='*', linestyle='none', markersize=11,
                   markerfacecolor='none', markeredgecolor='#ff3bd5', markeredgewidth=.6,
-                  label='predicted at candidate epoch (unmatched)')
+                  label=('predicted at supplied time — no detected source'
+                         if any(row.get('association_status') == 'predicted_no_detected_source'
+                                for row in predictions)
+                         else 'predicted at candidate epoch (unmatched)'))
 
 
 def write_report_sky_overlay(output, result, science, maximum_labels=24):
@@ -434,7 +478,12 @@ def write_report_sky_overlay(output, result, science, maximum_labels=24):
     labelled_path = output/'labelled_stars.json'
     labelled = json.loads(labelled_path.read_text()).get('stars', []) if labelled_path.is_file() else []
     labelled = labelled[:maximum_labels]
-    planets = (science.get('planets') or {}).get('matches') or []
+    planet_result = science.get('planets') or {}
+    metadata_planets = planet_result.get('metadata_matches') or []
+    selected_planets = planet_result.get('matches') or []
+    metadata_only = bool(metadata_planets)
+    candidate_only = not metadata_only and not selected_planets and bool(planet_result.get('candidate_matches'))
+    planets = metadata_planets or selected_planets or planet_result.get('candidate_matches') or []
 
     fig, ax = plt.subplots(figsize=(8, 8))
     ax.imshow(rgb)
@@ -462,7 +511,11 @@ def write_report_sky_overlay(output, result, science, maximum_labels=24):
     for row in planets:
         x, y = float(row['measured_x_px']), float(row['measured_y_px'])
         ax.plot(x, y, marker='*', ms=15, mfc='none', mec='#ff3bd5', mew=1.4)
-        ax.annotate(row['planet'], (x, y), xytext=(10, 9), textcoords='offset points',
+        metadata_source = (planet_result.get('observation_time_metadata') or {}).get('source', '')
+        time_label = 'FITS-time' if str(metadata_source).startswith('fits:') else 'metadata-time'
+        label = (f"{row['planet']} — {time_label} match" if metadata_only else
+                 row['planet'] + (' candidate' if candidate_only else ''))
+        ax.annotate(label, (x, y), xytext=(10, 9), textcoords='offset points',
                     fontsize=9, weight='bold', color='white',
                     bbox=dict(boxstyle='round,pad=.2', fc='#a00078', ec='white', alpha=.9),
                     arrowprops=dict(arrowstyle='-', color='white', lw=.7))
@@ -473,8 +526,10 @@ def write_report_sky_overlay(output, result, science, maximum_labels=24):
     if planets:
         handles.append(Line2D([], [], marker='*', linestyle='none', markersize=11,
                               markerfacecolor='none', markeredgecolor='#ff3bd5', markeredgewidth=1.4,
-                              label='planet candidate' if (science.get('planets') or {}).get('status') in
-                              ('planet_epoch_ambiguous', 'conditional_planet_epoch') else 'matched planet'))
+                              label=('metadata-time planet match' if metadata_only else
+                                     'planet candidate' if candidate_only or planet_result.get('status') in
+                                     ('planet_epoch_ambiguous', 'conditional_planet_epoch') else
+                                     'matched planet')))
     prediction_handle = _draw_predicted_planets(
         ax, (science.get('planets') or {}).get('predicted_planets', []))
     if prediction_handle is not None:

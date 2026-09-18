@@ -50,6 +50,14 @@ usable time, v8 falls back to the full blind search. Force that search with:
 ./go8.sh /path/to/image.fits --blind-planets
 ```
 
+When observation-time metadata is available, v8 also performs a separate exact
+association at that supplied instant after the blind astrometric fit is fixed.
+A measured source inside the positional and catalogue-competition gates is
+saved as `metadata_time_match`; visible ephemeris positions without a measured
+source are saved and labelled `predicted_no_detected_source`. This can identify
+a source such as Jupiter at the FITS time without claiming that the image
+independently inferred the epoch.
+
 The root `go.sh` remains the preserved Tycho-2/Hipparcos workflow. The v4, v5,
 v6 and v7 launchers retain their corresponding preserved packages. Each runtime has
 separate modules and a lockfile. For the implemented science and remaining
@@ -63,7 +71,7 @@ here.
 V8 searches Ceres and Vesta alongside the seven inherited major planets using
 a committed offline JPL Horizons reference. It also writes `source_photometry.csv`
 for every detection and `identified_source_photometry.csv` for catalogue stars
-and planet candidates. FITS/EXIF exposure time produces instrumental ADU/s while
+and planet candidates, including metadata-time planet matches. FITS/EXIF exposure time produces instrumental ADU/s while
 preserving raw aperture ADU. Saturated channels retain a labelled aperture lower
 bound plus a separate robust Moffat-wing total and centroid; modelled values are
 never used in the extinction/zenith fit.

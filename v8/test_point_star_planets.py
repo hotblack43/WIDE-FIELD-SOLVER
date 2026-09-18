@@ -113,6 +113,53 @@ class PlanetSearchTests(unittest.TestCase):
         self.assertNotIn('mars', [name for name, date in calls])
         self.assertNotIn('detection_id', rows[0])
 
+    def test_metadata_time_association_distinguishes_detected_and_predicted_planets(self):
+        import point_star_planets
+        self.assertTrue(hasattr(point_star_planets, 'associate_planets_at_metadata_time'))
+        associate = point_star_planets.associate_planets_at_metadata_time
+        detections = [
+            dict(detection_id='1', x_px=150., y_px=130., saturated='True',
+                 source_class='compact', flux_above_background=900.),
+            dict(detection_id='2', x_px=190., y_px=150., saturated='False',
+                 source_class='compact', flux_above_background=100.,
+                 catalogue_star_id='gaia-star', catalogue_residual_px=.1),
+        ]
+        positions = {'jupiter': [150.2, 130.1], 'neptune': [230., 150.],
+                     'mars': [190.2, 150.]}
+        calls = []
+        def vectors(name, dates):
+            calls.append((name, list(dates)))
+            return self.camera.to_sky(np.tile(positions[name], (len(dates), 1)))
+        metadata = {'status': 'selected', 'jd_tdb': self.origin+4.3,
+                    'time_utc': '2000-01-05T19:12:00 UTC',
+                    'source': 'fits:PRIMARY:DATE-OBS'}
+
+        answer = associate(
+            self.camera, detections, list(positions), vectors, metadata,
+            gate_px=3., positional_sigma_px=.5,
+            zenith_unit_vector=[0., 0., 1.])
+
+        self.assertEqual(answer['status'], 'metadata_time_associated')
+        self.assertEqual([(row['planet'], row['detection_id']) for row in answer['matches']],
+                         [('Jupiter', 1)])
+        self.assertAlmostEqual(answer['matches'][0]['separation_px'], np.hypot(.2, .1))
+        self.assertEqual([row['planet'] for row in answer['predicted_without_source']],
+                         ['Neptune', 'Mars'])
+        self.assertTrue(all(row['association_status'] == 'predicted_no_detected_source'
+                            for row in answer['predicted_without_source']))
+        self.assertEqual(answer['epoch_source'], 'fits:PRIMARY:DATE-OBS')
+        self.assertTrue(all(dates == [self.origin+4.3] for _, dates in calls))
+
+    def test_metadata_time_association_requires_selected_metadata(self):
+        import point_star_planets
+        self.assertTrue(hasattr(point_star_planets, 'associate_planets_at_metadata_time'))
+        answer = point_star_planets.associate_planets_at_metadata_time(
+            self.camera, [], ['jupiter'], lambda *_: None,
+            {'status': 'unavailable'}, gate_px=3., positional_sigma_px=.5,
+            zenith_unit_vector=[0., 0., 1.])
+        self.assertEqual(answer, {'status': 'metadata_time_unavailable',
+                                  'matches': [], 'predicted_without_source': []})
+
     def test_no_predictions_without_a_fitted_candidate_or_visibility(self):
         from point_star_planets import predict_other_planets
         from unittest.mock import Mock
@@ -703,6 +750,31 @@ class IdentifiedPhotometryTests(unittest.TestCase):
         self.assertEqual(planet['G_measurement_method'],
                          'saturated_aperture_lower_bound')
         self.assertEqual(planet['G_wing_fit_count_rate_adu_per_s'], '4200')
+
+    def test_metadata_time_match_is_an_identified_source(self):
+        import csv
+        import tempfile
+        from pathlib import Path
+        from point_star_planets import _attach_identified_photometry
+        with tempfile.TemporaryDirectory() as folder:
+            output = Path(folder)
+            (output/'source_photometry.csv').write_text(
+                'detection_id,x_px,y_px,star_id,identified_as_star,source_class,'
+                'saturated,saturation_known,saturated_channels,exposure_seconds,'
+                'G_count_rate_adu_per_s\n'
+                '1,10,11,,False,compact,True,True,G,20,5000\n')
+            match = dict(detection_id=1, planet='Jupiter',
+                         epoch_tdb='2000-01-02T00:00:00 TDB')
+            answer = dict(matches=[], metadata_matches=[match], candidates=[
+                dict(epoch_tdb='2000-01-01T00:00:00 TDB', matches=[
+                    dict(detection_id=1, planet='Jupiter')])])
+            _attach_identified_photometry(output, answer)
+            with (output/'identified_source_photometry.csv').open() as handle:
+                rows = list(csv.DictReader(handle))
+        planet = next(row for row in rows if row['identity_name'] == 'Jupiter')
+        self.assertEqual(planet['identity_status'], 'metadata_time_match')
+        self.assertEqual(planet['epoch_tdb'], '2000-01-02T00:00:00 TDB')
+        self.assertEqual(planet['G_count_rate_adu_per_s'], '5000')
 
 if __name__ == '__main__':
     unittest.main()

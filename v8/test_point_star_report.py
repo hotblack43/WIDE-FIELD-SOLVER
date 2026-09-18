@@ -285,17 +285,94 @@ class ReportTests(unittest.TestCase):
     def test_single_planet_aliases_are_reported_as_not_identifiable(self):
         from point_star_report import table_rows
         science = {'planets': {'status': 'planet_epoch_not_identifiable', 'matches': [],
+            'candidate_matches': [{'planet': 'Jupiter', 'detection_id': 1,
+                                   'separation_px': .096,
+                                   'unused_brightness_rank': 1}],
             'match_count': 0, 'candidate_count': 12, 'single_planet_candidate_count': 12,
             'derived_epoch_utc': None, 'best_candidate_epoch_tdb': None,
             'reason': 'Only single-planet aliases remain; no planetary epoch is identifiable.'}}
         text = report_sections(self.sample_result(), science)['planets']
         self.assertIn('not identifiable', text.lower())
+        self.assertIn('Jupiter candidate at source #1', text)
         self.assertIn('12', text)
         self.assertNotIn('None', text)
         row = dict(table_rows(self.sample_result(), science))['Planet epoch']
         self.assertIn('Not identifiable', row)
         self.assertIn('12', row)
         self.assertNotIn('None', row)
+
+    def test_single_planet_candidate_is_drawn_without_claiming_a_match(self):
+        from PIL import Image
+        from point_star_report import write_report_sky_overlay
+        answer = {
+            'status': 'planet_epoch_not_identifiable',
+            'matches': [],
+            'candidate_matches': [{
+                'planet': 'Jupiter', 'detection_id': 1,
+                'measured_x_px': 55., 'measured_y_px': 42.,
+                'separation_px': .096, 'unused_brightness_rank': 1}],
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            Image.new('RGB', (120, 100)).save(root/'source.png')
+            with patch('point_star_report.save_png') as save:
+                write_report_sky_overlay(
+                    root, {'source': str(root/'source.png')}, {'planets': answer})
+            axis = save.call_args.args[0].axes[0]
+            markers = [line for line in axis.lines if line.get_marker() == '*']
+            labels = [item.get_text() for item in axis.texts]
+            legend = ' '.join(item.get_text() for item in axis.get_legend().get_texts())
+        self.assertEqual(len(markers), 1)
+        np.testing.assert_allclose(markers[0].get_xydata(), [[55., 42.]])
+        self.assertIn('Jupiter candidate', labels)
+        self.assertIn('planet candidate', legend)
+
+    def test_metadata_time_planet_match_is_labelled_separately_from_prediction(self):
+        from PIL import Image
+        from point_star_report import write_report_sky_overlay
+        from point_star_planets import _plot_candidates
+        answer = {
+            'status': 'planet_epoch_not_identifiable', 'metadata_used': True,
+            'matches': [],
+            'metadata_matches': [{
+                'planet': 'Jupiter', 'detection_id': 1,
+                'measured_x_px': 55., 'measured_y_px': 42.,
+                'separation_px': .172, 'unused_brightness_rank': 1}],
+            'predicted_planets': [{
+                'planet': 'Neptune', 'predicted_x_px': 90., 'predicted_y_px': 70.,
+                'association_status': 'predicted_no_detected_source'}],
+            'single_planet_candidate_count': 1,
+            'observation_time_metadata': {
+                'time_utc': '2026-01-15T23:46:44.942 UTC',
+                'source': 'fits:PRIMARY:DATE-OBS'},
+        }
+        text = report_sections(self.sample_result(), {'planets': answer})['planets']
+        self.assertIn('Jupiter at source #1', text)
+        self.assertIn('FITS-time', text)
+        self.assertIn('does not infer the epoch', text)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            Image.new('RGB', (120, 100)).save(root/'source.png')
+            with patch('point_star_report.save_png') as save:
+                write_report_sky_overlay(
+                    root, {'source': str(root/'source.png')}, {'planets': answer})
+            axis = save.call_args.args[0].axes[0]
+            labels = [item.get_text() for item in axis.texts]
+            legend = ' '.join(item.get_text() for item in axis.get_legend().get_texts())
+            prediction = next(item for item in axis.texts
+                              if item.get_text().startswith('Neptune'))
+            with patch('point_star_plotting.save_png') as save:
+                _plot_candidates(root/'source.png', root, answer)
+            candidate_axis = save.call_args.args[0].axes[0]
+            candidate_legend = ' '.join(
+                item.get_text() for item in candidate_axis.get_legend().get_texts())
+        self.assertIn('Jupiter — FITS-time match', labels)
+        self.assertIn('Neptune (predicted—no detected source)', labels)
+        self.assertIn('metadata-time planet match', legend)
+        self.assertEqual(prediction.get_ha(), 'right')
+        self.assertIn('Metadata-time source match shown; epoch not inferred',
+                      candidate_axis.get_title())
+        self.assertIn('metadata-time planet match', candidate_legend)
 
     def test_collector_manifest_supplies_epoch_and_orm_site(self):
         with tempfile.TemporaryDirectory() as directory:
