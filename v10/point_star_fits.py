@@ -366,7 +366,7 @@ def write_fits(image_path, output, result, science):
         rgb=len(planes)>1
         plain=np.asarray(scientific.luminance,dtype=np.float64) if rgb else next(iter(planes.values()))
         plain_mode='derived_luminance' if rgb else 'original_mono'
-        if sky_mask is not None:
+        if sky_mask is not None and not sky_mask.all():
             plain = np.asarray(plain, dtype=np.float64).copy()
             plain[~sky_mask] = np.nan
             plain_mode = 'sky_masked_luminance'

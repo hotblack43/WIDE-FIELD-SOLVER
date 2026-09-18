@@ -50,6 +50,21 @@ class FitsExportTests(unittest.TestCase):
         with fits.open(self.out/record['file']) as hdus:
             np.testing.assert_array_equal(hdus[0].data,pixels.astype('uint8'))
 
+    def test_all_true_saved_mask_does_not_coerce_monochrome_pixels(self):
+        pixels = np.arange(180*240, dtype=np.uint8).reshape(180, 240)
+        image = self.out/'full-mono.png'
+        Image.fromarray(pixels).save(image)
+        dots = self.out/'dots'
+        dots.mkdir()
+        np.savez_compressed(dots/'sky_footprint.npz',
+                            valid_mask=np.ones(pixels.shape, dtype=bool))
+        record = self.api.write_fits(image, self.out, self.result, self.science)
+        self.assertEqual(record['status'], 'exported')
+        self.assertEqual(record['plain_pixel_mode'], 'original_mono')
+        with fits.open(self.out/record['file']) as hdus:
+            self.assertEqual(hdus[0].data.dtype, np.dtype('uint8'))
+            np.testing.assert_array_equal(hdus[0].data, pixels)
+
     def test_mono_pixels_wcs_and_original_camera_are_preserved(self):
         before=json.dumps(self.result, sort_keys=True)
         pixels, path=self.export()
