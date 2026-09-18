@@ -4,6 +4,7 @@ import bz2
 import hashlib
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 import png
@@ -12,9 +13,60 @@ from PIL import Image
 import tifffile
 
 from point_star_image import ImageLayoutError, load_recorded_image, load_scientific_image
+from point_star_raw import CameraRawImage
 
 
 class ScientificImageTests(unittest.TestCase):
+    def test_cr2_uses_native_raw_decoder_not_pillow_preview(self):
+        planes = {name: np.full((3, 4), value, dtype=np.uint16)
+                  for name, value in zip(('R', 'G1', 'G2', 'B'),
+                                         (12000, 13000, 14000, 16383))}
+        decoded = CameraRawImage(
+            planes=planes,
+            black_levels={'R': 2049., 'G1': 2050., 'G2': 2049., 'B': 2050.},
+            white_levels={name: 16383. for name in planes},
+            details={'decoder': 'rawpy/libraw', 'cfa_pattern': 'RGGB',
+                     'sensor_visible_shape': [6, 8], 'exposure_seconds': 30.},
+        )
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder)/'native.cr2'
+            path.write_bytes(b'camera raw fixture')
+            with patch('point_star_raw.decode_cr2', return_value=decoded), \
+                    patch('PIL.Image.open', side_effect=AssertionError('Pillow must not open CR2')):
+                image = load_scientific_image(path)
+        self.assertEqual(list(image.planes), ['R', 'G1', 'G2', 'B'])
+        self.assertEqual(image.provenance()['decoder'], 'rawpy/libraw')
+        self.assertEqual(image.provenance()['channel_layout'], 'bayer_cell_planes')
+        self.assertEqual(image.provenance()['effective_bit_depth'],
+                         {name: 14 for name in planes})
+        self.assertEqual(image.provenance()['black_level']['status'],
+                         'available_not_subtracted')
+        self.assertEqual(image.provenance()['black_level']['levels']['G2'], 2049.)
+        self.assertTrue(all(record['source'] == 'camera_raw_white_level'
+                            for record in image.provenance()['saturation'].values()))
+
+    def test_fits_black_and_white_levels_are_authoritative(self):
+        values = np.full((4, 18, 20), 3000, dtype=np.uint16)
+        values[3, 0, 0] = 16383
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder)/'calibrated.fits'
+            hdu = fits.PrimaryHDU(values)
+            hdu.header['BLACK_R'] = 101
+            hdu.header['BLACK_G1'] = 102
+            hdu.header['BLACK_G2'] = 103
+            hdu.header['BLACK_B'] = 104
+            hdu.header['WHITELEV'] = 16383
+            hdu.writeto(path)
+            image = load_scientific_image(path)
+        self.assertEqual(image.provenance()['black_level']['status'],
+                         'available_not_subtracted')
+        self.assertEqual(image.provenance()['black_level']['levels'],
+                         {'R': 101., 'G1': 102., 'G2': 103., 'B': 104.})
+        self.assertTrue(all(record['level'] == 16383.
+                            for record in image.provenance()['saturation'].values()))
+        self.assertTrue(all(record['source'] == 'fits_WHITELEV'
+                            for record in image.provenance()['saturation'].values()))
+
     def test_sixteen_bit_png_samples_above_255_survive(self):
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder)/'mono16.png'

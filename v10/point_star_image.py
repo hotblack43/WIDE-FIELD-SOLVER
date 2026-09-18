@@ -171,8 +171,12 @@ def _saturation(planes, *, rendered_uint8=False, explicit=None, header_levels=No
         if name in explicit:
             level, source, confidence, known = explicit[name], 'explicit', 'established', True
         elif name in header_levels:
-            level, source, confidence, known = (float(header_levels[name]), 'fits_SATURATE',
-                                                'established', True)
+            authority = header_levels[name]
+            if isinstance(authority, tuple):
+                level, source = float(authority[0]), str(authority[1])
+            else:
+                level, source = float(authority), 'fits_SATURATE'
+            confidence, known = 'established', True
         elif rendered_uint8:
             level, source, confidence, known = 250., 'v8_uint8_compatibility', 'established', True
         elif np.issubdtype(decoded_dtype, np.integer):
@@ -244,9 +248,8 @@ def _read_fits(path, *, fits_hdu=None, channel_order=None):
             planes = {name: np.asarray(hdu.data).copy() for name, (_, hdu) in selected}
             records = [_fits_hdu_record(hdu, index, original_headers[index])
                        for _, (index, hdu) in selected]
-            levels = {name: original_headers[index]['SATURATE']
-                      for name, (index, hdu) in selected
-                      if 'SATURATE' in original_headers[index]}
+            plane_headers = {name: original_headers[index]
+                             for name, (index, _hdu) in selected}
             layout = 'named_extensions'
             exposure = _fits_exposure(original_headers,
                                       [index for _, (index, _) in selected])
@@ -255,14 +258,37 @@ def _read_fits(path, *, fits_hdu=None, channel_order=None):
             planes, layout = _split_array(values, channel_order=channel_order)
             records = [_fits_hdu_record(chosen, chosen_index, original_headers[chosen_index])]
             original = original_headers[chosen_index]
-            levels = ({name: original['SATURATE'] for name in planes}
-                      if 'SATURATE' in original else {})
+            plane_headers = {name: original for name in planes}
             exposure = _fits_exposure(original_headers, [chosen_index])
+        primary = original_headers[0]
+        levels = {}
+        black_levels = {}
+        for name, header in plane_headers.items():
+            sources = (header, primary) if header is not primary else (header,)
+            for candidate in sources:
+                specific = f'WHITE_{name}'
+                if specific in candidate:
+                    levels[name] = (candidate[specific], f'fits_{specific}')
+                    break
+                if 'WHITELEV' in candidate:
+                    levels[name] = (candidate['WHITELEV'], 'fits_WHITELEV')
+                    break
+                if 'SATURATE' in candidate:
+                    levels[name] = (candidate['SATURATE'], 'fits_SATURATE')
+                    break
+            for candidate in sources:
+                specific = f'BLACK_{name}'
+                if specific in candidate:
+                    black_levels[name] = float(candidate[specific])
+                    break
+                if 'BLACKLEV' in candidate:
+                    black_levels[name] = float(candidate['BLACKLEV'])
+                    break
         details = dict(decoder='astropy.io.fits', fits_hdus=records,
                        fits_hdu_selection=('named_colour_extensions' if selected is not None
                                            else str(chosen_index)),
                        exposure=exposure)
-        return planes, layout, details, levels
+        return planes, layout, details, levels, black_levels
 
 
 def _display(planes, rgb):
@@ -302,17 +328,31 @@ def load_scientific_image(path, *, fits_hdu=None, channel_order=None, saturation
     suffix = path.suffix.lower()
     fits_suffix = fits_image_suffix(path)
     if fits_suffix:
-        planes, layout, details, header_levels = _read_fits(
+        planes, layout, details, header_levels, black_levels = _read_fits(
             path, fits_hdu=fits_hdu, channel_order=channel_order)
         if suffix == '.bz2':
             details['source_compression'] = 'bz2'
         rendered_uint8 = False
         decoded_shape = ([len(planes), *next(iter(planes.values())).shape]
                          if len(planes) > 1 else list(next(iter(planes.values())).shape))
+    elif suffix == '.cr2':
+        from point_star_raw import decode_cr2
+        raw = decode_cr2(path)
+        planes = dict(raw.planes)
+        layout = 'bayer_cell_planes'
+        details = dict(raw.details)
+        exposure_seconds = details.get('exposure_seconds')
+        details['exposure'] = _exposure_record(exposure_seconds, 'cr2:ExposureTime')
+        header_levels = {name: (level, 'camera_raw_white_level')
+                         for name, level in raw.white_levels.items()}
+        black_levels = dict(raw.black_levels)
+        rendered_uint8 = False
+        decoded_shape = [len(planes), *next(iter(planes.values())).shape]
     else:
         array, details = _read_raster(path)
         planes, layout = _split_array(array, channel_order=channel_order)
         header_levels = {}
+        black_levels = {}
         rendered_uint8 = array.dtype == np.uint8
         decoded_shape = list(array.shape)
     details.setdefault('exposure', _exposure_record(None, None))
@@ -355,8 +395,13 @@ def load_scientific_image(path, *, fits_hdu=None, channel_order=None, saturation
         invalid_pixel_count=int((~valid).sum()), saturation=definitions,
         saturation_known=all(item['known'] for item in definitions.values()),
         effective_bit_depth=effective_bits,
-        black_level=dict(status='not_applied', level=None,
-                         reason='No trustworthy black-level metadata or explicit setting supplied'),
+        black_level=(dict(status='available_not_subtracted', levels=black_levels,
+                          source=('camera_raw_calibration' if suffix == '.cr2'
+                                  else 'fits_header'),
+                          reason='Native ADU preserved; local background estimation handles offsets')
+                     if black_levels else
+                     dict(status='not_applied', level=None,
+                          reason='No trustworthy black-level metadata or explicit setting supplied')),
         display_method=display_method, native_depth_preserved=True, **details)
     metadata['load_policy'] = dict(
         fits_hdu=fits_hdu, channel_order=channel_order,
