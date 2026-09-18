@@ -8,7 +8,11 @@
   `docs/v6-runtime.json` records every preserved runtime hash.
 - `go7.sh` and `go_v0.7.0.sh` run the frozen Gaia v0.7.0 package in `v7/`;
   `docs/v7-runtime.json` records every preserved runtime hash.
-- `go8.sh` and `go_v0.8.0.sh` run the current Gaia v0.8.0 package in `v8/`.
+- `go8.sh` and `go_v0.8.0.sh` run the frozen Gaia v0.8.0 package in `v8/`;
+  `docs/v8-runtime.json` records every preserved runtime hash.
+- `go8a.sh` runs the frozen independent v8a work snapshot in `v8a/`;
+  `docs/v8a-runtime.json` records every preserved runtime hash.
+- `go9.sh` and `go_v0.9.0.sh` run the current Gaia v0.9.0 package in `v9/`.
 - Every root legacy Python module, script, dependency lockfile, catalogue and
   historical example in `legacy-runtime.json` matches pre-Gaia commit `c023f1c`.
 - Gaia work is contained in `v4/`, including proper motions, blind stellar and
@@ -35,8 +39,8 @@ No v4 fixes are silently backported to the frozen Tycho runtime.
 
 ## Future work
 
-Change and test the current runtime in `v8/`; update its source manifest
-deliberately. Keep root legacy, v4, v5, v6 and v7 hashes fixed. Repointing a preserved
+Change and test the current runtime in `v9/`; update its source manifest
+deliberately. Keep root legacy, v4, v5, v6, v7, v8 and v8a hashes fixed. Repointing a preserved
 launcher requires an explicit decision, not merging a development branch over
 its runtime. CI and release verification cover all preserved suites and demos.
 

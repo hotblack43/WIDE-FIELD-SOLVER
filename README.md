@@ -4,21 +4,23 @@ by Peter Thejll and Chris Flynn
 
 Find stars in a wide-field image, identify them against a catalogue, fit the
 Barghini fish-eye lens model, and produce an annotated scientific report.
-This guide covers **`go.sh`, `go4.sh`, `go5.sh`, `go6.sh`, `go7.sh` and `go8.sh`**.
+This guide covers **`go.sh`, `go4.sh`, `go5.sh`, `go6.sh`, `go7.sh`, `go8.sh`,
+`go8a.sh`, and `go9.sh`**.
 
 ## 1. Choose a version
 
-| | `go.sh` — legacy | `go4.sh` — preserved v4 | `go5.sh` — preserved v5 | `go6.sh` — preserved v6 | `go7.sh` — preserved v7 | `go8.sh` — v8 |
-|---|---|---|---|---|---|---|
-| Use it for | Reproducing the established Tycho workflow | Reproducing Gaia v0.4.3 | Reproducing v0.5.0 | Reproducing v0.6.0 | Reproducing v0.7.0 | New analyses with count rates, saturated-wing models, Ceres and Vesta |
-| Stellar catalogue | Tycho-2/Hipparcos | Gaia DR3 plus bright supplement | Gaia DR3 plus bright supplement | Gaia DR3 plus bright supplement | Gaia DR3 plus bright supplement | Gaia DR3 plus bright supplement |
-| Planet analysis | Historical metadata-assisted diagnostics | Blind positional search | Blind search with absence evidence | Bundled reference and batched/parallel refinement | Metadata-conditioned local fit by default; full blind search by option/fallback | Adds local JPL Horizons Ceres/Vesta tracks and brightness |
-| Repeated runs | Replace previous output | New folder per run | New folder per run | New folder per run | New folder per run | New folder per run |
+| Launcher | Role | Distinguishing behavior |
+|---|---|---|
+| `go.sh` | Preserved legacy | Established Tycho-2/Hipparcos workflow |
+| `go4.sh` through `go7.sh` | Preserved Gaia releases | Historical v0.4.3 through v0.7.0 behavior |
+| `go8.sh` | Preserved v0.8.0 | Count rates, saturated-wing models, Ceres and Vesta |
+| `go8a.sh` | Preserved work snapshot | Adds compressed FITS and portable results storage to the v8 feature set |
+| `go9.sh` | Current v0.9.0 | Consolidates v8/v8a and leaves the zenith X unobscured by an on-image label |
 
-All six versions are included and accept monochrome and RGB images. You do not
+All versions are included and accept monochrome and RGB images. You do not
 need to switch branches or edit code. `go_v0.4.3.sh` selects the preserved v4
-release; `go_v0.5.0.sh`, `go_v0.6.0.sh`, `go_v0.7.0.sh` and `go_v0.8.0.sh`
-select v5, v6, v7 and v8.
+release; `go_v0.5.0.sh`, `go_v0.6.0.sh`, `go_v0.7.0.sh`, `go_v0.8.0.sh`, and
+`go_v0.9.0.sh` select v5, v6, v7, v8, and v9.
 The versioned
 packages each contain their own modules, catalogues and pinned dependencies.
 
@@ -38,6 +40,8 @@ uv sync --project v5 --frozen
 uv sync --project v6 --frozen
 uv sync --project v7 --frozen
 uv sync --project v8 --frozen
+uv sync --project v8a --frozen
+uv sync --project v9 --frozen
 ```
 
 The first setup needs internet access to download dependencies. The stellar
@@ -87,6 +91,12 @@ Run **one** of these commands from the repository root. Quote paths containing s
 ./go8.sh "/full/path/to/image.fits"
 ```
 
+**Gaia v0.9.0 (combined v8/v8a runtime):**
+
+```sh
+./go9.sh "/full/path/to/image.fits.bz2"
+```
+
 Each command prints the PDF report location when finished. The Gaia launchers
 also print their run folder and log location at startup. A complete run can take
 several minutes, especially when bootstrap or planetary searches need more work.
@@ -101,12 +111,14 @@ several minutes, especially when bootstrap or planetary searches need more work.
 | `go6.sh` | `results/runs/IMAGE-v0.6.0-TIMESTAMP-UNIQUE/analysis/` | A new folder is created; the run log is alongside `analysis/` |
 | `go7.sh` | `results/runs/IMAGE-v0.7.0-TIMESTAMP-UNIQUE/analysis/` | A new folder is created; the run log is alongside `analysis/` |
 | `go8.sh` | `results/runs/IMAGE-v0.8.0-TIMESTAMP-UNIQUE/analysis/` | A new folder is created; the run log is alongside `analysis/` |
+| `go8a.sh` | Selected results directory under `runs/` | A new folder is created; the database shares the selected results root |
+| `go9.sh` | Selected results directory under `runs/` | A new folder is created; the database shares the selected results root |
 
 `IMAGE_STEM` means the input filename without its extension.
-For `go4.sh` through `go8.sh`, open **`report.pdf`** in the printed output folder; its parent run
+For `go4.sh` through `go9.sh`, open **`report.pdf`** in the printed output folder; its parent run
 folder identifies the input image. Legacy `go.sh` retains its `report_*.pdf` name.
 
-The v6, v7 and v8 launchers automatically append every analysis to
+The v6, v7, v8, v8a, and v9 launchers automatically append every analysis to
 `results/stars.sqlite`. Repeated images and quality-flagged measurements all
 remain in the database; ordinary failures save their available partial results.
 See [database storage](v6/docs/DATABASE.md). This feature was added after the
@@ -243,7 +255,7 @@ For an advanced Gaia run, select its catalogue explicitly:
 
 `--offline` disables online display-name queries. It does not change the
 astrometric catalogue. Direct v4/v5 analysers default to Tycho when `--catalog`
-is omitted; both Gaia launchers always supply Gaia. Use `v4/` in the advanced
+is omitted; the versioned Gaia launchers always supply Gaia. Use `v4/` in the advanced
 command above for the preserved release.
 
 - [Legacy commands, report details and residual diagnostics](docs/LEGACY_GUIDE.md)
@@ -255,8 +267,9 @@ command above for the preserved release.
 - [Attribution and redistribution notice](NOTICE.md)
 
 The original `v0.1.0` tag and historical reference products are preserved.
-New changes stay in `v8/`. The legacy Tycho, v0.4.3, v0.5.0, v0.6.0 and v0.7.0 runtimes
-and launchers remain preserved; the [v4](docs/v4-runtime.json),
-[v5](docs/v5-runtime.json), [v6](docs/v6-runtime.json) and
-[v7](docs/v7-runtime.json) hash manifests record
+New changes stay in `v9/`. The legacy Tycho, v0.4.3, v0.5.0, v0.6.0, v0.7.0,
+v0.8.0, and v8a runtimes and launchers remain preserved; the
+[v4](docs/v4-runtime.json), [v5](docs/v5-runtime.json), [v6](docs/v6-runtime.json),
+[v7](docs/v7-runtime.json), [v8](docs/v8-runtime.json), and
+[v8a](docs/v8a-runtime.json) hash manifests record
 those checkpoints.

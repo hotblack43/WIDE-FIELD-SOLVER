@@ -163,6 +163,54 @@ class PreservedVersionTests(unittest.TestCase):
         self.assertEqual(tracked.returncode, 0,
                          'Every v8 manifest asset must exist in git archives:\n' + tracked.stderr)
 
+    def _assert_preserved_runtime(self, record_name, version, package, launchers):
+        record = json.loads((ROOT/'docs'/record_name).read_text())
+        self.assertEqual(record['version'], version)
+        tracked = set(subprocess.run(
+            ['git', 'ls-files', package], cwd=ROOT, check=True,
+            capture_output=True, text=True).stdout.splitlines())
+        expected = tracked | set(launchers)
+        self.assertEqual(set(record['sha256']), expected)
+        for name, expected_digest in record['sha256'].items():
+            with self.subTest(file=name):
+                self.assertEqual(
+                    hashlib.sha256((ROOT/name).read_bytes()).hexdigest(),
+                    expected_digest,
+                    f'Preserved {package} changed: develop upgrades under v9/')
+
+    def test_v8_runtime_and_launchers_match_v9_parent_checkpoint(self):
+        self._assert_preserved_runtime(
+            'v8-runtime.json', '0.8.0', 'v8', ('go8.sh', 'go_v0.8.0.sh'))
+
+    def test_v8a_runtime_and_launcher_match_v9_parent_checkpoint(self):
+        self._assert_preserved_runtime(
+            'v8a-runtime.json', '0.8.0', 'v8a', ('go8a.sh',))
+
+    def test_v9_manifest_covers_runtime_and_packaged_data(self):
+        record = json.loads((ROOT/'v9/SOURCE_MANIFEST.json').read_text())
+        self.assertEqual(record['version'], '0.9.0')
+        self.assertEqual(record['based_on_version'], '0.8.0')
+        files = record['sha256']
+        for name, expected in files.items():
+            with self.subTest(file=name):
+                self.assertEqual(hashlib.sha256((ROOT/'v9'/name).read_bytes()).hexdigest(),
+                                 expected)
+        runtime = {p.name for p in (ROOT/'v9').iterdir()
+                   if p.is_file() and p.suffix in ('.py', '.sh')}
+        self.assertEqual(runtime, {name for name in files
+                                  if '/' not in name and Path(name).suffix in ('.py', '.sh')})
+
+    def test_v9_package_and_launchers_are_tracked_for_clean_clones(self):
+        record = json.loads((ROOT/'v9/SOURCE_MANIFEST.json').read_text())
+        paths = ['v9/' + name for name in record['sha256']]
+        paths.extend(('v9/SOURCE_MANIFEST.json', 'go9.sh', 'go_v0.9.0.sh'))
+        tracked = subprocess.run(
+            ['git', 'ls-files', '--error-unmatch', '--', *paths], cwd=ROOT,
+            capture_output=True, text=True)
+        self.assertEqual(tracked.returncode, 0,
+                         'Every v9 runtime asset and launcher must exist in git clones:\n'
+                         + tracked.stderr)
+
 
 if __name__ == '__main__':
     unittest.main()
