@@ -93,6 +93,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--end", type=_date_value, help="exclusive site-local end date")
     parser.add_argument("--cadence", type=_duration_value, default="10m")
     parser.add_argument("--max-files", type=_positive_int, default=20)
+    parser.add_argument(
+        "--latest",
+        action="store_true",
+        help="select the newest cadence slots (intended for incremental cron runs)",
+    )
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--timeout", type=_positive_float, default=45.0)
@@ -193,7 +198,11 @@ def run(
         for site in sites:
             candidates.extend(adapter.list_candidates(client, site, ranges[(site.source_id, site.camera_id)]))
         selection = select_candidates(
-            candidates, ranges, parse_duration(args.cadence), args.max_files
+            candidates,
+            ranges,
+            parse_duration(args.cadence),
+            args.max_files,
+            newest=args.latest,
         )
         _print_selection(selection)
         if args.dry_run:

@@ -106,6 +106,24 @@ class CadenceTests(unittest.TestCase):
         )
         self.assertEqual(result.eligible_count, 1)
 
+    def test_newest_mode_keeps_last_slots_for_incremental_cron(self):
+        window = DateRange(
+            datetime(2026, 1, 1, tzinfo=UTC),
+            datetime(2026, 1, 2, tzinfo=UTC),
+        )
+        items = [
+            candidate("a", f"2026-01-01T00:{minute:02d}:00", f"https://x/{minute}.h5")
+            for minute in (0, 20, 40)
+        ]
+        result = select_candidates(
+            items,
+            {("trex_rgb", "a"): window},
+            timedelta(minutes=20),
+            max_files=1,
+            newest=True,
+        )
+        self.assertEqual([item.filename for item in result.candidates], ["40.h5"])
+
     def test_model_rejects_naive_timestamp_and_negative_size(self):
         with self.assertRaises(ValueError):
             Candidate("s", "c", datetime(2026, 1, 1), "raw", "https://x/a", "a", 1, {})

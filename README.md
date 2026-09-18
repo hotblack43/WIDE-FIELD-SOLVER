@@ -273,3 +273,74 @@ v0.8.0, and v8a runtimes and launchers remain preserved; the
 [v7](docs/v7-runtime.json), [v8](docs/v8-runtime.json), and
 [v8a](docs/v8a-runtime.json) hash manifests record
 those checkpoints.
+
+## Raw colour all-sky samples
+
+`download_samples.py` lists archive metadata first, applies deterministic time
+cadence and the absolute file cap, and only then downloads selected originals.
+The default cadence is ten minutes and never means “download everything”. A
+slot selects its earliest exposure; `--latest` retains the newest selected
+slots for incremental cron runs. Existing files are SHA-256 verified through
+`raw_allsky_samples/manifest.sqlite` and are not downloaded again.
+
+Inspect one MMTO night without downloading:
+
+```sh
+uv run --frozen python download_samples.py \
+  --site mmto --date 2026-09-18 --cadence 20m --max-files 20 --dry-run
+```
+
+Remove `--dry-run` to download those files. Select a half-open local-date range
+or a particular TREx camera with:
+
+```sh
+uv run --frozen python download_samples.py \
+  --site mmto --start 2026-09-01 --end 2026-09-03 \
+  --cadence 30m --max-files 20 --dry-run
+
+uv run --frozen python download_samples.py \
+  --site trex --camera luck_rgb-03 --date 2026-01-15 \
+  --cadence 30m --max-files 15 --dry-run
+```
+
+The one verified public Rubin CR2 is a static teaching sample rather than a
+continuous archive:
+
+```sh
+uv run --frozen python download_samples.py \
+  --site rubin --camera rubin-asc --date 2025-06-25 \
+  --cadence 1h --max-files 1 --dry-run
+```
+
+Inspect all downloaded originals without modifying them:
+
+```sh
+uv run --script inspect_allsky_samples.py
+```
+
+This deliberately keeps `rawpy` and `h5py` in the inspection script's isolated
+environment, outside every preserved solver runtime. Results go to
+`raw_allsky_samples/inspection.json`; display previews are derived products.
+See [the source audit](SOURCES.md) for exact URLs and scientific validation.
+
+### Cron-ready 20-minute acquisition
+
+One safe incremental MMTO cycle is:
+
+```sh
+uv run --frozen python run_raw_allsky_cron.py --site mmto --dry-run
+```
+
+After checking the dry run, omit `--dry-run`. The wrapper always uses a
+20-minute cadence, chooses the newest slot, and caps each invocation at one raw
+file. A suitable future crontab line is:
+
+```cron
+*/20 * * * * cd /home/pth/WORKSHOP/WIDE-FIELD-SOLVER && /usr/bin/flock -n /tmp/wide-field-raw-allsky-mmto.lock /home/pth/.local/bin/uv run --frozen python run_raw_allsky_cron.py --site mmto >> raw_allsky_samples/mmto-cron.log 2>&1
+```
+
+No cron entry is installed by this work. Rubin's continuous archive currently
+requires credentials, so `run_raw_allsky_cron.py --site rubin` exits with code
+3 rather than fetching a JPEG or pretending that the static sample is a live
+feed. `--moon-down` and `--sun-below` remain planned; site coordinates and UTC
+timestamps are already retained for them.

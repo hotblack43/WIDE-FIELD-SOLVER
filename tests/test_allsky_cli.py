@@ -114,6 +114,7 @@ class CliTests(unittest.TestCase):
         args = self.parse("--dry-run")
         self.assertEqual(args.cadence, "10m")
         self.assertEqual(args.max_files, 20)
+        self.assertFalse(args.latest)
 
     def test_date_and_range_are_mutually_exclusive(self):
         with self.assertRaises(SystemExit):

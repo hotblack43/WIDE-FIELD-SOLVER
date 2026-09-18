@@ -8,6 +8,7 @@ from typing import Any
 from .model import Site
 from .sources.common import SourceAdapter
 from .sources.mmto import MmtoAdapter
+from .sources.rubin import RubinPublicSamplesAdapter
 from .sources.trex_rgb import TrexRgbAdapter
 
 
@@ -96,4 +97,6 @@ class SourceRegistry:
             return MmtoAdapter(definition.archive_roots[0], definition.sites)
         if definition.adapter == "trex_rgb":
             return TrexRgbAdapter(definition.archive_roots[0], definition.sites)
+        if definition.adapter == "rubin_public_samples":
+            return RubinPublicSamplesAdapter(definition.archive_roots[0], definition.sites)
         raise ValueError(f"unsupported adapter kind: {definition.adapter}")

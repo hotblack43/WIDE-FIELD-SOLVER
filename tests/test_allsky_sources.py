@@ -8,6 +8,7 @@ from allsky_download.model import DateRange
 from allsky_download.registry import SourceRegistry, SourceUnavailableError
 from allsky_download.sources.common import parse_directory_index
 from allsky_download.sources.mmto import MmtoAdapter
+from allsky_download.sources.rubin import RubinPublicSamplesAdapter
 from allsky_download.sources.trex_rgb import TrexRgbAdapter
 
 
@@ -88,12 +89,47 @@ class SourceAdapterTests(unittest.TestCase):
         self.assertEqual(client.urls, [day, camera, hour])
 
     def test_unknown_camera_is_refused(self):
-        for adapter in (MmtoAdapter("https://example.test/"), TrexRgbAdapter("https://example.test/")):
+        for adapter in (MmtoAdapter("https://example.test/"), TrexRgbAdapter("https://example.test/"), RubinPublicSamplesAdapter("https://example.test/")):
             with self.subTest(adapter=type(adapter).__name__), self.assertRaises(ValueError):
                 adapter.sites("not-a-camera")
 
+    def test_rubin_public_sample_is_static_and_range_filtered(self):
+        adapter = RubinPublicSamplesAdapter("https://drive.usercontent.google.com/download")
+        site = adapter.sites("rubin-asc")[0]
+        requested = DateRange(
+            datetime(2025, 6, 25, 4, tzinfo=UTC),
+            datetime(2025, 6, 25, 5, tzinfo=UTC),
+        )
+        items = adapter.list_candidates(None, site, requested)
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0].filename, "asc2506240487.cr2")
+        self.assertEqual(items[0].size_bytes, 28412776)
+        self.assertIn("1rk3PsfuUj_9HG8YBR8T2doCgGvOYnBkr", items[0].url)
+        outside = DateRange(
+            datetime(2025, 6, 26, tzinfo=UTC),
+            datetime(2025, 6, 27, tzinfo=UTC),
+        )
+        self.assertEqual(adapter.list_candidates(None, site, outside), ())
+
 
 class RegistryTests(unittest.TestCase):
+    def test_repository_registry_records_evidence_based_source_statuses(self):
+        registry = SourceRegistry.from_json(Path(__file__).parents[1] / "sources.json")
+        statuses = {
+            source.source_id: source.status for source in registry.listed_sources()
+        }
+        self.assertEqual(
+            statuses,
+            {
+                "indi_allsky": "RAW NOT FOUND",
+                "mmto": "SUCCESS",
+                "oasi": "RAW NOT FOUND",
+                "presente": "ACCESS RESTRICTED",
+                "rubin": "SUCCESS",
+                "trex_rgb": "UNSUITABLE",
+            },
+        )
+
     def test_alias_resolution_and_unavailable_source(self):
         payload = {
             "schema_version": 1,

@@ -64,6 +64,8 @@ def select_candidates(
     ranges: Mapping[tuple[str, str], DateRange],
     cadence: timedelta,
     max_files: int,
+    *,
+    newest: bool = False,
 ) -> Selection:
     cadence_seconds = cadence.total_seconds()
     if cadence_seconds <= 0 or not math.isfinite(cadence_seconds):
@@ -98,7 +100,7 @@ def select_candidates(
             item.url,
         ),
     )
-    selected = tuple(eligible[:max_files])
+    selected = tuple(eligible[-max_files:] if newest else eligible[:max_files])
     return Selection(
         candidates=selected,
         eligible_count=len(eligible),
