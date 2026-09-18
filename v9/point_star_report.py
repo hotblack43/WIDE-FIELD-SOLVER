@@ -87,15 +87,11 @@ def _fmt(value, digits=3, missing='--'):
 
 
 def _planet_separation_text(row):
-    """Lead with the physical sky residual and retain pixels as a diagnostic."""
+    """Use an angular residual when available, otherwise the detector residual."""
     angular = row.get('separation_arcmin')
-    pixel = row.get('separation_px')
     if angular is not None:
-        text = f"{_fmt(angular, 2)} arcmin"
-        if pixel is not None:
-            text += f"; {_fmt(pixel, 2)} px"
-        return text
-    return f"{_fmt(pixel, 2)} px"
+        return f"{_fmt(angular, 2)} arcmin"
+    return f"{_fmt(row.get('separation_px'), 2)} px"
 
 
 def _fixed_time_label(planets):
@@ -103,21 +99,28 @@ def _fixed_time_label(planets):
     return 'FITS' if str(source).startswith('fits:') else 'metadata'
 
 
-def _independent_epoch_fit_summary(planets):
-    """Describe the free-date fit separately from fixed-time associations."""
-    selected = planets.get('matches') or []
-    candidates = planets.get('candidate_matches') or []
-    rows = selected or candidates
-    names = list(dict.fromkeys(row.get('planet', 'unknown') for row in rows))
-    if selected:
-        return (f"Independent epoch fit: {len(selected)}-planet candidate "
-                f"({', '.join(names)}); status "
-                f"{planets.get('status', 'unknown').replace('_', ' ')}.")
-    if len(names) == 1:
-        return (f"Independent epoch fit: one-planet {names[0]} candidate; "
-                "no multi-planet epoch-fit solution, so the epoch is not identifiable.")
-    return ("Independent epoch fit: no multi-planet epoch-fit solution; "
-            f"status {planets.get('status', 'unknown').replace('_', ' ')}.")
+def _strongest_planet_rows(rows):
+    """Keep the first (ranked strongest) association for each planet."""
+    strongest = {}
+    for row in rows:
+        name = row.get('planet')
+        if name and name not in strongest:
+            strongest[name] = row
+    return list(strongest.values())
+
+
+def _epoch_status_text(planets):
+    """Give the independent epoch result once, without repeating its audit trail."""
+    status = planets.get('status')
+    if status == 'planet_epoch_fitted':
+        epoch = planets.get('derived_epoch_utc', '--')
+        confidence = planets.get('confidence', 'unknown')
+        return f"Epoch: {epoch} ({confidence})."
+    if status in ('planet_epoch_ambiguous', 'conditional_planet_epoch'):
+        return 'Epoch: unresolved.'
+    if status == 'planet_epoch_not_identifiable':
+        return 'Epoch: not identifiable.'
+    return ''
 
 
 def _camera_from_result(result):
@@ -146,46 +149,33 @@ def report_sections(result, science=None, **legacy):
     planets = science.get('planets') or {}
 
     lens = (
-        f"Barghini O/Z FET fit using {fit['count']:,} catalogue stars. "
-        f"The optical centre is O=({_fmt(p['x_o'], 1)}, {_fmt(p['y_o'], 1)}) px and "
-        f"the fitted reference point is Z=({_fmt(p['x_z'], 1)}, {_fmt(p['y_z'], 1)}) px. "
-        f"The radial law u(r)=Vr+S[exp(Dr)-1] has V={p['v']:.6g} rad px⁻¹, "
-        f"S={p['s']:.6g} rad and D={p['d']:.6g} px⁻¹. "
-        f"The fitted transform uses {detector_parity} detector parity."
+        f"Barghini O/Z FET: {fit['count']:,} stars; "
+        f"O=({_fmt(p['x_o'], 1)}, {_fmt(p['y_o'], 1)}) px; "
+        f"Z=({_fmt(p['x_z'], 1)}, {_fmt(p['y_z'], 1)}) px; "
+        f"{detector_parity} detector parity."
     )
     if stellar.get('status') == 'not_identifiable':
-        epoch_text = (
-            f"The stellar epoch is unresolved. The saved solution uses the provisional adopted "
-            f"epoch J{_fmt(stellar.get('applied_epoch_jyear'), 1)}. "
-            "The profile minimum is not an established observation date."
-        )
+        epoch_text = f"Stellar epoch: unresolved/not identifiable; provisional J{_fmt(stellar.get('applied_epoch_jyear'), 1)}."
     elif stellar.get('status') == 'supplied_epoch':
-        epoch_text = (
-            f"Proper motions were applied at supplied epoch J{_fmt(stellar.get('applied_epoch_jyear'), 1)}; "
-            "this date was not inferred from the stars."
-        )
+        epoch_text = f"Stellar epoch: supplied J{_fmt(stellar.get('applied_epoch_jyear'), 1)}."
     elif stellar.get('status') == 'conditional_epoch':
         interval = stellar.get('conditional_interval_95_jyear', [None, None])
-        epoch_text = (
-            f"The conditional stellar epoch is J{_fmt(stellar.get('epoch_jyear'), 2)}, "
-            f"with approximate conditional 95% interval {_fmt(interval[0], 2)} to {_fmt(interval[1], 2)}. "
-            f"All {stellar.get('fitted_count', 0)} associations enter the fit. "
-            "This interval excludes catalogue and lens/atmospheric systematic errors."
-        )
+        epoch_text = f"Stellar epoch: conditional J{_fmt(stellar.get('epoch_jyear'), 2)}"
+        if interval[0] is not None and interval[1] is not None:
+            epoch_text += f" (95% {_fmt(interval[0], 2)}–{_fmt(interval[1], 2)})"
+        epoch_text += '.'
     else:
-        epoch_text = 'The stellar proper-motion epoch analysis has not been run.'
+        epoch_text = 'Stellar epoch: not run.'
     if fit.get('rms_arcmin') is not None:
         residual_text = (
-            f"Sky residuals are RMS {_fmt(fit['rms_arcmin'])} arcmin, median "
-            f"{_fmt(fit['median_arcmin'])} arcmin and 90th percentile "
-            f"{_fmt(fit['p90_arcmin'])} arcmin. Corresponding detector residuals are RMS "
-            f"{_fmt(fit['rms_px'])} px, median {_fmt(fit['median_px'])} px and 90th percentile "
-            f"{_fmt(fit['p90_px'])} px. "
+            f"Residuals: RMS {_fmt(fit['rms_arcmin'])} arcmin ({_fmt(fit['rms_px'])} px), "
+            f"median {_fmt(fit['median_arcmin'])} ({_fmt(fit['median_px'])} px), "
+            f"p90 {_fmt(fit['p90_arcmin'])} ({_fmt(fit['p90_px'])} px). "
         )
     else:
         residual_text = (
-            f"Detector residuals are RMS {_fmt(fit['rms_px'])} px, median "
-            f"{_fmt(fit['median_px'])} px and 90th percentile {_fmt(fit['p90_px'])} px. "
+            f"Residuals: RMS {_fmt(fit['rms_px'])} px, median "
+            f"{_fmt(fit['median_px'])} px, p90 {_fmt(fit['p90_px'])} px. "
         )
     astrometry = residual_text+epoch_text
 
@@ -193,145 +183,97 @@ def report_sections(result, science=None, **legacy):
     if refraction:
         status = refraction.get('status', 'unknown').replace('_', ' ')
         atmosphere = (
-            f"The empirical refraction fit has status “{status}”. Its tangent coefficients are "
+            f"Refraction: {status}; "
             f"A={_fmt(refraction.get('refraction_a_arcsec'), 2)} arcsec and "
             f"B={_fmt(refraction.get('refraction_b_arcsec'), 3)} arcsec, with ΔBIC "
-            f"{_fmt(refraction.get('delta_bic'), 1)}. The baseline/fitted RMS values are "
-            f"{_fmt(refraction.get('baseline_rms_arcmin'), 2)}/"
-            f"{_fmt(refraction.get('fitted_rms_arcmin'), 2)} arcmin."
+            f"{_fmt(refraction.get('delta_bic'), 1)}."
         )
     else:
-        atmosphere = 'The empirical refraction fit has not been run.'
+        atmosphere = 'Refraction: not run.'
     if photometric_zenith:
         zenith_status = photometric_zenith.get('status', 'unknown').replace('_', ' ')
         if photometric_zenith.get('zenith_source') == 'centred_full_horizon_geometry':
-            atmosphere += (f" Blind photometric zenith: {zenith_status}. The adopted image-centre geometric zenith "
-                           'comes from the closed circular sky footprint; the extinction trial remains not '
-                           'identifiable, so its airmasses are provisional.')
+            atmosphere += (' Zenith: image-centre geometric zenith; the extinction trial remains not '
+                           'identifiable; airmass provisional.')
         else:
-            atmosphere += (f" Blind photometric zenith: {zenith_status}. "
-                           'Extinction is a constraint; unresolved zenith gives provisional airmasses.')
+            atmosphere += f" Zenith: {zenith_status}; airmass provisional."
     if extinction_by_channel:
         channel_values = ', '.join(
-            f"{channel}: {_fmt(values.get('coefficient_mag_per_airmass'))}±"
+            f"k{channel}={_fmt(values.get('coefficient_mag_per_airmass'))}±"
             f"{_fmt(values.get('coefficient_sigma_mag_per_airmass'))}"
             for channel, values in extinction_by_channel.items())
         representative = extinction_by_channel.get('G') or next(iter(extinction_by_channel.values()))
-        image_kind = (photometry.get('image_colour') or {}).get('classification', 'unknown')
         atmosphere += (
-            f" The {image_kind.replace('_', ' ')} image gives extinction slopes "
-            f"k [mag per airmass] of {channel_values}, from "
-            f"{representative.get('fitted_count', 0)} stars over X="
+            f" Extinction: {channel_values} mag/airmass "
+            f"(N={representative.get('fitted_count', 0)}, X="
             f"{_fmt(representative.get('airmass_range', [None, None])[0], 2)}–"
-            f"{_fmt(representative.get('airmass_range', [None, None])[1], 2)}."
+            f"{_fmt(representative.get('airmass_range', [None, None])[1], 2)})."
         )
     elif extinction:
         atmosphere += (
-            f" The extinction slope is k={_fmt(extinction.get('coefficient_mag_per_airmass'))}±"
+            f" Extinction: k={_fmt(extinction.get('coefficient_mag_per_airmass'))}±"
             f"{_fmt(extinction.get('coefficient_sigma_mag_per_airmass'))} mag per airmass."
         )
     else:
-        atmosphere += ' The image lacks a usable airmass-based extinction fit.'
+        atmosphere += ' Extinction: unavailable.'
 
     metadata_matches = planets.get('metadata_matches') or []
     selected_matches = planets.get('matches') or []
     metadata_only = bool(metadata_matches)
     candidate_only = not metadata_only and not selected_matches and bool(planets.get('candidate_matches'))
     matches = metadata_matches or selected_matches or planets.get('candidate_matches') or []
-    metadata_conditioned = bool(planets.get('metadata_used'))
-    planet_prefix = ('Metadata-conditioned positional candidates'
-                     if metadata_conditioned else 'Blind positional candidates')
-    identity_alternatives = planets.get('surviving_source_identity_alternatives',
-                                       planets.get('source_identity_alternatives', {}))
+    epoch_rows = _strongest_planet_rows(selected_matches or planets.get('candidate_matches') or [])
     if metadata_only:
-        metadata = planets.get('observation_time_metadata') or {}
         time_label = _fixed_time_label(planets)
-        match_word = 'match' if len(matches) == 1 else 'matches'
-        descriptions = [
-            f"{row['planet']} at source #{row['detection_id']} "
-            f"({_planet_separation_text(row)}; source brightness rank "
-            f"{row.get('unused_brightness_rank', '--')})"
-            for row in matches
-        ]
-        planet_text = (
-            f"Separate fixed-time association ({time_label}-time): {len(matches)} "
-            f"measured-source {match_word} "
-            f"at the fixed {time_label} time: {'; '.join(descriptions)}. "
-            f"Each exact ephemeris position at {metadata.get('time_utc', '--')} from "
-            f"{metadata.get('source', '--')} is associated with its measured source. "
-            "This metadata-conditioned identity does not infer the epoch from the image. "
-            f"{_independent_epoch_fit_summary(planets)} ")
+        statements = []
+        fixed_rows = _strongest_planet_rows(matches)
+        fixed_names = {row['planet'] for row in fixed_rows}
+        epoch_by_name = {row['planet']: row for row in epoch_rows}
+        for row in fixed_rows:
+            qualifier = ''
+            epoch_row = epoch_by_name.get(row['planet'])
+            if epoch_row is not None:
+                fixed_id = row.get('detection_id')
+                epoch_id = epoch_row.get('detection_id')
+                if fixed_id is not None and fixed_id == epoch_id:
+                    qualifier = ('; sole epoch-fit candidate' if len(epoch_rows) == 1
+                                 else '; epoch-fit candidate')
+                else:
+                    qualifier = '; separate epoch-fit candidate'
+            statements.append(
+                f"{row['planet']}: {time_label}-time match, {_planet_separation_text(row)}{qualifier}.")
+        statements.extend(
+            f"{row['planet']}: epoch-fit candidate, {_planet_separation_text(row)}."
+            for row in epoch_rows if row['planet'] not in fixed_names)
+        planet_text = ' '.join(statements)
+        epoch_text = _epoch_status_text(planets)
+        if epoch_text:
+            planet_text += f" {epoch_text}"
     elif candidate_only:
-        descriptions = [
-            f"{row['planet']} candidate at source #{row['detection_id']} "
-            f"({_planet_separation_text(row)}; source brightness rank "
-            f"{row.get('unused_brightness_rank', '--')})"
-            for row in matches
-        ]
-        planet_text = (
-            f"{planet_prefix}: {'; '.join(descriptions)}. "
-            f"Planetary epoch not identifiable: {planets.get('single_planet_candidate_count', 0)} "
-            "single-planet date/identity aliases retained; no multi-planet solution. "
-            "The label is a positional identity candidate, not a confirmed epoch. "
-            "See planet_candidates.csv and planet_source_candidates.csv.")
+        planet_text = ' '.join(
+            f"{row['planet']}: positional candidate, {_planet_separation_text(row)}."
+            for row in _strongest_planet_rows(matches))
+        planet_text += f" {_epoch_status_text(planets)}"
     elif matches:
-        descriptions = [
-            f"{row['planet']} at source #{row['detection_id']} "
-            f"({_planet_separation_text(row)}; source brightness rank "
-            f"{row.get('unused_brightness_rank', '--')})"
-            for row in matches
-        ]
-        if planets.get('status') in ('planet_epoch_ambiguous', 'conditional_planet_epoch'):
-            planet_text = (
-                f"{planet_prefix}: {'; '.join(descriptions)}. "
-                + (f"Alternative identities: {', '.join(sorted({name for values in identity_alternatives.values() for name in values}))}. "
-                   if identity_alternatives else '') +
-                f"Best candidate: {planets.get('best_candidate_epoch_tdb', '--')}. "
-                f"{planets.get('candidate_count', 0)} date/identity solutions retained. "
-                f"Status: {planets['status'].replace('_', ' ')}. "
-                "Local precision does not resolve alternative dates or model errors. "
-                "See planet_candidates.csv and planet_source_candidates.csv.")
-        else:
-            planet_text = (
-                f"{'; '.join(descriptions)}. The planet-derived epoch is "
-                f"{planets.get('derived_epoch_utc', '--')} with {planets.get('confidence', 'unknown')} "
-                f"confidence and conditional local σ={_fmt(planets.get('conditional_time_sigma_minutes'), 1)} min. "
-                f"There are {planets.get('competing_daily_minima', 0)} competing daily minima in the search interval."
-            )
+        planet_text = ' '.join(
+            f"{row['planet']}: epoch-fit match, {_planet_separation_text(row)}."
+            for row in _strongest_planet_rows(matches))
+        epoch_text = _epoch_status_text(planets)
+        if epoch_text:
+            planet_text += f" {epoch_text}"
     elif planets.get('status') == 'planet_epoch_not_identifiable':
-        planet_text = (
-            f"Planetary epoch not identifiable: {planets.get('single_planet_candidate_count', 0)} "
-            "single-planet date/identity aliases retained; no multi-planet solution. "
-            "See planet_candidates.csv and planet_source_candidates.csv.")
+        planet_text = 'Epoch: not identifiable.'
     elif planets.get('status') == 'no_planet_match':
-        planet_text = 'No competitive planet match survived the measured-source and catalogue checks.'
+        planet_text = 'No competitive planet match.'
+    elif planets.get('status') == 'planet_epoch_inconsistent' and planets.get('solar_evidence'):
+        solar = planets['solar_evidence']
+        night = (planets.get('night_classification') or {}).get('status')
+        night_text = ('; stellar field treated as nighttime'
+                      if night == 'night_supported' else '')
+        planet_text = (f"Epoch: rejected. Solar geometry excludes "
+                       f"{solar.get('rejected_candidates', 0)} candidate dates{night_text}.")
     else:
         planet_text = planets.get('reason', 'A blind planetary epoch has not been established.')
-    if metadata_conditioned:
-        metadata = planets.get('observation_time_metadata') or {}
-        planet_text += (
-            f" Metadata time {metadata.get('time_utc', '--')} from "
-            f"{metadata.get('source', '--')} constrained the local search; "
-            "this is not blind epoch inference.")
-        accuracy = planets.get('metadata_accuracy') or {}
-        if accuracy.get('planet_minus_metadata_seconds') is not None:
-            planet_text += (
-                f" Locally fitted planetary epoch minus metadata: "
-                f"{_fmt(accuracy['planet_minus_metadata_seconds'], 1)} s "
-                f"(absolute error {_fmt(accuracy.get('absolute_timing_error_seconds'), 1)} s), "
-                "conditional on the metadata-supplied local interval.")
-    evidence = planets.get('negative_evidence') or {}
-    if evidence.get('contradicted_candidates'):
-        planet_text += (f" Bright-planet absence checks contradict {evidence['contradicted_candidates']} positional candidates; "
-                        'details in planet_non_detections.json. This is a local consistency check, not calibrated odds.')
-    solar = planets.get('solar_evidence') or {}
-    if solar:
-        night = (planets.get('night_classification') or {}).get('status')
-        planet_text += (' Identified stellar field treated as nighttime. ' if night == 'night_supported'
-                        else ' Nighttime condition unresolved. ')
-        planet_text += (f"Solar geometry excludes {solar['rejected_candidates']} candidate dates; "
-                        f"{solar['unresolved_candidates']} remain solar-unresolved. "
-                        'See planet_solar_evidence.json.')
     return dict(lens=lens, astrometry=astrometry, atmosphere=atmosphere, planets=planet_text)
 
 

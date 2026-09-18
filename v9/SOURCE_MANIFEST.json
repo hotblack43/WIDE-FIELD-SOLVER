@@ -7,7 +7,8 @@
     "Retain exposure-normalized source count rates, Ceres/Vesta ephemerides and evidence, saturated-source astrometry, and per-channel masked Moffat-wing diagnostics.",
     "Retain bz2-compressed FITS input, exact supplied-time planet/source association, portable results storage, and append-only SQLite recording.",
     "Keep the exact saved zenith red-X marker and legend entry while omitting its marker-attached on-image text label; numerical products are unchanged.",
-    "Use great-circle arcminute gates throughout planet association and recover significant metadata-predicted peaks rejected only by undersampled morphology, without admitting them to stellar astrometry."
+    "Use great-circle arcminute gates throughout planet association and recover significant metadata-predicted peaks rejected only by undersampled morphology, without admitting them to stellar astrometry.",
+    "Compress page-one interpretation prose while retaining numerical tables and one strongest measured statement per planet; distinguish fixed-time associations from the independent epoch fit."
   ],
   "sha256": {
     ".gitignore": "30fb581ec5cf1746fd5acf8749dceab068368f8375be97242e323a93e1baf5f8",
@@ -94,7 +95,7 @@
     "point_star_planets.py": "b3f845a2b71d62bb0495ef1a6727bb95b6cbbc6916b43bdd39fc40759461b761",
     "point_star_plotting.py": "530e87c10137c9b0e5f91ce1946de2b3783fa80eb330e3cebf5d41b050a1a876",
     "point_star_refraction.py": "440a7104ecb020094f176274c2c0c76c05a5a28e8490f490ad4fbaf88abe71f0",
-    "point_star_report.py": "171824bdb4eecc708f50780688d83572b0196ac6ae57fec7e6cf664bee69ed75",
+    "point_star_report.py": "69fd03cc86c376aa0fbf6bd2d7f1d37ebf6781063f2ae5216802e761ef4f7787",
     "point_star_science.py": "ff0e3d7bff3e47c4c790058b1ab3c85841bfc07fa4110c1ad837005261af0e82",
     "point_star_time_bounds.py": "ba233c34f1656b4555962fcc9e1eb6ada17d746f532eb2abb345c6f0c419b5a3",
     "point_star_zenith.py": "b0617a53a6dfaad67e16d0c64058bc53b8a2e94d1377150a536c15a34ddd77bf",
@@ -136,7 +137,7 @@
     "test_point_star_planet_refinement.py": "d58a42b19e305ebe2d7dfd008e8fd0ee86842c4c936c1e45e234bbb7082974c7",
     "test_point_star_planets.py": "78f14e95d3986c7acde4ec8ec54292d02aa6e5fbc28ec6db240aaea355583e41",
     "test_point_star_plotting.py": "83ff2f7745410e43341ef688ca8a769a678437047011c0977889663fc6bf95c1",
-    "test_point_star_report.py": "aa393e5288a74e27580872d84a06d611864d2149fa96cfb6595740df18c78e57",
+    "test_point_star_report.py": "1c22db48bcb4b0383417de32ca1b369bc3363e81b4d288886969727978ef79e7",
     "test_point_star_science.py": "c2fefdc8eb542caec6bdce5f7a6b54b930275400a09febc636acee19f2dda3ab",
     "test_point_star_time_bounds.py": "f4883bea1712726bab4d135cf4d0eb6457effb6d8e3c3bc2cbe9e52180658b7c",
     "test_point_star_zenith.py": "17bd1349dfc4308da824a95f3c0f3bd632224dc8d008724815e7a3516b8c494b",

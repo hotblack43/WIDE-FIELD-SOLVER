@@ -220,13 +220,7 @@ class ReportTests(unittest.TestCase):
         science = {'planets': planets}
         text = report_sections(self.sample_result(), science)['planets']
         row = dict(table_rows(self.sample_result(), science))['Planet epoch']
-        self.assertIn('Metadata-conditioned', text)
-        self.assertIn('2018-09-16T00:13:55.000 UTC', text)
-        self.assertIn('fits:PRIMARY:DATE-OBS', text)
-        self.assertIn('1.25 arcmin; 0.40 px', text)
-        self.assertIn('-42.5 s', text)
-        self.assertIn('conditional on the metadata-supplied local interval', text)
-        self.assertNotIn('Blind positional candidates', text)
+        self.assertEqual(text, 'Mars: epoch-fit match, 1.25 arcmin. Epoch: unresolved.')
         self.assertIn('Metadata-conditioned', row)
 
     def test_missing_original_preserves_rendered_fallback_without_detector_labels(self):
@@ -285,6 +279,7 @@ class ReportTests(unittest.TestCase):
         self.assertIn('2026-09-13T22:00:00 UTC', with_planet['planets'])
         self.assertIn('Jupiter', with_planet['planets'])
         self.assertIn('single_planet_candidate', with_planet['planets'])
+        self.assertLessEqual(len(with_planet['planets'].split()), 16)
 
     def test_single_planet_aliases_are_reported_as_not_identifiable(self):
         from point_star_report import table_rows
@@ -297,8 +292,7 @@ class ReportTests(unittest.TestCase):
             'reason': 'Only single-planet aliases remain; no planetary epoch is identifiable.'}}
         text = report_sections(self.sample_result(), science)['planets']
         self.assertIn('not identifiable', text.lower())
-        self.assertIn('Jupiter candidate at source #1', text)
-        self.assertIn('12', text)
+        self.assertEqual(text, 'Jupiter: positional candidate, 0.10 px. Epoch: not identifiable.')
         self.assertNotIn('None', text)
         row = dict(table_rows(self.sample_result(), science))['Planet epoch']
         self.assertIn('Not identifiable', row)
@@ -351,9 +345,7 @@ class ReportTests(unittest.TestCase):
                 'source': 'fits:PRIMARY:DATE-OBS'},
         }
         text = report_sections(self.sample_result(), {'planets': answer})['planets']
-        self.assertIn('Jupiter at source #1', text)
-        self.assertIn('FITS-time', text)
-        self.assertIn('does not infer the epoch', text)
+        self.assertEqual(text, 'Jupiter: FITS-time match, 0.17 px. Epoch: not identifiable.')
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             Image.new('RGB', (120, 100)).save(root/'source.png')
@@ -401,14 +393,70 @@ class ReportTests(unittest.TestCase):
         text = report_sections(self.sample_result(), {'planets': planets})['planets']
         row = dict(table_rows(self.sample_result(), {'planets': planets}))['Planet epoch']
 
-        self.assertIn('2 measured-source matches at the fixed FITS time', text)
-        self.assertIn('Each exact ephemeris position', text)
-        self.assertIn('its measured source', text)
-        self.assertIn('one-planet Jupiter candidate', text)
-        self.assertIn('no multi-planet epoch-fit solution', text)
+        self.assertEqual(
+            text,
+            'Jupiter: FITS-time match, 1.23 arcmin; sole epoch-fit candidate. '
+            'Uranus: FITS-time match, 0.35 arcmin. Epoch: not identifiable.')
+        self.assertEqual(text.count('Jupiter'), 1)
+        self.assertEqual(text.count('Uranus'), 1)
+        self.assertNotIn('source #', text)
+        self.assertNotIn('brightness rank', text)
+        self.assertNotIn('2026-01-15', text)
+        self.assertNotIn('px', text)
+        self.assertLessEqual(len(text.split()), 18)
         self.assertEqual(row,
                          'Epoch fit: Jupiter only, unresolved; fixed FITS: Jupiter + Uranus')
-        self.assertNotIn('1 single-planet aliases', text)
+
+    def test_page_one_interpretation_blocks_are_strongly_compacted(self):
+        result = self.sample_result()
+        result['camera']['detector_parity'] = 'mirrored'
+        result['fit'].update(rms_arcmin=2.502, median_arcmin=1.738, p90_arcmin=3.933)
+        science = {
+            'stellar_epoch': {'status': 'conditional_epoch', 'epoch_jyear': 2006.1,
+                              'fitted_count': 1380},
+            'refraction': {'status': 'not_identifiable', 'refraction_a_arcsec': 0.3,
+                           'refraction_b_arcsec': -0.002, 'delta_bic': -4.1},
+            'photometry': {
+                'photometric_zenith': {'status': 'not_identifiable'},
+                'extinction_by_channel': {
+                    channel: {'coefficient_mag_per_airmass': value,
+                              'coefficient_sigma_mag_per_airmass': .01,
+                              'fitted_count': 1377, 'airmass_range': [1., 2.5]}
+                    for channel, value in zip('RGB', (.20, .21, .24))}},
+            'planets': {'status': 'no_planet_match', 'matches': []},
+        }
+
+        sections = report_sections(result, science)
+
+        self.assertLessEqual(len((sections['lens']+' '+sections['astrometry']).split()), 55)
+        self.assertLessEqual(len(sections['atmosphere'].split()), 45)
+        self.assertIn('mirrored detector parity', sections['lens'])
+        self.assertIn('RMS 2.502 arcmin', sections['astrometry'])
+        self.assertIn('kR=', sections['atmosphere'])
+        self.assertIn('kG=', sections['atmosphere'])
+        self.assertIn('kB=', sections['atmosphere'])
+
+    def test_compact_planet_text_does_not_merge_different_source_associations(self):
+        planets = {
+            'status': 'planet_epoch_not_identifiable',
+            'candidate_matches': [
+                {'planet': 'Jupiter', 'detection_id': 9, 'separation_arcmin': .6},
+                {'planet': 'Saturn', 'detection_id': 3, 'separation_arcmin': .8},
+                {'planet': 'Saturn', 'detection_id': 4, 'separation_arcmin': 1.1}],
+            'metadata_matches': [
+                {'planet': 'Jupiter', 'detection_id': 1, 'separation_arcmin': 1.2}],
+            'observation_time_metadata': {'source': 'fits:PRIMARY:DATE-OBS'},
+        }
+
+        text = report_sections(self.sample_result(), {'planets': planets})['planets']
+
+        self.assertEqual(
+            text,
+            'Jupiter: FITS-time match, 1.20 arcmin; separate epoch-fit candidate. '
+            'Saturn: epoch-fit candidate, 0.80 arcmin. Epoch: not identifiable.')
+        self.assertEqual(text.count('Jupiter'), 1)
+        self.assertEqual(text.count('Saturn'), 1)
+        self.assertNotIn('1.10 arcmin', text)
 
     def test_collector_manifest_supplies_epoch_and_orm_site(self):
         with tempfile.TemporaryDirectory() as directory:
