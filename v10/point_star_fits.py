@@ -32,17 +32,64 @@ def sky_degrees(rays):
                  np.rad2deg(np.arctan2(rays[:, 2], np.hypot(rays[:, 0], rays[:, 1])))]
 
 
-def validated_header(camera):
-    """Fit only the inverse radial mapping; independently verify the whole detector."""
+def _domain_positions(mask, q):
+    """Deterministically sample a saved pixel mask and its boundary."""
+    h, w = mask.shape
+    gx, gy = np.meshgrid(np.linspace(0, w-1, 137), np.linspace(0, h-1, 131))
+    grid = np.c_[gx.ravel(), gy.ravel()]
+    grid_indices = np.rint(grid).astype(int)
+    grid = grid[mask[grid_indices[:, 1], grid_indices[:, 0]]]
+    interior = mask.copy()
+    interior[0] = interior[-1] = False
+    interior[:, 0] = interior[:, -1] = False
+    interior[1:-1, 1:-1] &= (mask[:-2, 1:-1] & mask[2:, 1:-1]
+                              & mask[1:-1, :-2] & mask[1:-1, 2:])
+    by, bx = np.nonzero(mask & ~interior)
+    if len(bx) > 4096:
+        indices = np.linspace(0, len(bx)-1, 4096).astype(int)
+        bx, by = bx[indices], by[indices]
+    points = [grid, np.c_[bx, by], np.array([[q.x_o, q.y_o], [q.x_z, q.y_z]])]
+    return np.unique(np.vstack(points), axis=0), int(len(grid)), int(len(bx))
+
+
+def validated_header(camera, valid_mask=None):
+    """Fit the inverse radial mapping and validate its declared pixel domain."""
     q = camera.physical
     h, w = camera.shape
-    corners = np.array([[0, 0], [w-1, 0], [0, h-1], [w-1, h-1]])
-    rmax = np.linalg.norm(corners - [q.x_o, q.y_o], axis=1).max()
+    restricted = valid_mask is not None
+    if restricted:
+        mask = np.asarray(valid_mask, dtype=bool)
+        if mask.shape != (h, w):
+            raise ValueError(f'Saved sky-footprint shape {mask.shape} does not match image {(h, w)}')
+        if not mask.any():
+            raise ValueError('Saved sky-footprint contains no valid sky pixels')
+        yy, xx = np.nonzero(mask)
+        rmax = float(np.hypot(xx-q.x_o, yy-q.y_o).max())
+        xy, grid_count, boundary_count = _domain_positions(mask, q)
+        within = np.hypot(xy[:, 0]-q.x_o, xy[:, 1]-q.y_o) <= rmax+1e-9
+        xy = xy[within]
+        domain = 'saved image-derived sky footprint'
+        excluded = int(mask.size-mask.sum())
+        valid_count = int(mask.sum())
+    else:
+        corners = np.array([[0, 0], [w-1, 0], [0, h-1], [w-1, h-1]])
+        rmax = float(np.linalg.norm(corners - [q.x_o, q.y_o], axis=1).max())
+        gx, gy = np.meshgrid(np.linspace(0, w-1, 137), np.linspace(0, h-1, 131))
+        edge_x, edge_y = np.linspace(0, w-1, 1027), np.linspace(0, h-1, 1027)
+        xy = np.vstack([np.c_[gx.ravel(), gy.ravel()], np.c_[edge_x, edge_x*0],
+                        np.c_[edge_x, edge_x*0+h-1], np.c_[edge_y*0, edge_y],
+                        np.c_[edge_y*0+w-1, edge_y],
+                        [[q.x_o, q.y_o], [q.x_z, q.y_z]]])
+        domain = 'whole detector rectangle including edges'
+        excluded = 0
+        valid_count = h*w
+        grid_count, boundary_count = int(gx.size), int(4*len(edge_x))
     radii = np.linspace(0., rmax, 1025)
     angles = radial_u(radii, q.v, q.s, q.d)
     if not (np.isfinite(angles).all() and np.all(radial_du_dr(radii, q.v, q.s, q.d) > 0)
             and 0 < angles[-1] < np.pi):
-        raise ValueError('Whole-detector radial domain is not invertible within 180 degrees')
+        label = 'Saved sky-footprint' if restricted else 'Whole-detector'
+        raise ValueError(f'{label} radial domain is not invertible within 180 degrees')
     scale = q.v + q.s*q.d
     g = np.empty_like(angles)
     g[0] = -q.s*q.d*q.d/(2*scale*scale)
@@ -56,11 +103,6 @@ def validated_header(camera):
     east = [-np.sin(ra), np.cos(ra), 0.]
     north = [-np.sin(dec)*np.cos(ra), -np.sin(dec)*np.sin(ra), np.cos(dec)]
     cd = np.rad2deg(scale)*np.array([east, north]) @ tangent.T
-    gx, gy = np.meshgrid(np.linspace(0, w-1, 137), np.linspace(0, h-1, 131))
-    edge_x, edge_y = np.linspace(0, w-1, 1027), np.linspace(0, h-1, 1027)
-    xy = np.vstack([np.c_[gx.ravel(), gy.ravel()], np.c_[edge_x, edge_x*0],
-                    np.c_[edge_x, edge_x*0+h-1], np.c_[edge_y*0, edge_y],
-                    np.c_[edge_y*0+w-1, edge_y], [[q.x_o, q.y_o], [q.x_z, q.y_z]]])
     truth = sky_degrees(camera.to_sky(xy))
     check_r = np.linspace(0, rmax, 100003)
     check_u = radial_u(check_r, q.v, q.s, q.d)
@@ -109,10 +151,15 @@ def validated_header(camera):
             header['ZPNERR'] = (maximum, 'Maximum added error on validation samples, px')
             header['ZPNLIM'] = (LIMIT_PX, 'Required maximum added error, px')
             header['ZPNRMAX'] = float(rmax)
+            if restricted:
+                header['WFSVALID'] = ('SKYMASK', 'Validity map in annotated FITS')
             header['HISTORY'] = 'Original decoded pixels; no resampling or astrometric refit.'
             return header, dict(order=order, maximum_error_px=maximum, threshold_px=LIMIT_PX,
                 validation_positions=len(xy), radial_checks=len(check_r), attempts=attempts,
-                domain='whole detector rectangle including edges',
+                domain=domain, valid_pixels=valid_count, excluded_pixels=excluded,
+                maximum_radius_px=float(rmax), maximum_angle_deg=float(np.rad2deg(angles[-1])),
+                grid_validation_positions=grid_count,
+                boundary_validation_positions=boundary_count,
                 limitation='Dense finite validation, not a continuum proof or total astrometric error')
     raise ValueError('No ZPN order through 17 passed the 0.05-pixel export error limit')
 
@@ -271,6 +318,26 @@ def plain_pixels(pixels):
     return values.astype(pixels.dtype)
 
 
+def load_saved_sky_mask(output, shape):
+    path = Path(output)/'dots/sky_footprint.npz'
+    if not path.is_file():
+        return None, None
+    try:
+        with np.load(path, allow_pickle=False) as saved:
+            if 'valid_mask' not in saved:
+                raise ValueError('Saved sky-footprint has no valid_mask array')
+            mask = np.asarray(saved['valid_mask'], dtype=bool)
+    except (OSError, ValueError) as error:
+        raise ValueError(f'Cannot read saved image-derived sky footprint: {error}') from error
+    if mask.shape != tuple(shape):
+        raise ValueError(f'Saved sky-footprint shape {mask.shape} does not match image {tuple(shape)}')
+    if not mask.any():
+        raise ValueError('Saved sky-footprint contains no valid sky pixels')
+    return mask, dict(source='dots/sky_footprint.npz', method='image-derived detection footprint',
+                      valid_pixels=int(mask.sum()), excluded_pixels=int(mask.size-mask.sum()),
+                      valid_fraction=float(mask.mean()))
+
+
 def write_fits(image_path, output, result, science):
     """Export without modifying the solution or using observation metadata."""
     output=Path(output)
@@ -292,17 +359,22 @@ def write_fits(image_path, output, result, science):
         for name,pixels in list(planes.items()):
             if pixels.dtype == np.bool_:
                 planes[name] = pixels.astype(np.uint8)
-        header,validation=validated_header(camera)
+        sky_mask,mask_info=load_saved_sky_mask(output,scientific.shape)
+        header,validation=validated_header(camera,valid_mask=sky_mask)
         rows=collect_overlays(output,camera,science)
         region,text,layout=overlay_products(rows,camera.shape)
         rgb=len(planes)>1
         plain=np.asarray(scientific.luminance,dtype=np.float64) if rgb else next(iter(planes.values()))
         plain_mode='derived_luminance' if rgb else 'original_mono'
+        if sky_mask is not None:
+            plain = np.asarray(plain, dtype=np.float64).copy()
+            plain[~sky_mask] = np.nan
+            plain_mode = 'sky_masked_luminance'
         compatible=fits.PrimaryHDU(plain,header)
         compatible.header['WFSORIG']=''.join(planes) if rgb else 'MONO'
         compatible.header['WFSMODE']='DERIVED_LUMINANCE' if rgb else 'ORIGINAL'
         compatible.header['COMMENT']='2-D primary image for solve-field; overlays are in solution_annotated.fits'
-        primary=fits.PrimaryHDU() if rgb else fits.PrimaryHDU(plain,header)
+        primary=fits.PrimaryHDU() if rgb else fits.PrimaryHDU(next(iter(planes.values())),header)
         primary.header['WFSRGB']=rgb
         primary.header['WFSREG']='DS9TEXT'
         primary.header['COMMENT']='For full labels/styles: v5/view_fits.sh solution_annotated.fits'
@@ -311,12 +383,15 @@ def write_fits(image_path, output, result, science):
             extension_names={'R':'RED','G':'GREEN','G1':'GREEN1','G2':'GREEN2','B':'BLUE'}
             annotated_hdus.extend(fits.ImageHDU(values,header,name=extension_names[name])
                                   for name,values in planes.items())
+        if sky_mask is not None:
+            annotated_hdus.append(fits.ImageHDU(sky_mask.astype(np.uint8),header,name='SKYMASK'))
         info=dict(camera=c,source_sha256=source_hash,
                   exporter_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
                   wcs_validation=validation,overlays=rows,label_layout=layout,
                   plain_file=target.name,plain_pixel_mode=plain_mode,
                   annotated_file=annotated_target.name,
                   input_image=scientific.provenance(),
+                  sky_mask=mask_info,
                   planet_status=(science.get('planets') or {}).get('status'),
                   planet_epoch_tdb=(science.get('planets') or {}).get('best_candidate_epoch_tdb'),
                   pixel_convention='Stored arrays retain input row order; overlay records zero-based; REGION/DS9TEXT one-based',

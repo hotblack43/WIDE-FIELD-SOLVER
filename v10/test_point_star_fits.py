@@ -178,6 +178,60 @@ class FitsExportTests(unittest.TestCase):
         self.assertFalse((self.out/'solution.fits').exists())
         self.assertIn('reason',record)
 
+    def test_saved_round_footprint_restricts_an_otherwise_invalid_domain(self):
+        camera = BarghiniCamera.initial((180, 240), 10., np.eye(3))
+        yy, xx = np.indices(camera.shape)
+        q = camera.physical
+        valid = np.hypot(xx-q.x_o, yy-q.y_o) <= 30.
+        with self.assertRaisesRegex(ValueError, 'Whole-detector'):
+            self.api.validated_header(camera)
+        header, record = self.api.validated_header(camera, valid_mask=valid)
+        self.assertEqual(record['domain'], 'saved image-derived sky footprint')
+        self.assertEqual(record['excluded_pixels'], int((~valid).sum()))
+        self.assertLess(record['maximum_error_px'], .05)
+        self.assertLess(record['maximum_angle_deg'], 180.)
+        self.assertEqual(header['WFSVALID'], 'SKYMASK')
+        invalid = np.hypot(xx-q.x_o, yy-q.y_o) <= 33.
+        with self.assertRaisesRegex(ValueError, 'sky-footprint radial domain'):
+            self.api.validated_header(camera, valid_mask=invalid)
+
+    def test_saved_sky_mask_controls_plain_pixels_and_preserves_native_planes(self):
+        planes = np.stack([np.full((180, 240), value, dtype=np.uint16)
+                           for value in (1000, 2000, 4000, 8000)])
+        image = self.out/'masked-native.fits'
+        fits.PrimaryHDU(planes).writeto(image)
+        dots = self.out/'dots'
+        dots.mkdir()
+        loaded = load_scientific_image(image, saturation_level=16383)
+        (dots/'input_image.json').write_text(json.dumps(loaded.provenance()))
+        yy, xx = np.indices(self.camera.shape)
+        mask = np.hypot(xx-119.5, yy-89.5) <= 86.
+        np.savez_compressed(dots/'sky_footprint.npz', valid_mask=mask)
+        expected = loaded.luminance
+        overlays_before = json.loads((self.out/'labelled_stars.json').read_text())
+
+        record = self.api.write_fits(image, self.out, self.result, self.science)
+
+        self.assertEqual(record['status'], 'exported')
+        self.assertEqual(record['domain'], 'saved image-derived sky footprint')
+        with fits.open(self.out/record['file']) as plain:
+            np.testing.assert_array_equal(np.isnan(plain[0].data), ~mask)
+            np.testing.assert_array_equal(plain[0].data[mask], expected[mask])
+            self.assertEqual(plain[0].header['WFSVALID'], 'SKYMASK')
+            plain_wcs = WCS(plain[0].header).to_header().tostring()
+        with fits.open(self.out/record['annotated_file']) as annotated:
+            np.testing.assert_array_equal(annotated['SKYMASK'].data, mask.astype(np.uint8))
+            self.assertEqual(annotated['SKYMASK'].header['WFSVALID'], 'SKYMASK')
+            self.assertEqual(WCS(annotated['SKYMASK'].header).to_header().tostring(), plain_wcs)
+            for index, name in enumerate(('RED', 'GREEN1', 'GREEN2', 'BLUE')):
+                np.testing.assert_array_equal(annotated[name].data, planes[index])
+            info = json.loads(bytes(annotated['WFSINFO'].data).decode('utf8'))
+            self.assertEqual(info['sky_mask']['source'], 'dots/sky_footprint.npz')
+            self.assertEqual(info['wcs_validation']['excluded_pixels'], int((~mask).sum()))
+            positions = {(row['label'], row['x'], row['y']) for row in info['overlays']}
+            self.assertIn(('Vega', 80.5, 90.25), positions)
+        self.assertEqual(json.loads((self.out/'labelled_stars.json').read_text()), overlays_before)
+
     def test_wrong_original_image_is_rejected_even_if_dimensions_match(self):
         import hashlib
         image=self.out/'input.png'
