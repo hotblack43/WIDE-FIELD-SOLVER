@@ -12,9 +12,26 @@ ROOT = Path(__file__).resolve().parent
 class V11BoundaryTests(unittest.TestCase):
     def test_v10_snapshot_is_unchanged(self):
         saved = json.loads((ROOT/'docs/v10-runtime.json').read_text())
-        for name, digest in saved['sha256'].items():
+        # V11 was forked from a captured working parent, not the older commit.
+        # Both inventories were recorded at that boundary; do not rehash either.
+        working = saved['working_tree_parent_snapshot']
+        self.assertEqual(working['version'], saved['version'])
+        self.assertEqual(working['base_commit'], saved['base_commit'])
+        self.assertEqual(set(working['sha256']), set(saved['sha256']))
+        changed = {name for name, digest in working['sha256'].items()
+                   if digest != saved['sha256'][name]}
+        self.assertEqual(changed, set(working['dirty_paths']))
+        for name, digest in working['sha256'].items():
             with self.subTest(path=name):
                 self.assertEqual(hashlib.sha256((ROOT/name).read_bytes()).hexdigest(), digest)
+
+    def test_v10_committed_checkpoint_matches_recorded_history(self):
+        saved = json.loads((ROOT/'docs/v10-runtime.json').read_text())
+        for name, digest in saved['sha256'].items():
+            with self.subTest(path=name):
+                content = subprocess.check_output(
+                    ['git', 'show', f"{saved['preserved_commit']}:{name}"], cwd=ROOT)
+                self.assertEqual(hashlib.sha256(content).hexdigest(), digest)
 
     def test_independent_version_and_launchers(self):
         project = tomllib.loads((ROOT/'v11/pyproject.toml').read_text())

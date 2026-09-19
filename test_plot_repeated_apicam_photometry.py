@@ -80,10 +80,14 @@ class APICAMRepeatedPhotometryTests(unittest.TestCase):
                             "Gaia DR3 123": {"display_name": "α Test"}
                         })),
                     )
-                    magnitude = 10.0 + number
+                    rate = 10.0 + number
                     values = json.dumps({
-                        "R_mag": magnitude, "G_mag": magnitude,
-                        "B_mag": magnitude, "airmass": 1.0 + number / 10,
+                        "R_mag": 99.0, "G_mag": 99.0, "B_mag": 99.0,
+                        "R_count_rate_adu_per_s": rate,
+                        "G_count_rate_adu_per_s": rate,
+                        "B_count_rate_adu_per_s": rate,
+                        "exposure_status": "available",
+                        "airmass": 1.0 + number / 10,
                         "photometry_usable": "True",
                     })
                     db.execute(
@@ -97,9 +101,12 @@ class APICAMRepeatedPhotometryTests(unittest.TestCase):
             self.assertEqual(len(rows), 2)
             self.assertEqual({row.source_sha256 for row in rows},
                              {"image-1", "image-2"})
-            self.assertEqual({row.machine_l_mag for row in rows}, {11.0, 12.0})
-            self.assertEqual({row.machine_l_minus_gaia_g for row in rows},
-                             {6.0, 7.0})
+            self.assertEqual({round(row.machine_l_mag, 12) for row in rows},
+                             {round(-2.5 * __import__('math').log10(rate), 12)
+                              for rate in (11.0, 12.0)})
+            self.assertEqual({round(row.machine_l_minus_gaia_g, 12) for row in rows},
+                             {round(-2.5 * __import__('math').log10(rate) - 5.0, 12)
+                              for rate in (11.0, 12.0)})
             self.assertEqual({row.gaia_bp_minus_rp for row in rows}, {1.4})
             self.assertEqual({row.display_name for row in rows}, {"α Test"})
 

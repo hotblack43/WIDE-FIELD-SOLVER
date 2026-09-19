@@ -132,6 +132,8 @@ def load_repeated_apicam_rows(
                        json_extract(values_json, '$.R_mag'),
                        json_extract(values_json, '$.G_mag'),
                        json_extract(values_json, '$.B_mag'),
+                       json_extract(values_json, '$.G_count_rate_adu_per_s'),
+                       json_extract(values_json, '$.exposure_status'),
                        json_extract(values_json, '$.airmass')
                 FROM measurements
                 WHERE product='stellar_photometry.csv'
@@ -147,24 +149,19 @@ def load_repeated_apicam_rows(
     latest: dict[tuple[str, str, str], tuple[str, APICAMMeasurement]] = {}
     for raw in raw_rows:
         (run_id, _row_number, star_id, detection_id,
-         raw_r_mag, raw_g_mag, raw_b_mag, raw_airmass) = raw
+         raw_r_mag, raw_g_mag, raw_b_mag, raw_g_rate, raw_exposure_status,
+         raw_airmass) = raw
         (recorded, source_path, source_sha256, catalogue_sha256,
          display_names) = valid_runs[run_id]
         catalogue = gaia.get(star_id.removeprefix("Gaia DR3 "))
         if catalogue is None:
             continue
-        r_mag = _finite(raw_r_mag)
-        g_mag = _finite(raw_g_mag)
-        b_mag = _finite(raw_b_mag)
+        g_rate = _finite(raw_g_rate)
+        exposure_status = str(raw_exposure_status or '').strip().lower()
         airmass = _finite(raw_airmass)
-        if None in (r_mag, g_mag, b_mag, airmass):
+        if g_rate is None or g_rate <= 0 or exposure_status != 'available' or airmass is None:
             continue
-        if not (math.isclose(r_mag, g_mag, abs_tol=1e-12)
-                and math.isclose(b_mag, g_mag, abs_tol=1e-12)):
-            raise ValueError(
-                f"APICAM single-plane row {run_id}/{detection_id} has unequal "
-                "copied R/G/B magnitudes"
-            )
+        g_mag = -2.5 * math.log10(g_rate)
         gaia_g, gaia_bp, gaia_rp = catalogue
         measurement = APICAMMeasurement(
             run_id=run_id,

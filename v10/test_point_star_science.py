@@ -4,11 +4,16 @@ import unittest
 
 import numpy as np
 
-from point_star_science import _robust_line, classify_image_colour, planet_confidence
+from point_star_science import (_machine_magnitude_from_rate, _robust_line,
+                                classify_image_colour, planet_confidence)
 from point_star_report import report_sections, table_rows
 
 
 class PointStarScienceTests(unittest.TestCase):
+    def test_machine_magnitude_uses_count_rate_not_raw_counts(self):
+        self.assertAlmostEqual(_machine_magnitude_from_rate(1200., 120.), -2.5)
+        self.assertTrue(np.isnan(_machine_magnitude_from_rate(1200., None)))
+
     def test_extinction_line_recovers_known_slope_with_outlier(self):
         x = np.linspace(1., 3., 80)
         y = -9.2 + .24*x + .01*np.sin(np.arange(len(x)))

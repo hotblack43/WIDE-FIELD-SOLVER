@@ -27,6 +27,17 @@ def _float(row, key, default=0.):
     return float(value) if value else float(default)
 
 
+def _machine_magnitude_from_rate(counts, exposure_seconds):
+    """Return instrumental magnitude from exposure-normalized ADU/s only."""
+    try:
+        rate = float(counts) / float(exposure_seconds)
+    except (TypeError, ValueError, ZeroDivisionError):
+        return float('nan')
+    if not np.isfinite(rate) or rate <= 0:
+        return float('nan')
+    return float(-2.5*np.log10(rate))
+
+
 def fit_stellar_epoch(solution, result, catalogue_path, year_limits=(1850., 2036.)):
     """Reuse the epoch that actually produced the saved camera and coordinates."""
     if 'stellar_epoch' in result:
@@ -252,11 +263,13 @@ def measure_photometry(image_path, solution, result, refraction):
         detection = detections[identity]
         source_record = source_by_id[identity]
         fluxes = np.array([source_record[f'{name}_flux'] for name in 'RGB'])
-        mags = np.full(3, np.nan)
-        positive = (fluxes > 0) & np.isfinite(fluxes)
+        rates = np.array([source_record[f'{name}_count_rate_adu_per_s']
+                          for name in 'RGB'])
+        mags = np.array([
+            _machine_magnitude_from_rate(rate, source_record['exposure_seconds'])
+            for rate in rates])
         if str(detection['saturated']).lower() == 'true':
-            positive[:] = False  # Raw flux retained for diagnostics, no saturated magnitudes.
-        mags[positive] = -2.5*np.log10(fluxes[positive])
+            mags[:] = np.nan  # Raw flux retained for diagnostics, no saturated magnitudes.
         catalogue_magnitude = _float(coordinate, 'magnitude')
         altitude = float('nan')
         airmass = float(_airmass_kasten_young([altitude])[0])
@@ -279,9 +292,11 @@ def measure_photometry(image_path, solution, result, refraction):
         for channel in native_extra:
             flux = source_record[f'{channel}_flux']
             saturated = source_record[f'{channel}_saturated']
-            magnitude = (-2.5*np.log10(flux)
-                         if flux > 0 and np.isfinite(flux)
-                         and str(detection['saturated']).lower() != 'true' else float('nan'))
+            magnitude = (_machine_magnitude_from_rate(
+                source_record[f'{channel}_count_rate_adu_per_s'],
+                source_record['exposure_seconds'])
+                         if str(detection['saturated']).lower() != 'true'
+                         else float('nan'))
             record[f'{channel}_flux'] = float(flux)
             record[f'{channel}_mag'] = float(magnitude)
             record[f'{channel}_saturated'] = saturated

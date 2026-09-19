@@ -42,8 +42,24 @@ rendered planes first.
 Keep immutable per-run JSON/CSV/FITS products as the canonical evidence. For
 cross-run work, add a rebuildable local SQLite index rather than making a
 database the sole record. Index image hashes and pixel provenance, run/code and
-catalogue versions, detections, catalogue associations, aperture fluxes,
-instrumental magnitudes, planet candidates and separately labelled metadata.
+catalogue versions, detections, catalogue associations, background-subtracted
+aperture counts, exposure-normalized count rates, instrumental magnitudes,
+planet candidates and separately labelled metadata. Use `count rate` for ADU/s;
+do not call it physical flux. Planet and minor-planet identity rows should store
+their measured per-channel instrumental magnitudes when the run is created, with
+saturation/usability flags. Keep predicted apparent magnitudes separately
+labelled, and do not make later database extraction recalculate routine stored
+measurements.
+
+During the present trial phase, continue retaining every run, including repeated
+analyses of the same images. Later add an explicit database-maintenance command
+that can preview and then remove exact duplicate runs and user-selected junk or
+failed trials. It must default to a dry run, state the selection rule and affected
+run IDs, and never infer that a scientifically different rerun is junk merely
+because the input image hash repeats. Preserve or archive the immutable per-run
+evidence so the SQLite index remains rebuildable and cleanup cannot silently
+alter the solver's scientific record.
+
 Cached identities or earlier solutions must never seed a blind solve, and
 metadata revealed after fitting must remain distinguishable from values actually
 used by a fit.
