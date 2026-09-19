@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-19
 
-**Status:** Draft for investigator review
+**Status:** Implementation authorized; see execution ledger for conservative deviations
 
 ## Purpose
 
@@ -26,14 +26,15 @@ produce a claimed joint epoch.
 
 ## Version Boundary
 
-V11 does not modify v10. Before the v11 scaffold is created, the intended
-current v10 changes must be deliberately resolved and committed; unrelated
-working-tree changes are neither copied nor staged. Root `go10.sh`,
-`go_v0.10.0.sh`, and the resulting complete `v10/` package continue to launch
-and describe v0.10.0. A new `docs/v10-runtime.json` records that exact committed
-v10 boundary before v11 development begins.
+V11 does not modify v10. The investigator authorized proceeding without further
+permission gates. The exact current v10 working snapshot is recorded without
+committing another window's changes. Root `go10.sh`, `go_v0.10.0.sh`, and the
+complete `v10/` package retain their existing bytes and v0.10.0 behavior.
+`docs/v10-runtime.json` retains this working snapshot under
+`working_tree_parent_snapshot`; its top-level hashes freeze the committed v10
+runtime so a clean checkout does not depend on another window's uncommitted edits.
 
-V11 starts from the committed v10 runtime, excluding generated environments,
+V11 starts from that recorded v10 runtime, excluding generated environments,
 caches, reports, and run products. It owns:
 
 - `v11/`, including code, catalogues, ephemeris data, documentation, tests,
