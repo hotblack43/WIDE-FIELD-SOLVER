@@ -3,14 +3,36 @@ from __future__ import annotations
 import argparse
 from datetime import datetime, timezone
 from pathlib import Path
+import shlex
 import sys
 from typing import Sequence
-from zoneinfo import ZoneInfo
-
+from .cadence import observing_night_date
 from .cli import main as downloader_main
+from .registry import SourceRegistry
 
 
 UTC = timezone.utc
+DEFAULT_REGISTRY = Path(__file__).resolve().parent.parent / "sources.json"
+PROCESSING_CRON_MARKER = "# WIDE_FIELD_SOLVER_MMTO_PROCESSING_ACTIVE"
+
+
+def processing_cron_lines(repo_root: Path, uv_executable: Path) -> tuple[str, str]:
+    repo = Path(repo_root)
+    archive = repo / "raw_allsky_samples"
+    logs = archive / "processing-logs"
+    results = repo / "results" / "mmto-automatic"
+    quote = lambda path: shlex.quote(str(path))
+    command = (
+        "*/2 * * * * "
+        f"cd {quote(repo)} && "
+        f"mkdir -p {quote(logs)} {quote(results)} && "
+        f"{quote(uv_executable)} run --frozen python run_allsky_processing.py "
+        f"--archive {quote(archive)} --results-dir {quote(results)} "
+        "--worker-lock /tmp/wide-field-solver-mmto-processing.lock "
+        "work --once "
+        f">> {quote(archive / 'mmto-processing-cron.log')} 2>&1"
+    )
+    return PROCESSING_CRON_MARKER, command
 
 
 def cron_download_arguments(
@@ -24,14 +46,18 @@ def cron_download_arguments(
         )
     if site != "mmto":
         raise ValueError(f"site is not enabled for recurring RAW acquisition: {site}")
-    local_date = now.astimezone(ZoneInfo("America/Phoenix")).date().isoformat()
+    registry = SourceRegistry.from_json(DEFAULT_REGISTRY)
+    mmto = registry.get_adapter("mmto").sites("mmto-skycam")[0]
+    night_date = observing_night_date(mmto, now)
     args = [
         "--site", "mmto",
         "--camera", "mmto-skycam",
-        "--date", local_date,
+        "--night", night_date.isoformat(),
+        "--sun-below", "-12",
         "--cadence", "20m",
         "--max-files", "1",
         "--latest",
+        "--enqueue-processing",
         "--output", str(output),
     ]
     if dry_run:

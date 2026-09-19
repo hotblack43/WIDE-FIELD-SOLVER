@@ -7,11 +7,18 @@ import math
 from pathlib import Path, PurePath
 from typing import Sequence
 
-from .cadence import parse_duration, select_candidates, site_date_range
+from .cadence import (
+    observing_night_date,
+    parse_duration,
+    select_candidates,
+    site_date_range,
+    site_night_range,
+)
 from .http import HttpClient, TransferError
 from .manifest import Manifest, OutputLockedError, output_lock
 from .model import Candidate
 from .registry import SourceRegistry
+from .solar import filter_by_solar_altitude, validate_solar_site
 
 
 LOG = logging.getLogger(__name__)
@@ -56,6 +63,16 @@ def _positive_float(text: str) -> float:
     return value
 
 
+def _solar_altitude(text: str) -> float:
+    try:
+        value = float(text)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("expected a number") from exc
+    if not math.isfinite(value) or not -90.0 <= value <= 90.0:
+        raise argparse.ArgumentTypeError("must be finite and between -90 and 90 degrees")
+    return value
+
+
 def _duration_value(text: str) -> str:
     try:
         parse_duration(text)
@@ -89,6 +106,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     period = parser.add_mutually_exclusive_group(required=True)
     period.add_argument("--date", type=_date_value, help="one site-local civil day")
+    period.add_argument(
+        "--night",
+        type=_date_value,
+        help="one observing night from local noon on this date to the following noon",
+    )
     period.add_argument("--start", type=_date_value, help="first site-local date")
     parser.add_argument("--end", type=_date_value, help="exclusive site-local end date")
     parser.add_argument("--cadence", type=_duration_value, default="10m")
@@ -100,8 +122,19 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--enqueue-processing",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
     parser.add_argument("--timeout", type=_positive_float, default=45.0)
     parser.add_argument("--retries", type=_nonnegative_int, default=3)
+    parser.add_argument(
+        "--sun-below",
+        type=_solar_altitude,
+        metavar="DEGREES",
+        help="retain only exposures with geometric solar altitude below this value",
+    )
     parser.add_argument(
         "--log-level",
         choices=("DEBUG", "INFO", "WARNING", "ERROR"),
@@ -172,8 +205,15 @@ def _resolve_sites(adapter, camera_ids: list[str] | None):
     return tuple(resolved)
 
 
-def _destination(output: Path, candidate: Candidate) -> Path:
-    return output / candidate.source_id / candidate.camera_id / _safe_filename(candidate)
+def _destination(output: Path, candidate: Candidate, site) -> Path:
+    night = observing_night_date(site, candidate.observed_at).isoformat()
+    return (
+        output
+        / candidate.source_id
+        / candidate.camera_id
+        / night
+        / _safe_filename(candidate)
+    )
 
 
 def run(
@@ -186,17 +226,33 @@ def run(
     client = client or HttpClient(timeout=args.timeout, retries=args.retries)
     try:
         source_id = registry.resolve_source_id(args.site)
+        if args.enqueue_processing and source_id != "mmto":
+            raise ValueError("processing enqueue is only enabled for mmto")
         adapter = registry.get_adapter(source_id)
         sites = _resolve_sites(adapter, args.camera)
+        if args.sun_below is not None:
+            for site in sites:
+                validate_solar_site(site)
+        site_by_key = {(site.source_id, site.camera_id): site for site in sites}
         ranges = {
-            (site.source_id, site.camera_id): site_date_range(
-                site, date_value=args.date, start=args.start, end=args.end
+            (site.source_id, site.camera_id): (
+                site_night_range(site, args.night)
+                if args.night is not None
+                else site_date_range(
+                    site, date_value=args.date, start=args.start, end=args.end
+                )
             )
             for site in sites
         }
         candidates = []
         for site in sites:
             candidates.extend(adapter.list_candidates(client, site, ranges[(site.source_id, site.camera_id)]))
+        if args.sun_below is not None:
+            candidates = list(
+                filter_by_solar_altitude(
+                    candidates, site_by_key, sun_below_deg=args.sun_below
+                )
+            )
         selection = select_candidates(
             candidates,
             ranges,
@@ -210,7 +266,8 @@ def run(
 
         destinations: dict[Path, str] = {}
         for candidate in selection.candidates:
-            path = _destination(args.output, candidate)
+            site = site_by_key[(candidate.source_id, candidate.camera_id)]
+            path = _destination(args.output, candidate, site)
             other_url = destinations.setdefault(path, candidate.url)
             if other_url != candidate.url:
                 raise ValueError(
@@ -228,9 +285,19 @@ def run(
                     manifest.record_attempt(candidate)
                     try:
                         downloaded = client.download_atomic(
-                            candidate, _destination(args.output, candidate)
+                            candidate,
+                            _destination(
+                                args.output,
+                                candidate,
+                                site_by_key[(candidate.source_id, candidate.camera_id)],
+                            ),
                         )
-                        manifest.record_success(candidate, downloaded, args.output)
+                        manifest.record_success(
+                            candidate,
+                            downloaded,
+                            args.output,
+                            enqueue_processing=args.enqueue_processing,
+                        )
                         print(
                             f"DOWNLOAD\t{candidate.url}\t{downloaded.path}\t"
                             f"{downloaded.size_bytes}\t{downloaded.sha256}"

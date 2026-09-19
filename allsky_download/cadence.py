@@ -59,6 +59,27 @@ def site_date_range(
     return DateRange(start_utc, end_utc)
 
 
+def site_night_range(site: Site, night_date: date) -> DateRange:
+    """Return one observing night, from local noon to the following noon."""
+    zone = ZoneInfo(site.timezone)
+    start_utc = datetime.combine(night_date, time(12), zone).astimezone(UTC)
+    end_utc = datetime.combine(
+        night_date + timedelta(days=1), time(12), zone
+    ).astimezone(UTC)
+    return DateRange(start_utc, end_utc)
+
+
+def observing_night_date(site: Site, observed_at: datetime) -> date:
+    """Return the local date of the noon that begins an observing night."""
+    if observed_at.tzinfo is None or observed_at.utcoffset() is None:
+        raise ValueError("observation time must be timezone-aware")
+    local = observed_at.astimezone(ZoneInfo(site.timezone))
+    result = local.date()
+    if local.timetz().replace(tzinfo=None) < time(12):
+        result -= timedelta(days=1)
+    return result
+
+
 def select_candidates(
     candidates: Iterable[Candidate],
     ranges: Mapping[tuple[str, str], DateRange],

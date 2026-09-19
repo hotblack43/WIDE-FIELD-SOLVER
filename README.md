@@ -85,7 +85,7 @@ embedded JPEG preview:
 Shell-expanded wildcards process a batch sequentially with the same options:
 
 ```bash
-./go10.sh raw_allsky_samples/mmto/mmto-skycam/*.fits.bz2 \
+./go10.sh raw_allsky_samples/mmto/mmto-skycam/*/*.fits.bz2 \
   --results-dir /path/to/results
 ```
 
@@ -156,11 +156,17 @@ Preview one MMTO night without downloading:
 
 ```bash
 uv run --frozen python download_samples.py \
-  --site mmto --date 2026-09-18 --cadence 20m --max-files 20 --dry-run
+  --site mmto --night 2026-09-18 --sun-below -12 \
+  --cadence 20m --max-files 20 --dry-run
 ```
 
-Remove `--dry-run` to download. A date range and a particular camera can be
-selected in the same way:
+`--night` is the observing-night date: local noon on that date through local
+noon the following date. `--sun-below -12` retains only exposures with the
+geometric centre of the Sun more than 12 degrees below the site's horizon,
+excluding bright dusk and dawn twilight. Site latitude,
+longitude and timezone come from `sources.json`; missing latitude or longitude
+is an error rather than an assumed location. Remove `--dry-run` to download.
+`--date` and `--start`/`--end` retain their site-local civil-day meanings:
 
 ```bash
 uv run --frozen python download_samples.py \
@@ -183,12 +189,79 @@ Inspection results go to `raw_allsky_samples/inspection.json`; display previews
 are derived products. See [the source audit](SOURCES.md) for exact URLs and
 scientific validation.
 
-The safe incremental MMTO command uses a 20-minute cadence, selects the newest
-slot, and permits at most one new raw file per invocation:
+New downloads are grouped as
+`raw_allsky_samples/<source>/<camera>/<observing-night>/filename`, where the
+observing-night label changes at local noon rather than midnight. Existing MMTO
+downloads have been migrated to this layout; historical files were preserved
+even when they predate the solar-altitude filter.
+
+The safe incremental MMTO command uses a Phoenix-local noon-to-noon observing
+night, rejects exposures with solar altitude greater than or equal to -12 degrees,
+uses a 20-minute cadence, selects the newest slot, and permits at most one new
+raw file per invocation:
 
 ```bash
 uv run --frozen python run_raw_allsky_cron.py --site mmto --dry-run
 ```
 
-No cron entry is installed automatically. Site coordinates and UTC timestamps
-are retained so Moon-down and solar-altitude selection can be added later.
+Installing the repository does not modify cron. On a capture host, the MMTO
+acquisition command is normally scheduled at minutes 0, 20 and 40 under
+`/tmp/wide-field-raw-allsky-mmto.lock`. Moon-down selection remains future
+work; solar-altitude selection is available through `--sun-below` for any
+registered telescope with latitude and longitude.
+
+### Automatic MMTO processing queue
+
+New files downloaded by the recurring MMTO command are atomically added to a
+durable FIFO queue in `raw_allsky_samples/manifest.sqlite`. Existing files and
+checksum-verified `REUSE` events are deliberately not bulk-enqueued. A separate
+worker takes at most one image per invocation and calls the frozen root
+`go10.sh` with that image only. It writes automated runs to
+`results/mmto-automatic/`; neither `go10.sh` nor `v10/` is modified, and current
+`go11.sh`/`v11/` development is explicitly outside this queue.
+
+The processing worker is normally scheduled every two minutes under
+`/tmp/wide-field-solver-mmto-processing.lock`, independently of acquisition.
+If one solve takes longer, later cron invocations fail to acquire that worker
+lock and do nothing. New downloads continue to enter the queue, and the oldest
+pending image is selected when the worker becomes free. Files, logs, run
+directories, database rows and queue events are never erased by the worker.
+The solver inherits the worker lock and writes its attempt log directly, so
+killing the wrapper does not unlock a still-running solver or lose its output.
+
+Inspect the live queue without changing it:
+
+```bash
+uv run --frozen python run_allsky_processing.py status
+```
+
+The states are `pending`, `running`, `succeeded`, `solver_failed`,
+`operational_failed`, and `interrupted`. A stale `running` row means the worker
+was probably stopped after claiming the image; it does not block later pending
+rows. Scientific solver failures and operational failures are both terminal:
+there is no automatic retry and no stochastic assumption that an identical
+rerun will improve the answer.
+
+The cleanup command is an explicit later sweep. It is read-only unless
+`--apply` is supplied, and an applying sweep must be bounded by a source,
+observing night, job ID, or remote URL plus its absolute `--limit`:
+
+```bash
+uv run --frozen python run_allsky_processing.py cleanup \
+  --source mmto --night 2026-09-18 --limit 20
+
+uv run --frozen python run_allsky_processing.py cleanup \
+  --source mmto --night 2026-09-18 --limit 20 --apply
+```
+
+Before requeueing, cleanup searches the dedicated `stars.sqlite` by the
+verified source checksum. It records one existing matching solver receipt
+instead of rerunning the image and refuses ambiguous multiple receipts.
+An applying cleanup must also acquire the processing-worker lock, so it
+refuses to alter a stale-looking row while a long solver process is still
+active.
+Cleanup may explicitly requeue overlooked downloads, stale interrupted jobs,
+or selected operational failures. It never requeues `solver_failed` jobs.
+Each attempt records the exact hashes of `go10.sh` and
+`v10/SOURCE_MANIFEST.json` used for provenance; those hashes are evidence, not
+input to the blind solution.

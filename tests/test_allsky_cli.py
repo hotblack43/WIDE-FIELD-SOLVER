@@ -16,9 +16,11 @@ UTC = timezone.utc
 
 
 class _FixtureAdapter:
-    def __init__(self, base):
+    def __init__(self, base, *, first_at=None, second_at=None):
         self.base = base
         self.site = Site("fixture", "camera-a", "Fixture", "UTC", 1.0, 2.0, 3.0)
+        self.first_at = first_at or datetime(2026, 1, 1, 0, 0, tzinfo=UTC)
+        self.second_at = second_at or datetime(2026, 1, 1, 0, 11, tzinfo=UTC)
 
     def sites(self, camera_id):
         if camera_id is None or camera_id == self.site.camera_id:
@@ -31,7 +33,7 @@ class _FixtureAdapter:
             Candidate(
                 "fixture",
                 "camera-a",
-                datetime(2026, 1, 1, 0, 0, tzinfo=UTC),
+                self.first_at,
                 "20260101_0000 UTC",
                 self.base + "/first.raw",
                 "first.raw",
@@ -41,7 +43,7 @@ class _FixtureAdapter:
             Candidate(
                 "fixture",
                 "camera-a",
-                datetime(2026, 1, 1, 0, 11, tzinfo=UTC),
+                self.second_at,
                 "20260101_0011 UTC",
                 self.base + "/second.raw",
                 "second.raw",
@@ -131,6 +133,16 @@ class CliTests(unittest.TestCase):
                 ]
             )
 
+    def test_night_is_mutually_exclusive_with_civil_periods(self):
+        for extra in (
+            ["--date", "2026-01-01"],
+            ["--start", "2026-01-01", "--end", "2026-01-02"],
+        ):
+            with self.subTest(extra=extra), self.assertRaises(SystemExit):
+                build_parser().parse_args(
+                    ["--site", "fixture", "--night", "2026-01-01", *extra]
+                )
+
     def test_invalid_limits_and_incomplete_range_are_rejected(self):
         for argv in (
             ["--site", "fixture", "--start", "2026-01-01"],
@@ -139,6 +151,9 @@ class CliTests(unittest.TestCase):
             ["--site", "fixture", "--date", "2026-01-01", "--timeout", "nan"],
             ["--site", "fixture", "--date", "2026-01-01", "--timeout", "inf"],
             ["--site", "fixture", "--date", "2026-01-01", "--retries", "-1"],
+            ["--site", "fixture", "--date", "2026-01-01", "--sun-below", "-91"],
+            ["--site", "fixture", "--date", "2026-01-01", "--sun-below", "91"],
+            ["--site", "fixture", "--date", "2026-01-01", "--sun-below", "nan"],
         ):
             with self.subTest(argv=argv), self.assertRaises(SystemExit):
                 build_parser().parse_args(argv)
@@ -161,6 +176,59 @@ class CliTests(unittest.TestCase):
             self.assertFalse(output.exists())
         self.assertEqual(self.counts, {"listing": 1, "first": 0, "second": 0})
 
+    def test_solar_filter_removes_daytime_candidate_before_selection(self):
+        adapter = _FixtureAdapter(
+            self.base,
+            first_at=datetime(2026, 3, 20, 0, 0, tzinfo=UTC),
+            second_at=datetime(2026, 3, 20, 12, 0, tzinfo=UTC),
+        )
+        adapter.site = Site("fixture", "camera-a", "Equator", "UTC", 0.0, 0.0, 0.0)
+        args = build_parser().parse_args(
+            [
+                "--site", "fixture",
+                "--date", "2026-03-20",
+                "--sun-below", "0",
+                "--dry-run",
+            ]
+        )
+        stream = io.StringIO()
+        with redirect_stdout(stream):
+            status = run(args, registry=_FixtureRegistry(adapter))
+        rendered = stream.getvalue()
+        self.assertEqual(status, 0)
+        self.assertIn("first.raw", rendered)
+        self.assertNotIn("second.raw", rendered)
+
+    def test_solar_filter_refuses_missing_site_coordinates_before_listing(self):
+        class CoordinateLessAdapter:
+            def __init__(self):
+                self.listed = False
+                self.site = Site(
+                    "fixture", "camera-a", "Unknown", "UTC", None, None, None
+                )
+
+            def sites(self, camera_id):
+                return (self.site,)
+
+            def list_candidates(self, client, site, date_range):
+                self.listed = True
+                return ()
+
+        adapter = CoordinateLessAdapter()
+        args = build_parser().parse_args(
+            [
+                "--site", "fixture",
+                "--date", "2026-03-20",
+                "--sun-below", "0",
+                "--dry-run",
+            ]
+        )
+        with self.assertLogs("allsky_download.cli", level="ERROR") as logs:
+            status = run(args, registry=_FixtureRegistry(adapter))
+        self.assertEqual(status, 2)
+        self.assertFalse(adapter.listed)
+        self.assertIn("latitude and longitude", "\n".join(logs.output))
+
     def test_max_files_downloads_one_and_verified_rerun_skips_transfer(self):
         with tempfile.TemporaryDirectory() as tmp:
             output = Path(tmp) / "samples"
@@ -169,7 +237,13 @@ class CliTests(unittest.TestCase):
                 self.assertEqual(run(args, registry=self.registry), 0)
                 self.assertEqual(run(args, registry=self.registry), 0)
             self.assertEqual(
-                (output / "fixture" / "camera-a" / "first.raw").read_bytes(),
+                (
+                    output
+                    / "fixture"
+                    / "camera-a"
+                    / "2025-12-31"
+                    / "first.raw"
+                ).read_bytes(),
                 b"raw1",
             )
             self.assertTrue((output / "manifest.sqlite").is_file())
@@ -187,6 +261,14 @@ class CliTests(unittest.TestCase):
                 client=FailingClient(),
             )
         self.assertEqual(status, 2)
+
+    def test_processing_enqueue_refuses_a_non_mmto_source_before_listing(self):
+        args = self.parse("--enqueue-processing", "--dry-run")
+        with self.assertLogs("allsky_download.cli", level="ERROR") as logs:
+            status = run(args, registry=self.registry)
+        self.assertEqual(status, 2)
+        self.assertEqual(self.counts["listing"], 0)
+        self.assertIn("only enabled for mmto", "\n".join(logs.output))
 
 
 if __name__ == "__main__":

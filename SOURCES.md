@@ -14,22 +14,35 @@ unchanged beneath `raw_allsky_samples/`.
 | OASI | **RAW NOT FOUND** | [camera page](https://oasi.org.uk/Telescopes/allsky/allsky.php) | Historical page says FITS; reachable products found were JPEG/PNG/video | Not verifiable without an original | ZWO ASI178MC colour camera was documented | Rendered products show sky | No |
 | Public INDI-AllSky installations | **RAW NOT FOUND** | [software](https://github.com/aaronwmorris/indi-allsky) | Software can retain 16-bit FITS, but five checked public viewers exposed no FITS/raw object | Public APIs returned null raw/FITS fields | Depends on installation | JPEG displays often show stars | No |
 
+“Sample” refers to the deliberately inspected reference originals summarized
+below. The acquisition tree can also contain uninspected cadence downloads.
+
 ## MMTO
 
 The dated public raw archive continues beyond the previously suspected
 2026-06-23 endpoint. Direct directory listings were verified through at least
 **2026-09-18**. The adapter understands the archive's Arizona local timestamps
 and noon-to-noon directory buckets, so cadence selection happens from filenames
-and listings before any FITS body is downloaded.
+and listings before any FITS body is downloaded. Recurring acquisition treats
+one observing night as local noon to local noon and retains only candidates
+whose geometric solar altitude is below -12 degrees. The cutoff was tightened
+from 0 degrees after the 2026-09-19 06:00 Arizona exposure (Sun about -2.93
+degrees) admitted bright dawn twilight and failed the blind star-pattern
+bootstrap. This changes acquisition selection only, not the solver.
+
+MMTO cadence files downloaded before that filter was introduced were preserved
+and regrouped by observing night, including any legacy daytime frames. They are
+not counted among the two inspected reference samples unless they appear in the
+inspection record.
 
 Inspected originals:
 
 - `2026_03_15__00_00_18.fits.bz2`, 6,105,484 bytes, SHA-256
   `61b9883c184101bb5210b1d7efb17e3a3c4c6ff3a517371442e412d37949823e`.
-  Source: <https://skycam.mmto.arizona.edu/skycam/archive/2026-03-15/2026_03_15__00_00_18.fits.bz2>
+  Source: <https://skycam.mmto.arizona.edu/skycam/archive/2026-03-14/2026_03_15__00_00_18.fits.bz2>
 - `2026_09_18__00_00_13.fits.bz2`, 6,111,948 bytes, SHA-256
   `d102dbc8d9062bea57c32b4971e94d96b2b40e78990eadbbffe8a6f925217d90`.
-  Source: <https://skycam.mmto.arizona.edu/skycam/archive/2026-09-18/2026_09_18__00_00_13.fits.bz2>
+  Source: <https://skycam.mmto.arizona.edu/skycam/archive/2026-09-17/2026_09_18__00_00_13.fits.bz2>
 
 Both contain one primary image HDU with `BITPIX=16`, shape
 `(3, 1411, 1422)`, `BITCAMPX=15`, `EXPOSURE=20.0`, and the instrument
@@ -126,6 +139,6 @@ classified **RAW NOT FOUND**; licensing varies by operator.
 
 Preview PNGs are derived visual checks and never replace the originals. Exact
 array statistics and recursively captured metadata are in
-`raw_allsky_samples/inspection.json`. Moon-down and solar-altitude selection are
-not yet implemented, but site coordinates and timezone-aware observation times
-are retained for that later work.
+`raw_allsky_samples/inspection.json`. Solar-altitude selection is implemented
+from each registered site's latitude, longitude and timezone. Moon-down
+selection is not yet implemented.

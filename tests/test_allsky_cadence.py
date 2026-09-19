@@ -1,7 +1,13 @@
 from datetime import date, datetime, timedelta, timezone
 import unittest
 
-from allsky_download.cadence import parse_duration, select_candidates, site_date_range
+from allsky_download.cadence import (
+    observing_night_date,
+    parse_duration,
+    select_candidates,
+    site_date_range,
+    site_night_range,
+)
 from allsky_download.model import Candidate, DateRange, Site
 
 
@@ -45,6 +51,39 @@ class CadenceTests(unittest.TestCase):
         )
         self.assertEqual(result.start_utc.isoformat(), "2026-03-08T06:00:00+00:00")
         self.assertEqual(result.end_utc.isoformat(), "2026-03-09T05:00:00+00:00")
+
+    def test_site_night_range_runs_from_local_noon_across_midnight(self):
+        site = Site(
+            "mmto",
+            "mmto-skycam",
+            "MMTO",
+            "America/Phoenix",
+            31.6866666667,
+            -110.8841666667,
+            2616.0,
+        )
+        result = site_night_range(site, date(2026, 9, 18))
+        self.assertEqual(result.start_utc.isoformat(), "2026-09-18T19:00:00+00:00")
+        self.assertEqual(result.end_utc.isoformat(), "2026-09-19T19:00:00+00:00")
+
+    def test_observing_night_date_changes_at_local_noon_not_midnight(self):
+        site = Site(
+            "mmto",
+            "mmto-skycam",
+            "MMTO",
+            "America/Phoenix",
+            31.6866666667,
+            -110.8841666667,
+            2616.0,
+        )
+        self.assertEqual(
+            observing_night_date(site, datetime(2026, 9, 19, 6, 59, tzinfo=UTC)),
+            date(2026, 9, 18),
+        )
+        self.assertEqual(
+            observing_night_date(site, datetime(2026, 9, 19, 19, 0, tzinfo=UTC)),
+            date(2026, 9, 19),
+        )
 
     def test_date_and_range_forms_are_validated(self):
         site = Site("mmto", "mmto-skycam", "MMTO", "America/Phoenix", None, None, None)

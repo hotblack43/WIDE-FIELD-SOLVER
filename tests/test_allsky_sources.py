@@ -4,6 +4,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
+from allsky_download.cadence import site_night_range
 from allsky_download.model import DateRange
 from allsky_download.registry import SourceRegistry, SourceUnavailableError
 from allsky_download.sources.common import parse_directory_index
@@ -41,6 +42,12 @@ class SourceAdapterTests(unittest.TestCase):
         self.assertIsNone(items[0].size_bytes)
         self.assertEqual(len(items), 3)
         self.assertFalse(items[0].url.endswith("/"))
+
+    def test_mmto_night_range_reads_one_noon_bucket_across_midnight(self):
+        adapter = MmtoAdapter("https://skycam.mmto.arizona.edu/skycam/archive/")
+        site = adapter.sites("mmto-skycam")[0]
+        requested = site_night_range(site, date(2026, 9, 18))
+        self.assertEqual(adapter._bucket_dates(requested), (date(2026, 9, 18),))
 
     def test_trex_minute_bundle_names_are_utc_candidates_with_sizes(self):
         adapter = TrexRgbAdapter(

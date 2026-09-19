@@ -11,6 +11,7 @@ from typing import Iterator
 
 from .http import DownloadedFile
 from .model import Candidate
+from .processing import enqueue_job, ensure_processing_schema
 
 
 UTC = timezone.utc
@@ -80,6 +81,7 @@ class Manifest:
             )
             """
         )
+        ensure_processing_schema(self.connection)
         self.connection.commit()
 
     def __enter__(self) -> Manifest:
@@ -129,6 +131,8 @@ class Manifest:
         candidate: Candidate,
         downloaded: DownloadedFile,
         output_root: Path,
+        *,
+        enqueue_processing: bool = False,
     ) -> None:
         root = Path(output_root).resolve()
         relative = downloaded.path.resolve().relative_to(root)
@@ -148,6 +152,12 @@ class Manifest:
                     candidate.url,
                 ),
             )
+            if enqueue_processing:
+                enqueue_job(
+                    self.connection,
+                    candidate.url,
+                    downloaded.sha256,
+                )
 
     def record_failure(self, candidate: Candidate, error: str) -> None:
         with self.connection:
