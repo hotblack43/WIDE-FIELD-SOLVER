@@ -1,0 +1,770 @@
+diff --git a/README.md b/README.md
+index eb6396b..cddfc77 100644
+--- a/README.md
++++ b/README.md
+@@ -93,7 +93,7 @@ how missing Mercury, Venus, Mars, Jupiter or Saturn can count against an epoch,
+ and when the image is too uncertain to judge.
+ V6 preserves those rules and adds a bundled 1850--2036 reference, batched exact
+ refinement and up to four planet workers. Its controlled benchmark measured a
+-[3.09x median planetary-stage speedup](v6/docs/PLANET_SEARCH_PERFORMANCE.md).
++[2.21x median planetary-stage speedup](v6/docs/PLANET_SEARCH_PERFORMANCE.md).
+ 
+ Other useful products include:
+ 
+diff --git a/v6/README.md b/v6/README.md
+index f13a106..07f4235 100644
+--- a/v6/README.md
++++ b/v6/README.md
+@@ -32,4 +32,5 @@ batches exact Astropy refinement and uses up to four deterministic planet
+ workers. Set `WFS_PLANET_WORKERS=1` for the serial reference path. Timing and
+ call counts are written to `planet_search_performance.json`; see the
+ [controlled v5/v6 benchmark](docs/PLANET_SEARCH_PERFORMANCE.md), which measured
+-a 3.09x median planetary-stage speedup with unchanged candidate identities.
++a 2.21x median planetary-stage speedup with unchanged candidate identities and
++equivalent exported science products.
+diff --git a/v6/SOURCE_MANIFEST.json b/v6/SOURCE_MANIFEST.json
+index 60a76c3..5bb97a0 100644
+--- a/v6/SOURCE_MANIFEST.json
++++ b/v6/SOURCE_MANIFEST.json
+@@ -11,7 +11,7 @@
+     "AGENTS.md": "709fdca7e125774ca53efa274f212a7892296d12ae92e3eb4ad7d3d57d02bd72",
+     "GOAL.md": "3d6e8b77bc6d7da9abdb902673eabd801d21def26ab6293bb416a735b9fa9915",
+     "NOTICE.md": "5ae750e282eaa70c5752d2249575ba286ff8a430c177b5ce0dd1daadc7c06983",
+-    "README.md": "0fe44a3a29b76ece6a6dfab63385a526dae7bc4250a9b401eb4defaeadfffa48",
++    "README.md": "7e847204ddf35154341a4883282c4c824a7feca5bb5aea2a43c998ddef417dcd",
+     "analyse.sh": "26b3fd13c31100b3492d73f1663d3fcd6602c8e49a562911aa4755a27f3e1cac",
+     "analyse_image.py": "e6de0eef43314c6a3b39a0d6a2cd5d764bcbaa71f04935d9f6800e3ddaeee030",
+     "barghini_model.py": "fd591084b407034907f03c3f9cca05126037fc06691c374c3cda3fc884d085af",
+@@ -30,13 +30,13 @@
+     "docs/GAIA_V04.md": "4791518373e51e2dd698b34c007bc6c3cc305df704b02ebaf00f21c09c6f54c9",
+     "docs/GAIA_V04_RESULTS.json": "34cfabd191ad0d3f3209c4c0879b21fbf9cffe8aee247d6e881ff419ce4c8bed",
+     "docs/METHOD.md": "d9ff81a422442d3d9913f1bc943f3b6c61e72ae727fb961b1c63ad7efc1baaef",
+-    "docs/PERFORMANCE.md": "73d490ad037c4aae5ec7aecd5f28ee7a3feb1a7dc957ef6f0545880874d72aad",
++    "docs/PERFORMANCE.md": "c5ca2f13c13c096a026e021f8ca08d431ea1d1d7b790dc3777dee9862e93c6c0",
+     "docs/PHOTOMETRY_ZENITH_EXTINCTION_NOTE.md": "bcffc50428a43f4a21651787a949adcff30ee1d0b5c123ef0f2df5595519edcc",
+     "docs/PLANETS_V042_RESULTS.json": "433b6204fea2818f7c3b2ba97284ef3f16d05741ccc31043c9dfb597a3baf556",
+     "docs/PLANET_CONSTELLATION_NOTES.md": "c2b376135c4b92ef1865715b4518c1ef0df7a84b1fa0082a29e79e5f440a3969",
+     "docs/PLANET_NONDETECTIONS.md": "705bbc6f1f7d1134ca24cf4ba36e5d977e119e2d57c854fde1525a526ab68dae",
+-    "docs/PLANET_SEARCH_BENCHMARK.json": "272a3d8fb19ba8d5b55c2d52577d32e25ecc407f6b59c570c4541b4560ed9d27",
+-    "docs/PLANET_SEARCH_PERFORMANCE.md": "ce1423c1ab44a3c63ba294c0c8410fbc884e4ce8d65ce384e91006b8c0651bf0",
++    "docs/PLANET_SEARCH_BENCHMARK.json": "fd6eb51bc5612c14acfaf96597ff118ca8d42f2cc4252b7f008ad8f7f3de77c1",
++    "docs/PLANET_SEARCH_PERFORMANCE.md": "3e7047042a65f2d04edf326b5defc5fb7a4e2354fdafe5b3715c04ef7d8f9511",
+     "docs/PROPER_MOTION_V03.md": "77b87e4c16db0c2082aed3df8cc40cebd2e92ef585a9b2e6a1041c81230e73d8",
+     "docs/RELEASE_v0.1.0.md": "aef37fbd9d63afc2ab8a1b0a1d780fe079c902fc2b14a8938ec004e713166e3c",
+     "docs/ZENITH_V041_RESULTS.json": "2ceca55a73ebdf4a88b6c78fdf0a54561021916044bab0b786867aee7c314f38",
+@@ -71,11 +71,11 @@
+     "point_star_gaia.py": "0d66646b1b6adb931d06d16de8ef5c85d0f58529d0dc92c2ba79caed522f3201",
+     "point_star_names.py": "b213020fb957dea6d7bf067197db8cc35ab0b64dfadf8a0d9227b897f6e32284",
+     "point_star_planet_brightness.py": "64dfb8695b84452ff4283a70e0b7c8524955ddd273174cc4695e7044d5648cb8",
+-    "point_star_planet_ephemeris.py": "66f331fa2dee5f05bf75c03dbf18815b95f6611a8291aad13cfe78340a171e4a",
++    "point_star_planet_ephemeris.py": "06319f6e13119a796b2a92f33b88308aa22cde5c8d5597a32543d6f71543d80f",
+     "point_star_planet_nondetections.py": "5ece1d0bb3f7227b328a600cda99e363e2ae73c2f819639ecb5493305419ffd8",
+     "point_star_planet_performance.py": "992779aea3775ab9c2f7634e71890d267d73a6741150bee688d02678015f6984",
+-    "point_star_planet_refinement.py": "68254b797d95fc501828fb0ba4f1d0ca1d32b0415d8d3bc6e8d52e7c68882ae6",
+-    "point_star_planets.py": "228461ff2bf508674e21aa20b267b60a89dba75e5b3d595ec3ea72c6695689c5",
++    "point_star_planet_refinement.py": "258cfd80191fd576fc1206ff5d10d7832b904f3ed82c4fb610c178fc8ff1b0ef",
++    "point_star_planets.py": "3668bf8e54885a278f1ef8bedf4088f9a1a908bdd9646224e92f5cd2471ac043",
+     "point_star_plotting.py": "530e87c10137c9b0e5f91ce1946de2b3783fa80eb330e3cebf5d41b050a1a876",
+     "point_star_refraction.py": "440a7104ecb020094f176274c2c0c76c05a5a28e8490f490ad4fbaf88abe71f0",
+     "point_star_report.py": "a28d6e12dde50a5c4abdbe365e08e7b2216b434391fcc49a92253dcd14474c9d",
+@@ -84,7 +84,7 @@
+     "point_star_zenith.py": "ddc774e2ee7b5ca8f395442296477d49c3924087bc026f0c0514a7ebc891b67e",
+     "pyproject.toml": "db441580067e5c9109abf573d8a08299cffb147370be401a0d99f224b3584a2c",
+     "run.sh": "5c51ebef16a4a2e62ae9b62f9f8110582f0b0e16f823fbb51dceb48dfcfb390e",
+-    "scripts/benchmark_planet_search.py": "77f0d28d860e7ccdfb027751aed4890f3f95dcff7b3ede297a864845fe126dd4",
++    "scripts/benchmark_planet_search.py": "f29d239fd99cb51ed7ab65688ac990e46330bc506b594261ddeea0b02942dda9",
+     "scripts/build_gaia_catalogue.py": "60374342198775880148c1e52aad981c197bb65deeab05bff749311ddd0b8cd9",
+     "scripts/build_planet_ephemeris_cache.py": "281fd30d4b74db53bbb59c3261c26c6029dd475a0d2c3ef5db9cda74aad563c5",
+     "scripts/check_demo.py": "7cdfaaada2392bbc6998d3cd47bf19c8713a33b11d491a5806bc2abdc5dd06a3",
+@@ -98,7 +98,7 @@
+     "test_epoch_integration.py": "88811a0f69d01df16c6af89b72247af82b8dc65af3ca2c0488df1b1df1374caa",
+     "test_gaia_catalogue.py": "3b57465aff3f602366ad239ac977c8e36f68c92279729fa342f72c192fe85de7",
+     "test_planet_nondetections.py": "bccc3dbd5e7c367cd6ce79c1a5d0d44bd7fec527e00ce06405822e805212474d",
+-    "test_planet_search_benchmark.py": "cf17b7f26f9589fb942666843eeea0bc10c912d627e11781ff1252c8f83568f5",
++    "test_planet_search_benchmark.py": "597c0f44b71b74d91b737efc644a1b619007d0dc12053a826913677288b730c7",
+     "test_point_star_barghini.py": "c96feae20b5ad6c33087ab9ec3654853cb433a378fa2018503c1ec3b5b664780",
+     "test_point_star_bootstrap.py": "2218f37fa4dc125e53eb7439d863099e6fac5fe339b2f3fbcab55985334ee767",
+     "test_point_star_detection.py": "541fbe42e36e97f1599f84e45bfaae936cff4b986c9c2059c75a26c816c4e3b1",
+@@ -111,7 +111,7 @@
+     "test_point_star_planet_ephemeris.py": "4ae70faea19c30d473d008c87909a95c4d61d8563c068ef0d7054981859d5e10",
+     "test_point_star_planet_performance.py": "5b3e3daa7373c9b5d41af34f58e44cb0a740e765f33927e41c7fbc940ae88b79",
+     "test_point_star_planet_refinement.py": "2c8c5247a0f88d6ce041a5398f9b7cf4d49715551df4b45f9d4ca04b6b4b8f33",
+-    "test_point_star_planets.py": "4a264575019db3563b386417d0d4c7873fe1b339a2d8f48c65281b44f7cfd0a7",
++    "test_point_star_planets.py": "437e922a2780d7c5e44d6c77d5bcca4f6e56bf21049ef81e5f54e1234df4f44e",
+     "test_point_star_plotting.py": "83ff2f7745410e43341ef688ca8a769a678437047011c0977889663fc6bf95c1",
+     "test_point_star_report.py": "72fa821d64be3e33fdb29fa0e985b50417c24ce43f141849140bc85165d5bd2d",
+     "test_point_star_science.py": "c2fefdc8eb542caec6bdce5f7a6b54b930275400a09febc636acee19f2dda3ab",
+diff --git a/v6/docs/PERFORMANCE.md b/v6/docs/PERFORMANCE.md
+index c52e1ca..cb6d6ec 100644
+--- a/v6/docs/PERFORMANCE.md
++++ b/v6/docs/PERFORMANCE.md
+@@ -48,10 +48,11 @@ its solver subprocess.
+ 
+ ## v0.6.0 planetary epoch stage
+ 
+-The Espenak planetary stage improved from a 76.77-second v5 warm-cache median
+-to 24.84 seconds in v6 with four workers, a 3.09x speedup. The one-worker v6
+-reference path took 32.42 seconds wall. Candidate identities, counts and status
+-were unchanged; exact epoch differences were at most 0.139 seconds. See
++The Espenak planetary stage improved from a 66.87-second v5 warm-cache median
++to 30.19 seconds in v6 with four workers, a 2.21x speedup. Candidate identities,
++counts, status and exported science products were equivalent; exact epoch
++differences were at most 0.149 seconds. Complete launcher runs took 211.39
++seconds for v5 and 172.94 seconds for v6. See
+ [the full method and raw timings](PLANET_SEARCH_PERFORMANCE.md).
+ 
+ 
+diff --git a/v6/docs/PLANET_SEARCH_BENCHMARK.json b/v6/docs/PLANET_SEARCH_BENCHMARK.json
+index 723997b..aee60b8 100644
+--- a/v6/docs/PLANET_SEARCH_BENCHMARK.json
++++ b/v6/docs/PLANET_SEARCH_BENCHMARK.json
+@@ -7,27 +7,164 @@
+   },
+   "repetitions": 3,
+   "v6_workers": 4,
++  "full_launcher": {
++    "image": "/home/pth/Skrivebord/StarTrails/FishEye18-1021w_Espenak.jpg",
++    "measurement_date": "2026-09-16",
++    "v5_wall_seconds": 211.39,
++    "v6_wall_seconds": 172.94,
++    "speedup_ratio": 1.22233,
++    "wall_seconds_saved": 38.45,
++    "v5_max_rss_kb": 842572,
++    "v6_max_rss_kb": 841836,
++    "v6_reported_planet_stage_seconds": 32.24,
++    "note": "One complete launcher run per version. Shared blind-bootstrap timing varies; use the three-repetition isolated stage for the planet-search comparison."
++  },
+   "timing": {
+     "v5_seconds": [
+-      68.60333266798989,
+-      76.77441935199022,
+-      76.79955259300186
++      66.39971319699544,
++      66.87408400799904,
++      67.95376678799221
+     ],
+     "v6_seconds": [
+-      24.83840567500738,
+-      25.52968406700529,
+-      24.160062962997472
++      29.06626577100542,
++      30.192154445991036,
++      33.25267016800353
++    ],
++    "v5_median_seconds": 66.87408400799904,
++    "v6_median_seconds": 30.192154445991036,
++    "speedup_ratio": 2.2149490566374173
++  },
++  "cache_states": {
++    "v5": [
++      {
++        "source": "writable_cache_present_before_run",
++        "paths": [
++          "/home/pth/WORKSHOP/WIDE-FIELD-SOLVER/.worktrees/v6-planet-search/v5/results/ephemeris-cache/planet-reference-cff5c71f8b86fbd81ec1.npz"
++        ],
++        "bytes": 19292466,
++        "digest": "3bf01ee7a887891f7fe0c19fddcec1ef857cfdeba100a9d62aa53fddc000b2fe",
++        "build_seconds": 0.0
++      },
++      {
++        "source": "writable_cache_present_before_run",
++        "paths": [
++          "/home/pth/WORKSHOP/WIDE-FIELD-SOLVER/.worktrees/v6-planet-search/v5/results/ephemeris-cache/planet-reference-cff5c71f8b86fbd81ec1.npz"
++        ],
++        "bytes": 19292466,
++        "digest": "3bf01ee7a887891f7fe0c19fddcec1ef857cfdeba100a9d62aa53fddc000b2fe",
++        "build_seconds": 0.0
++      },
++      {
++        "source": "writable_cache_present_before_run",
++        "paths": [
++          "/home/pth/WORKSHOP/WIDE-FIELD-SOLVER/.worktrees/v6-planet-search/v5/results/ephemeris-cache/planet-reference-cff5c71f8b86fbd81ec1.npz"
++        ],
++        "bytes": 19292466,
++        "digest": "3bf01ee7a887891f7fe0c19fddcec1ef857cfdeba100a9d62aa53fddc000b2fe",
++        "build_seconds": 0.0
++      }
+     ],
+-    "v5_median_seconds": 76.77441935199022,
+-    "v6_median_seconds": 24.83840567500738,
+-    "speedup_ratio": 3.0909560120938564
++    "v6": [
++      {
++        "source": "bundled",
++        "path": "/home/pth/WORKSHOP/WIDE-FIELD-SOLVER/.worktrees/v6-planet-search/v6/data/planet-reference-1850-2036.npz",
++        "bytes": 11964142,
++        "digest": "ebf09fdcde047cc8f0b1a0030e212590bcb2db1555ab824e060d46e27c00adac",
++        "build_seconds": 0.0
++      },
++      {
++        "source": "bundled",
++        "path": "/home/pth/WORKSHOP/WIDE-FIELD-SOLVER/.worktrees/v6-planet-search/v6/data/planet-reference-1850-2036.npz",
++        "bytes": 11964142,
++        "digest": "ebf09fdcde047cc8f0b1a0030e212590bcb2db1555ab824e060d46e27c00adac",
++        "build_seconds": 0.0
++      },
++      {
++        "source": "bundled",
++        "path": "/home/pth/WORKSHOP/WIDE-FIELD-SOLVER/.worktrees/v6-planet-search/v6/data/planet-reference-1850-2036.npz",
++        "bytes": 11964142,
++        "digest": "ebf09fdcde047cc8f0b1a0030e212590bcb2db1555ab824e060d46e27c00adac",
++        "build_seconds": 0.0
++      }
++    ]
+   },
+   "science": {
+     "equivalent": true,
+-    "reasons": [],
+-    "max_epoch_difference_seconds": 0.1388847827911377,
+-    "max_rms_difference_px": 2.5587088003931058e-11,
+-    "candidate_count_v5": 138,
+-    "candidate_count_v6": 138
++    "repetitions": [
++      {
++        "equivalent": true,
++        "reasons": [],
++        "max_epoch_difference_seconds": 0.14862120151519775,
++        "max_rms_difference_px": 3.2811087180562026e-11,
++        "candidate_count_v5": 138,
++        "candidate_count_v6": 138
++      },
++      {
++        "equivalent": true,
++        "reasons": [],
++        "max_epoch_difference_seconds": 0.14862120151519775,
++        "max_rms_difference_px": 3.2811087180562026e-11,
++        "candidate_count_v5": 138,
++        "candidate_count_v6": 138
++      },
++      {
++        "equivalent": true,
++        "reasons": [],
++        "max_epoch_difference_seconds": 0.14862120151519775,
++        "max_rms_difference_px": 3.2811087180562026e-11,
++        "candidate_count_v5": 138,
++        "candidate_count_v6": 138
++      },
++      {
++        "equivalent": true,
++        "reasons": [],
++        "max_epoch_difference_seconds": 0.0,
++        "max_rms_difference_px": 0.0,
++        "candidate_count_v5": 138,
++        "candidate_count_v6": 138,
++        "kind": "repeatability",
++        "version": "v5",
++        "left_repetition": 1,
++        "right_repetition": 2
++      },
++      {
++        "equivalent": true,
++        "reasons": [],
++        "max_epoch_difference_seconds": 0.0,
++        "max_rms_difference_px": 0.0,
++        "candidate_count_v5": 138,
++        "candidate_count_v6": 138,
++        "kind": "repeatability",
++        "version": "v5",
++        "left_repetition": 1,
++        "right_repetition": 3
++      },
++      {
++        "equivalent": true,
++        "reasons": [],
++        "max_epoch_difference_seconds": 0.0,
++        "max_rms_difference_px": 0.0,
++        "candidate_count_v5": 138,
++        "candidate_count_v6": 138,
++        "kind": "repeatability",
++        "version": "v6",
++        "left_repetition": 1,
++        "right_repetition": 2
++      },
++      {
++        "equivalent": true,
++        "reasons": [],
++        "max_epoch_difference_seconds": 0.0,
++        "max_rms_difference_px": 0.0,
++        "candidate_count_v5": 138,
++        "candidate_count_v6": 138,
++        "kind": "repeatability",
++        "version": "v6",
++        "left_repetition": 1,
++        "right_repetition": 3
++      }
++    ],
++    "max_epoch_difference_seconds": 0.14862120151519775,
++    "max_rms_difference_px": 3.2811087180562026e-11
+   }
+ }
+diff --git a/v6/docs/PLANET_SEARCH_PERFORMANCE.md b/v6/docs/PLANET_SEARCH_PERFORMANCE.md
+index 1546330..0e8ab00 100644
+--- a/v6/docs/PLANET_SEARCH_PERFORMANCE.md
++++ b/v6/docs/PLANET_SEARCH_PERFORMANCE.md
+@@ -10,7 +10,8 @@ ceiling still excludes future dates; 2036 is deliberate headroom beyond the
+ 
+ - A validated 12 MB daily reference table is shipped with v6, so ordinary runs
+   do not build a 300-year ephemeris cache.
+-- Normalized cubic interpolation supplies cheap proposal checks only.
++- Normalized Catmull--Rom interpolation supplies optimized proposal dates;
++  one-sided cubic stencils cover the two reference-table edge segments.
+ - Independent visit brackets for one planet are refined in vector batches.
+ - Up to four planet groups run in deterministic worker processes. Set
+   `WFS_PLANET_WORKERS=1` for the serial reference path.
+@@ -18,10 +19,12 @@ ceiling still excludes future dates; 2036 is deliberate headroom beyond the
+   count, exact/interpolated call counts and candidate counts. The identical
+   object is embedded in `planet_epoch.json`.
+ 
+-Exact Astropy builtin directions remain authoritative. Every final date,
+-detector gate, altitude, saved predicted position and residual is evaluated on
+-the exact path. Interpolation cannot accept a candidate, and tests deliberately
+-put interpolated and exact positions on opposite sides of a gate.
++Exact Astropy builtin directions remain authoritative. The interpolated date is
++accepted as an option only after an exact evaluation confirms the five-arcsecond
++interpolation guard. Every original visit bracket is still minimized in full on
++the exact path, and every final detector gate, altitude, saved predicted
++position and residual is exact. Tests deliberately put interpolated and exact
++positions on opposite sides of a gate.
+ 
+ ## Controlled Espenak benchmark
+ 
+@@ -33,18 +36,29 @@ warm validated cache; v6 used four workers. Raw evidence is in
+ 
+ | Runtime | Repetitions (s) | Median (s) |
+ |---|---:|---:|
+-| v5 warm cache | 68.60, 76.77, 76.80 | 76.77 |
+-| v6 bundled table, 4 workers | 24.84, 25.53, 24.16 | 24.84 |
++| v5 warm cache | 66.40, 66.87, 67.95 | 66.87 |
++| v6 bundled table, 4 workers | 29.07, 30.19, 33.25 | 30.19 |
+ 
+-The median speedup is **3.09×**. A separate v6 one-worker run took 32.42 s wall
+-(30.34 s measured inside the stage), showing that batching supplies most of the
+-gain and process parallelism supplies a further improvement.
++The median isolated-stage speedup is **2.21×**. The evidence records the v5
++writable cache as present before every timed run and the v6 bundled-table digest
++for every run.
++
++One complete launcher run per version on the same image took 211.39 seconds for
++`go5.sh` and 172.94 seconds for `go6.sh`: **1.22× end-to-end**, or 38.45 seconds
++saved. The shared blind-bootstrap stage is both dominant and variable, so the
++three-repetition isolated comparison is the appropriate measure of the planet
++search itself. The complete v6 run reported 32.24 seconds inside the planetary
++stage.
+ 
+ Both versions found 843 positional visits, ran 138 joint trials, retained the
+ same 138 candidate identities and reported `planet_epoch_not_identifiable`.
+-The largest candidate-epoch difference was 0.139 seconds and the largest RMS
+-difference was `2.56e-11` pixel. These are bounded exact-minimizer termination
++The largest candidate-epoch difference was 0.149 seconds and the largest RMS
++difference was `3.28e-11` pixel. These are bounded exact-minimizer termination
+ differences, not changes to the camera, detections, gates or scientific status.
++Every repetition also compared predicted coordinates, individual residuals and
++altitudes, visibility decisions, source candidates, negative evidence, and the
++planet CSV/JSON products. Both v5 and v6 reproduced their own full outputs on
++all repeated runs.
+ 
+ Reproduce the comparison from the repository root after syncing both locked
+ environments and making the v5 warm cache available:
+diff --git a/v6/point_star_planet_ephemeris.py b/v6/point_star_planet_ephemeris.py
+index 680db3b..3f7b3f3 100644
+--- a/v6/point_star_planet_ephemeris.py
++++ b/v6/point_star_planet_ephemeris.py
+@@ -125,19 +125,35 @@ class EphemerisProvider:
+         clipped = np.clip(insertion, 0, len(self.jd)-1)
+         exact = self.jd[clipped] == dates
+         value[exact] = track[clipped[exact]]
+-        for row in np.flatnonzero(~exact):
+-            right = insertion[row]
+-            left = right-1
+-            first = min(max(left-1, 0), len(self.jd)-4)
+-            sample_dates = self.jd[first:first+4]
+-            sample_vectors = track[first:first+4]
+-            weights = np.ones(4, dtype=np.float64)
++        rows = np.flatnonzero(~exact)
++        if len(rows):
++            left = insertion[rows]-1
++            interior = (left >= 1) & (left+2 < len(self.jd))
++            inner_rows = rows[interior]
++            inner_left = left[interior]
++            if len(inner_rows):
++                widths = self.jd[inner_left+1]-self.jd[inner_left]
++                u = ((dates[inner_rows]-self.jd[inner_left])/widths)[:, None]
++                p0, p1, p2, p3 = (track[inner_left-1], track[inner_left],
++                                  track[inner_left+1], track[inner_left+2])
++                value[inner_rows] = .5*((2*p1) + (-p0+p2)*u +
++                    (2*p0-5*p1+4*p2-p3)*u*u +
++                    (-p0+3*p1-3*p2+p3)*u*u*u)
++            # The first and final segment lack a centred Catmull--Rom stencil;
++            # use the nearest one-sided cubic solely for those proposal edges.
++            edge_rows = rows[~interior]
++            edge_left = left[~interior]
++            first = np.minimum(np.maximum(edge_left-1, 0), len(self.jd)-4)
++            sample_indices = first[:, None]+np.arange(4)
++            sample_dates = self.jd[sample_indices]
++            weights = np.ones((len(edge_rows), 4), dtype=np.float64)
+             for i in range(4):
+                 for j in range(4):
+                     if i != j:
+-                        weights[i] *= ((dates[row]-sample_dates[j]) /
+-                                       (sample_dates[i]-sample_dates[j]))
+-            value[row] = weights@sample_vectors
++                        weights[:, i] *= ((dates[edge_rows]-sample_dates[:, j]) /
++                                          (sample_dates[:, i]-sample_dates[:, j]))
++            value[edge_rows] = np.einsum('ni,nij->nj', weights,
++                                         track[sample_indices])
+         norms = np.linalg.norm(value, axis=1)
+         if not np.isfinite(value).all() or np.any(norms <= 0):
+             raise ValueError('Interpolated ephemeris returned invalid vectors')
+diff --git a/v6/point_star_planet_refinement.py b/v6/point_star_planet_refinement.py
+index 42d334f..05171df 100644
+--- a/v6/point_star_planet_refinement.py
++++ b/v6/point_star_planet_refinement.py
+@@ -150,7 +150,13 @@ def batched_exact_minima(provider, name: str, visits: Sequence[Visit],
+ 
+ def batched_interpolated_minima(provider, name: str, visits: Sequence[Visit],
+                                 objective: Callable, xatol: float = 1e-4):
+-    """Produce cheap cubic-trajectory minima without narrowing exact brackets."""
++    """Produce cheap cubic-trajectory proposals without narrowing exact brackets.
++
++    Five positions sample each original bracket in one vector call. A local
++    parabolic step around the best sample then proposes a sub-grid date for one
++    further interpolated evaluation. The subsequent exact optimizer still sees
++    the entire unchanged bracket.
++    """
+     visits = tuple(visits)
+     if not visits:
+         return np.empty(0), np.empty(0)
+@@ -162,33 +168,29 @@ def batched_interpolated_minima(provider, name: str, visits: Sequence[Visit],
+     b = np.array([visit.stop for visit in visits], dtype=np.float64)
+     if (not np.isfinite(a).all() or not np.isfinite(b).all() or np.any(b <= a)):
+         raise ValueError('Visit brackets must be finite and have positive width')
+-    invphi = (np.sqrt(5.)-1.)/2.
+-    c = b-invphi*(b-a)
+-    d = a+invphi*(b-a)
+-    vectors = provider.interpolated(name, np.r_[c, d])
+-    fc = _costs(objective, c, vectors[:len(visits)], visits)
+-    fd = _costs(objective, d, vectors[len(visits):], visits)
+-    for _ in range(128):
+-        active = np.flatnonzero((b-a) > xatol)
+-        if not len(active):
+-            break
+-        left = active[fc[active] <= fd[active]]
+-        right = active[fc[active] > fd[active]]
+-        if len(left):
+-            b[left], d[left], fd[left] = d[left], c[left], fc[left]
+-            c[left] = b[left]-invphi*(b[left]-a[left])
+-        if len(right):
+-            a[right], c[right], fc[right] = c[right], d[right], fd[right]
+-            d[right] = a[right]+invphi*(b[right]-a[right])
+-        new_dates = np.r_[c[left], d[right]]
+-        new_visits = tuple(visits[i] for i in np.r_[left, right])
+-        values = provider.interpolated(name, new_dates)
+-        costs = _costs(objective, new_dates, values, new_visits)
+-        fc[left] = costs[:len(left)]
+-        fd[right] = costs[len(left):]
+-    else:
+-        raise RuntimeError('Batched interpolated proposal did not converge')
+-    dates = (a+b)/2.
++    fractions = np.linspace(0., 1., 5)
++    sampled_dates = np.concatenate([a+fraction*(b-a) for fraction in fractions])
++    active_visits = visits*len(fractions)
++    vectors = provider.interpolated(name, sampled_dates)
++    sampled_costs = _costs(objective, sampled_dates, vectors, active_visits)
++    sampled_costs = sampled_costs.reshape(len(fractions), len(visits))
++    best = np.argmin(sampled_costs, axis=0)
++    proposed_fraction = fractions[best]
++    interior = np.flatnonzero((best > 0) & (best < len(fractions)-1))
++    if len(interior):
++        center = best[interior]
++        columns = interior
++        lower = sampled_costs[center-1, columns]
++        middle = sampled_costs[center, columns]
++        upper = sampled_costs[center+1, columns]
++        denominator = lower-2*middle+upper
++        stable = np.abs(denominator) > np.finfo(float).eps*np.maximum(
++            1., np.maximum(abs(lower), abs(upper)))
++        delta = np.zeros(len(interior))
++        delta[stable] = .5*(lower[stable]-upper[stable])/denominator[stable]
++        proposed_fraction[interior] = np.clip(
++            (center+np.clip(delta, -1., 1.))/4., 0., 1.)
++    dates = a+proposed_fraction*(b-a)
+     values = provider.interpolated(name, dates)
+     return dates, _costs(objective, dates, values, visits)
+ 
+diff --git a/v6/point_star_planets.py b/v6/point_star_planets.py
+index 2fd5ad9..ba30254 100644
+--- a/v6/point_star_planets.py
++++ b/v6/point_star_planets.py
+@@ -69,13 +69,16 @@ def _visible_projection(camera, vectors, zenith):
+     return points
+ 
+ 
+-def _record_empty_performance(output, search_started, requested_workers):
++def _record_empty_performance(output, search_started, requested_workers,
++                              provider_counts=None):
+     from point_star_planet_performance import PlanetSearchPerformance
+     performance = PlanetSearchPerformance(requested_workers=int(requested_workers))
+     performance.seconds.update(
+         coarse_scan=0., interpolated_refinement=0., exact_refinement=0.,
+         individual_refinement=0., joint_assignment=0., negative_evidence=0.,
+         cache_load=0.)
++    if provider_counts:
++        performance.providers.update(provider_counts)
+     output['planet_search_performance'] = performance.serialise(
+         total_planet_stage=time.perf_counter()-search_started)
+ 
+@@ -103,6 +106,8 @@ def search_planet_epochs(camera, detections, jd_grid, sky_grid, vector_function,
+         raise ValueError('The causal time ceiling must be finite')
+     last_date = min(float(jd[-1]), float(latest_jd_tdb))
+     names = list(sky_grid)
++    endpoint_counts = dict(interpolated_calls=0, interpolated_dates=0,
++                           exact_calls=0, exact_dates=0)
+     output = dict(status='no_planet_match', matches=[], candidates=[], match_count=0,
+                   metadata_used=False, stellar_epoch_used_as_date_prior=False, derived_epoch_utc=None, source_candidates=[],
+                   search_start_tdb=_date_text(jd[0]), search_end_tdb=_date_text(last_date), search_end_jd_tdb=last_date,
+@@ -119,16 +124,23 @@ def search_planet_epochs(camera, detections, jd_grid, sky_grid, vector_function,
+                     'Ranking is not a calibrated false-alarm probability.')
+     if last_date <= jd[0]:
+         output['reason'] = 'Reference interval lies entirely beyond the causal time ceiling'
+-        _record_empty_performance(output, search_started, planet_workers)
++        _record_empty_performance(output, search_started, planet_workers,
++                                  endpoint_counts)
+         return output
+     if jd[-1] > last_date:
+         before = jd < last_date
+-        sky_grid = {name: np.vstack([np.asarray(values)[before], vector_function(name, [last_date])])
+-                    for name, values in sky_grid.items()}
++        clipped = {}
++        for name, values in sky_grid.items():
++            endpoint = vector_function(name, [last_date])
++            endpoint_counts['exact_calls'] += 1
++            endpoint_counts['exact_dates'] += 1
++            clipped[name] = np.vstack([np.asarray(values)[before], endpoint])
++        sky_grid = clipped
+         jd = np.r_[jd[before], last_date]
+     if zenith_unit_vector is None:
+         output.update(status='visibility_unresolved', reason='No image-derived photometric zenith; planet visibility cannot be checked')
+-        _record_empty_performance(output, search_started, planet_workers)
++        _record_empty_performance(output, search_started, planet_workers,
++                                  endpoint_counts)
+         return output
+     zenith = np.asarray(zenith_unit_vector, dtype=float)
+     if zenith.shape != (3,) or not np.isfinite(zenith).all() or np.linalg.norm(zenith) < 1e-12:
+@@ -139,7 +151,8 @@ def search_planet_epochs(camera, detections, jd_grid, sky_grid, vector_function,
+                                 horizon_roundoff_tolerance_deg=1e-7)
+     if not detections or not names:
+         output['reason'] = 'No measured sources or reference planets'
+-        _record_empty_performance(output, search_started, planet_workers)
++        _record_empty_performance(output, search_started, planet_workers,
++                                  endpoint_counts)
+         return output
+     xy = np.array([[float(r['x_px']), float(r['y_px'])] for r in detections])
+     if not np.isfinite(xy).all():
+@@ -233,7 +246,8 @@ def search_planet_epochs(camera, detections, jd_grid, sky_grid, vector_function,
+     def record_performance(joint_seconds=0.):
+         from point_star_planet_performance import PlanetSearchPerformance
+         counts = provider.counts()
+-        counts = {key: int(value+worker_counters.get(key, 0))
++        counts = {key: int(value+worker_counters.get(key, 0)
++                           + endpoint_counts.get(key, 0))
+                   for key, value in counts.items()}
+         performance = PlanetSearchPerformance(requested_workers=int(planet_workers))
+         performance.used_workers = int(workers_used)
+diff --git a/v6/scripts/benchmark_planet_search.py b/v6/scripts/benchmark_planet_search.py
+old mode 100755
+new mode 100644
+index 04169f9..42d7657
+--- a/v6/scripts/benchmark_planet_search.py
++++ b/v6/scripts/benchmark_planet_search.py
+@@ -70,8 +70,9 @@ def compare_science(v5, v6, *, epoch_tolerance_seconds=.25,
+                 reasons.append(f'{path} differs')
+         elif (isinstance(left, (int, float)) and not isinstance(left, bool)
+               and isinstance(right, (int, float)) and not isinstance(right, bool)):
+-            tolerance = (epoch_tolerance_seconds/86400. if 'jd_tdb' in key
+-                         else residual_tolerance_px)
++            tolerance = epoch_tolerance_seconds/86400. if 'jd_tdb' in key else 1e-4
++            if any(token in key for token in ('rms_px', 'separation_px', 'cost_px')):
++                tolerance = residual_tolerance_px
+             if abs(float(left)-float(right)) > tolerance:
+                 reasons.append(f'{path} differs')
+         elif left != right:
+@@ -105,6 +106,9 @@ def _run(version, analysis, image, workers):
+     interpreter = ROOT/version/'.venv/bin/python'
+     if not interpreter.is_file():
+         raise ValueError(f'Missing locked interpreter: {interpreter}')
++    cache_dir = ROOT/version/'results/ephemeris-cache'
++    cache_before = {path.resolve(): path.stat().st_size
++                    for path in cache_dir.glob('*.npz')} if cache_dir.is_dir() else {}
+     with tempfile.TemporaryDirectory(prefix=f'wfs-{version}-benchmark-') as temporary:
+         destination = Path(temporary)/'analysis'
+         shutil.copytree(analysis, destination)
+@@ -145,9 +149,36 @@ def _run(version, analysis, image, workers):
+         products['planet_non_detections.json'] = json.loads(
+             (destination/'planet_non_detections.json').read_text())
+         answer['_benchmark_products'] = products
++        cache_after = {path.resolve(): path.stat().st_size
++                       for path in cache_dir.glob('*.npz')} if cache_dir.is_dir() else {}
++        answer['_benchmark_cache_state'] = {
++            'source': ('writable_cache_present_before_run' if cache_before
++                       and cache_before == cache_after else
++                       'generated_during_run' if cache_after else 'none'),
++            'paths': [str(path) for path in sorted(cache_after, key=str)],
++            'bytes': int(sum(cache_after.values())),
++            'digest': (answer.get('ephemeris') or {}).get('content_sha256'),
++            'build_seconds': 0.,
++        }
+     return elapsed, answer
+ 
+ 
++def _cache_state(answer):
++    performance = answer.get('planet_search_performance') or {}
++    if performance.get('cache'):
++        return performance['cache']
++    if answer.get('_benchmark_cache_state'):
++        return answer['_benchmark_cache_state']
++    provenance = answer.get('ephemeris') or {}
++    return {
++        'source': provenance.get('cache_source'),
++        'path': provenance.get('cache_path'),
++        'bytes': provenance.get('cache_bytes'),
++        'digest': provenance.get('content_sha256'),
++        'build_seconds': float(provenance.get('cache_build_seconds', 0.)),
++    }
++
++
+ def main(argv=None):
+     parser = argparse.ArgumentParser(description=__doc__)
+     parser.add_argument('--v5-analysis', type=Path, required=True)
+@@ -190,8 +221,7 @@ def main(argv=None):
+         'repetitions': args.repetitions,
+         'v6_workers': args.workers,
+         'timing': timing_summary(timings['v5'], timings['v6']),
+-        'cache_states': {version: [answer.get('planet_search_performance', {}).get('cache', {})
+-                                  for answer in values]
++        'cache_states': {version: [_cache_state(answer) for answer in values]
+                          for version, values in answers.items()},
+         'science': science,
+     }
+diff --git a/v6/test_planet_search_benchmark.py b/v6/test_planet_search_benchmark.py
+index 37e5175..4923052 100644
+--- a/v6/test_planet_search_benchmark.py
++++ b/v6/test_planet_search_benchmark.py
+@@ -31,6 +31,18 @@ class BenchmarkTests(unittest.TestCase):
+         self.assertEqual(summary['v6_median_seconds'], 5.)
+         self.assertEqual(summary['speedup_ratio'], 2.)
+ 
++    def test_cache_state_supports_v5_provenance_and_v6_telemetry(self):
++        from scripts.benchmark_planet_search import _cache_state
++        v5 = {'ephemeris': {'cache_source': 'writable_cache',
++                            'cache_path': '/cache/v5.npz', 'cache_bytes': 12,
++                            'content_sha256': 'old', 'cache_build_seconds': 0.}}
++        v6 = {'planet_search_performance': {'cache': {
++            'source': 'bundled', 'path': '/data/v6.npz', 'bytes': 34,
++            'digest': 'new', 'build_seconds': 0.}}}
++        self.assertEqual(_cache_state(v5)['source'], 'writable_cache')
++        self.assertEqual(_cache_state(v5)['digest'], 'old')
++        self.assertEqual(_cache_state(v6)['source'], 'bundled')
++
+     def test_scientific_comparison_allows_only_tiny_exact_numeric_differences(self):
+         from scripts.benchmark_planet_search import compare_science
+         v5 = self.candidate()
+diff --git a/v6/test_point_star_planets.py b/v6/test_point_star_planets.py
+index c3bd2d0..bc04811 100644
+--- a/v6/test_point_star_planets.py
++++ b/v6/test_point_star_planets.py
+@@ -1,6 +1,9 @@
+ """Blind time search recovers measured positions and preserves date aliases."""
+ import json
+ import os
++from pathlib import Path
++import subprocess
++import sys
+ import tempfile
+ import unittest
+ import numpy as np
+@@ -22,6 +25,26 @@ def _parallel_vectors(name, jd):
+     return camera.to_sky(points)
+ 
+ 
++def _parallel_answer(workers):
++    from point_star_planets import search_planet_epochs
++    camera = BarghiniCamera.initial((300, 400), 180., np.eye(3))
++    dates = _PARALLEL_ORIGIN+np.arange(11.)
++    names = ('saturn', 'jupiter', 'mars')
++    grid = {name: _parallel_vectors(name, dates) for name in names}
++    positions = ([120., 100.], [270., 170.], [220., 210.])
++    sources = [dict(detection_id=str(index), x_px=x, y_px=y,
++                    saturated='True', source_class='broad_blob',
++                    flux_above_background=100.)
++               for index, (x, y) in enumerate(positions)]
++    answer = search_planet_epochs(
++        camera, sources, dates, grid, _parallel_vectors,
++        gate_px=1., positional_sigma_px=.2,
++        zenith_unit_vector=[0, 0, 1], planet_workers=workers,
++        latest_jd_tdb=_PARALLEL_ORIGIN+100.)
++    answer.pop('planet_search_performance')
++    return answer
++
++
+ class PlanetSearchTests(unittest.TestCase):
+     def setUp(self):
+         self.camera = BarghiniCamera.initial((300, 400), 180., np.eye(3))
+@@ -99,34 +122,33 @@ class PlanetSearchTests(unittest.TestCase):
+         self.assertTrue(all(r['saturated'] for r in result['matches']))
+ 
+     def test_complete_search_is_deterministic_for_one_two_and_four_workers(self):
+-        from point_star_planets import search_planet_epochs
+-        dates = self.origin+np.arange(11.)
+-        names = ('saturn', 'jupiter', 'mars')
+-        grid = {name: _parallel_vectors(name, dates) for name in names}
+-        positions = ([120., 100.], [270., 170.], [220., 210.])
+-        sources = [dict(detection_id=str(index), x_px=x, y_px=y,
+-                        saturated='True', source_class='broad_blob',
+-                        flux_above_background=100.)
+-                   for index, (x, y) in enumerate(positions)]
+         answers = []
+         with tempfile.TemporaryDirectory() as temporary:
+             old_cwd = os.getcwd()
+             try:
+                 os.chdir(temporary)
+                 for workers in (1, 2, 4):
+-                    answer = search_planet_epochs(
+-                        self.camera, sources, dates, grid, _parallel_vectors,
+-                        gate_px=1., positional_sigma_px=.2,
+-                        zenith_unit_vector=[0, 0, 1], planet_workers=workers,
+-                        latest_jd_tdb=self.origin+100.)
+-                    answer.pop('planet_search_performance')
+-                    answers.append(answer)
++                    answers.append(_parallel_answer(workers))
+             finally:
+                 os.chdir(old_cwd)
+             self.assertEqual(list(os.scandir(temporary)), [])
+         self.assertEqual(answers[0], answers[1])
+         self.assertEqual(answers[0], answers[2])
+ 
++    def test_parallel_search_repeats_across_fresh_python_processes(self):
++        code = ('import json; from test_point_star_planets import _parallel_answer; '
++                'print(json.dumps(_parallel_answer(2), sort_keys=True))')
++        with tempfile.TemporaryDirectory() as temporary:
++            outputs = []
++            for _ in range(2):
++                completed = subprocess.run(
++                    [sys.executable, '-c', code], cwd=temporary,
++                    env={**os.environ, 'PYTHONPATH': str(Path(__file__).resolve().parent)},
++                    capture_output=True, text=True, check=True)
++                outputs.append(completed.stdout.splitlines()[-1])
++            self.assertEqual(list(os.scandir(temporary)), [])
++        self.assertEqual(outputs[0], outputs[1])
++
+     def test_fast_planet_between_daily_samples_is_not_missed(self):
+         tracks = {'mercury': lambda t: np.c_[150+30*(t-.37), np.full(len(t), 130.)]}
+         result = self.search(tracks, [(150., 130.)], stop=1.)
+@@ -322,6 +344,8 @@ class PlanetSearchTests(unittest.TestCase):
+             zenith_unit_vector=[0, 0, 1], latest_jd_tdb=self.origin+5.5)
+         self.assertEqual(answer['matches'], [])
+         self.assertLessEqual(answer['search_end_jd_tdb'], self.origin+5.5)
++        self.assertEqual(answer['planet_search_performance']['providers']['exact_calls'], 1)
++        self.assertEqual(answer['planet_search_performance']['providers']['exact_dates'], 1)
+ 
+     def test_brief_visible_passage_is_not_hidden_by_visibility_penalty(self):
+         from point_star_planets import search_planet_epochs
