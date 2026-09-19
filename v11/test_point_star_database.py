@@ -2,6 +2,7 @@
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 import hashlib
+import importlib.util
 import json
 from pathlib import Path
 import sqlite3
@@ -53,6 +54,41 @@ class DatabaseTests(unittest.TestCase):
         with closing(sqlite3.connect(self.db)) as db, db:
             self.assertEqual(db.execute('SELECT count(*) FROM runs').fetchone()[0], 2)
             self.assertEqual(db.execute('SELECT count(*) FROM star_measurements').fetchone()[0], 4)
+
+    def test_duplicate_payloads_are_stored_once_but_all_paths_and_rows_survive(self):
+        import shutil
+        shutil.copytree(self.output/'dots', self.output/'snapshot/dots')
+        self.record()
+        with closing(sqlite3.connect(self.db)) as db:
+            self.assertEqual(db.execute("SELECT type FROM sqlite_master WHERE name='products'").fetchone(), ('view',))
+            physical = db.execute('SELECT count(*), sum(length(content)) FROM product_content').fetchone()
+            bodies = db.execute('SELECT count(*) FROM measurement_content').fetchone()[0]
+        self.record()
+        with closing(sqlite3.connect(self.db)) as db:
+            self.assertEqual(db.execute('SELECT count(*), sum(length(content)) FROM product_content').fetchone(), physical)
+            self.assertEqual(db.execute('SELECT count(*) FROM measurement_content').fetchone()[0], bodies)
+            self.assertEqual(db.execute('SELECT count(*) FROM products').fetchone()[0], 14)
+            self.assertEqual(db.execute('SELECT count(*) FROM measurements').fetchone()[0], 20)
+            self.assertEqual(db.execute("SELECT json_extract(values_json, '$.G1_flux') FROM measurements WHERE product='stellar_photometry.csv'").fetchall(), [('220',), ('220',)])
+
+    def test_legacy_database_migrates_and_frozen_writer_still_appends(self):
+        spec = importlib.util.spec_from_file_location('frozen_database', Path(__file__).parents[1]/'v10/point_star_database.py')
+        legacy = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(legacy)
+        legacy.append_run(self.db, self.output, self.image)
+        with closing(sqlite3.connect(self.db)) as db:
+            before = db.execute('SELECT * FROM products ORDER BY product').fetchall()
+            rows = db.execute('SELECT * FROM measurements ORDER BY product, row_number').fetchall()
+        self.record()
+        legacy.append_run(self.db, self.output, self.image)
+        with closing(sqlite3.connect(self.db)) as db:
+            self.assertEqual(db.execute("SELECT type FROM sqlite_master WHERE name='products'").fetchone(), ('view',))
+            self.assertEqual(db.execute('SELECT * FROM products WHERE run_id=? ORDER BY product', (before[0][0],)).fetchall(), before)
+            after = db.execute('SELECT * FROM measurements WHERE run_id=? ORDER BY product,row_number', (before[0][0],)).fetchall()
+            self.assertEqual([r[:5]+(json.loads(r[5]),) for r in after], [r[:5]+(json.loads(r[5]),) for r in rows])
+            self.assertEqual(db.execute('SELECT count(*) FROM runs').fetchone()[0], 3)
+            self.assertEqual(db.execute('SELECT count(*) FROM star_measurements').fetchone()[0], 6)
+            self.assertEqual(db.execute('PRAGMA foreign_key_check').fetchall(), [])
 
     def test_preserves_saturated_missing_photometry_unmatched_and_extra_channels(self):
         self.record()
@@ -127,6 +163,62 @@ class DatabaseTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'schema'):
             self.record()
         with closing(sqlite3.connect(self.db)) as db, db:
+            self.assertEqual(db.execute('SELECT count(*) FROM runs').fetchone()[0], 1)
+
+    def test_migration_refuses_custom_trigger_without_losing_it(self):
+        spec = importlib.util.spec_from_file_location('frozen_database', Path(__file__).parents[1]/'v10/point_star_database.py')
+        legacy = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(legacy)
+        legacy.append_run(self.db, self.output, self.image)
+        with closing(sqlite3.connect(self.db)) as db, db:
+            db.execute('CREATE TRIGGER custom AFTER INSERT ON products BEGIN SELECT 1; END')
+        with self.assertRaisesRegex(ValueError, 'schema'):
+            self.record()
+        with closing(sqlite3.connect(self.db)) as db:
+            self.assertEqual(db.execute("SELECT type FROM sqlite_master WHERE name='products'").fetchone(), ('table',))
+            self.assertEqual(db.execute("SELECT count(*) FROM sqlite_master WHERE name='custom'").fetchone()[0], 1)
+
+    def test_migration_refuses_modified_public_view_without_replacing_it(self):
+        spec = importlib.util.spec_from_file_location('frozen_database', Path(__file__).parents[1]/'v10/point_star_database.py')
+        legacy = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(legacy)
+        legacy.append_run(self.db, self.output, self.image)
+        with closing(sqlite3.connect(self.db)) as db, db:
+            db.execute('DROP VIEW star_measurements')
+            db.execute('CREATE VIEW star_measurements AS SELECT run_id, product FROM products')
+            before = db.execute('SELECT * FROM star_measurements ORDER BY product').fetchall()
+        with self.assertRaisesRegex(ValueError, 'schema'):
+            self.record()
+        with closing(sqlite3.connect(self.db)) as db:
+            self.assertEqual(db.execute('SELECT * FROM star_measurements ORDER BY product').fetchall(), before)
+            self.assertEqual(db.execute("SELECT type FROM sqlite_master WHERE name='products'").fetchone(), ('table',))
+
+    def test_compaction_reclaims_space_without_dropping_runs_or_measurements(self):
+        from point_star_database import compact_database
+        spec = importlib.util.spec_from_file_location('frozen_database', Path(__file__).parents[1]/'v10/point_star_database.py')
+        legacy = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(legacy)
+        (self.output/'large.txt').write_text('Repeated immutable diagnostic\n'*40000)
+        for _ in range(3):
+            legacy.append_run(self.db, self.output, self.image)
+        stats = compact_database(self.db)
+        self.assertLess(stats['after_bytes'], stats['before_bytes']/2)
+        with closing(sqlite3.connect(self.db)) as db:
+            self.assertEqual(db.execute('SELECT count(*) FROM runs').fetchone()[0], 3)
+            self.assertEqual(db.execute('SELECT count(*) FROM measurements').fetchone()[0], 21)
+            self.assertEqual(db.execute('PRAGMA integrity_check').fetchone(), ('ok',))
+        self.record()
+
+    def test_failed_import_rolls_back_legacy_migration_too(self):
+        spec = importlib.util.spec_from_file_location('frozen_database', Path(__file__).parents[1]/'v10/point_star_database.py')
+        legacy = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(legacy)
+        legacy.append_run(self.db, self.output, self.image)
+        (self.output/'broken.csv').write_bytes(b'\xff')
+        with self.assertRaises(UnicodeDecodeError):
+            self.record()
+        with closing(sqlite3.connect(self.db)) as db:
+            self.assertEqual(db.execute("SELECT type FROM sqlite_master WHERE name='products'").fetchone(), ('table',))
             self.assertEqual(db.execute('SELECT count(*) FROM runs').fetchone()[0], 1)
 
     def test_database_inside_analysis_is_rejected(self):

@@ -1,5 +1,14 @@
 # Point-source feature status, version 0.11.0
 
+**Lossless storage reduction (19 September 2026):** physical product/CSV-body
+deduplication preserves all logical runs, rows and exact original product bytes
+behind ordinary SQLite views. Legacy databases migrate transactionally and
+preserved writers remain compatible. Successful adopted joint intermediate
+snapshots are verified and compressed into a ZIP after recording; root reports
+and final products stay directly accessible. No numerical changes. See
+[DATABASE.md](DATABASE.md), `test_point_star_database.py` and
+`test_point_star_storage.py`.
+
 V11 adds actual common-camera stellar/planetary epoch profiles, full-range
 metadata-independent discovery, positive relative-brightness evidence and joint
 coordinate/export authority. See [V11_JOINT_EPOCH.md](V11_JOINT_EPOCH.md) for exact

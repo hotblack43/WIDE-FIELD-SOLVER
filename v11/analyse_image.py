@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+import zipfile
 
 from point_star_barghini import SOLVER_VERSION, run
 from point_star_report import write_report
@@ -77,6 +78,16 @@ def main():
             run_id = append_run(args.database, args.output, args.image,
                                 exit_code=exit_code, error=error)
             print(f'Database: {args.database.resolve()} (run {run_id})', flush=True)
+    # Run only on success, after the recording transaction. Storage housekeeping
+    # must never turn an adopted fit into an apparent scientific failure.
+    from point_star_storage import archive_intermediates
+    try:
+        storage = archive_intermediates(args.output)
+        if storage['archived']:
+            print(f"Intermediate evidence: {args.output / 'intermediate_products.zip'} "
+                  f"({storage['before_bytes']} → {storage['after_bytes']} bytes)", flush=True)
+    except (OSError, ValueError, zipfile.BadZipFile) as exc:
+        print(f'Warning: intermediate archiving incomplete; evidence retained: {exc}', flush=True)
 
 
 def analyse(args):
