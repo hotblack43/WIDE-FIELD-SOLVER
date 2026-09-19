@@ -3,6 +3,20 @@ revision = 3
 requires-python = "==3.12.*"
 
 [[package]]
+name = "adjusttext"
+version = "1.4.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "matplotlib" },
+    { name = "numpy" },
+    { name = "scipy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/b5/5c/496e506ad3313664df24a79f801719cadcd62af5999fcb299c9b08ff0d4b/adjusttext-1.4.0.tar.gz", hash = "sha256:1f73860ced8cccce3f85ee6989ca133c2579b67a7453f63dbeb38f39bf123154", size = 15852, upload-time = "2026-06-08T16:48:32.726Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b8/2c/897bdd17b05724c894a5b831c6b2e9853adcc2d07a70d6246c0cd5cd3912/adjusttext-1.4.0-py3-none-any.whl", hash = "sha256:6febd6484c0d45c39a22f44b2c1f4a8cd01ef58fada565cab4b629c771df79b5", size = 13262, upload-time = "2026-06-08T16:48:31.765Z" },
+]
+
+[[package]]
 name = "astropy"
 version = "7.2.0"
 source = { registry = "https://pypi.org/simple" }
@@ -646,6 +660,7 @@ name = "wide-field-solver"
 version = "0.11.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "adjusttext" },
     { name = "astropy" },
     { name = "astroquery" },
     { name = "exifread" },
@@ -661,6 +676,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "adjusttext", specifier = "==1.4.0" },
     { name = "astropy", specifier = "==7.2.0" },
     { name = "astroquery", specifier = "==0.4.11" },
     { name = "exifread", specifier = "==3.5.1" },

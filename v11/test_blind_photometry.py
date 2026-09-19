@@ -136,11 +136,12 @@ class BlindPhotometryTests(unittest.TestCase):
                 first=measure_photometry(source,root/'one',result,{})
                 second=measure_photometry(source,root/'two',poisoned,{})
             self.assertEqual(first['photometric_zenith'],second['photometric_zenith'])
-            self.assertEqual(first['airmass_source'],'blind_centred_full_horizon_geometry')
+            self.assertEqual(first['airmass_source'],'image_centre_assumption')
             self.assertFalse(first['metadata_used'])
             zenith = first['photometric_zenith']
-            self.assertEqual(zenith['zenith_source'], 'centred_full_horizon_geometry')
-            horizon = zenith['geometric_horizon']
+            self.assertEqual(zenith['zenith_source'], 'image_centre_assumption')
+            self.assertEqual(zenith['status'], 'assumed_zenith')
+            horizon = zenith['geometric_horizon']['full_horizon_check']
             self.assertAlmostEqual(horizon['footprint_horizon_scale_arcmin_per_px'],
                                    90.*60./195., delta=.1)
             self.assertAlmostEqual(horizon['fitted_horizon_scale_arcmin_per_px'],

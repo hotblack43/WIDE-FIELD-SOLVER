@@ -12,12 +12,87 @@ from astropy.io import fits
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+from matplotlib.backends.backend_agg import FigureCanvasAgg
 
 from point_star_report import (formula_page, observation_metadata, report_sections,
                                table_rows, write_report)
 
 
 class ReportTests(unittest.TestCase):
+    def test_planet_label_between_nearby_sources_keeps_markers_clear(self):
+        from PIL import Image
+        from point_star_report import write_report_sky_overlay
+        stars = [dict(display_name='ο Leo', x_px=121.4018, y_px=718.8467),
+                 dict(display_name='ε Gem', x_px=449.1134, y_px=689.9899)]
+        matches = [dict(planet='Mars', measured_x_px=334.7097, measured_y_px=704.4659,
+                        predicted_x_px=334.8, predicted_y_px=704.6),
+                   dict(planet='Jupiter', measured_x_px=173.8223, measured_y_px=747.2459,
+                        predicted_x_px=174., predicted_y_px=747.4)]
+        joint = dict(status='joint_epoch_ambiguous', adopted=False, best_index=0,
+                     candidates=[dict(matches=matches, epoch_tdb='2026', jd_tdb=2461303.)])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            Image.new('RGB', (1408, 1408)).save(root/'source.png')
+            (root/'labelled_stars.json').write_text(json.dumps(dict(stars=stars)))
+            with patch('point_star_report.save_png') as save:
+                write_report_sky_overlay(root, dict(source=str(root/'source.png'), joint_epoch=joint), {})
+            ax = save.call_args.args[0].axes[0]
+            canvas = FigureCanvasAgg(ax.figure)
+            canvas.draw()
+            renderer = canvas.get_renderer()
+            labels = [t for t in ax.texts if t.get_text() and t.get_text() != 'Extinction zenith: no candidate']
+            for text in labels:
+                box = text.get_bbox_patch().get_window_extent(renderer)
+                for marker in ax.lines:
+                    self.assertFalse(box.overlaps(marker.get_window_extent(renderer)), text.get_text())
+            audit = json.loads((root/'report_label_layout.json').read_text())
+            self.assertEqual(audit['remaining_conflicts'], [])
+
+    def test_sky_labels_avoid_each_other_markers_legend_and_image_edges(self):
+        from copy import deepcopy
+        from PIL import Image
+        from point_star_report import write_report_sky_overlay
+        stars = [dict(display_name=name, x_px=x, y_px=y) for name, x, y in (
+            ('Nearby star A', 180., 180.), ('Nearby star B', 183., 182.),
+            ('Nearby star C', 177., 183.), ('Edge star', 396., 20.),
+            ('Near legend', 35., 375.))]
+        planets = dict(status='conditional_planet_epoch', matches=[
+            dict(planet='Mars', measured_x_px=180., measured_y_px=177.),
+            dict(planet='Jupiter', measured_x_px=185., measured_y_px=180.)],
+            predicted_planets=[dict(planet='Saturn', predicted_x_px=182., predicted_y_px=185.)])
+        original = deepcopy(planets)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            Image.new('RGB', (400, 400)).save(root/'source.png')
+            (root/'labelled_stars.json').write_text(json.dumps(dict(stars=stars)))
+            positions = []
+            for repeat in range(2):
+                with patch('point_star_report.save_png') as save:
+                    write_report_sky_overlay(root, dict(source=str(root/'source.png')),
+                                             dict(planets=planets, photometry={}))
+                fig = save.call_args.args[0]
+                canvas = FigureCanvasAgg(fig)
+                canvas.draw()
+                ax = fig.axes[0]
+                renderer = canvas.get_renderer()
+                labels = [t for t in ax.texts if t.get_text() and not t.get_text().startswith('Extinction zenith:')]
+                self.assertEqual(len(labels), 8, 'Do not solve crowding by dropping labels')
+                boxes = [t.get_bbox_patch().get_window_extent(renderer) for t in labels]
+                marker_boxes = [line.get_window_extent(renderer) for line in ax.lines]
+                fixed = marker_boxes + [ax.get_legend().get_window_extent(renderer)]
+                fixed += [t.get_bbox_patch().get_window_extent(renderer) for t in ax.texts
+                          if t.get_text().startswith('Extinction zenith:')]
+                for i, box in enumerate(boxes):
+                    for other in boxes[i+1:]+fixed:
+                        self.assertFalse(box.overlaps(other), labels[i].get_text())
+                    self.assertTrue(ax.bbox.contains(box.x0, box.y0), labels[i].get_text())
+                    self.assertTrue(ax.bbox.contains(box.x1, box.y1), labels[i].get_text())
+                expected = [[r['x_px'], r['y_px']] for r in stars]+[[180.,177.], [185.,180.], [182.,185.]]
+                np.testing.assert_allclose([line.get_xydata()[0] for line in ax.lines], expected)
+                positions.append([t.get_position() for t in labels])
+            np.testing.assert_allclose(positions[0], positions[1], atol=1e-10)
+        self.assertEqual(planets, original)
+
     def test_joint_table_distinguishes_initial_epoch_from_saved_coordinate_epoch(self):
         result = self.sample_result()
         result.update(stellar_epoch=dict(status='not_identifiable', applied_epoch_jyear=2000.),
@@ -43,10 +118,19 @@ class ReportTests(unittest.TestCase):
             with patch('point_star_report.save_png') as save:
                 write_report_sky_overlay(output, result, science)
             ax = save.call_args.args[0].axes[0]
-            stars = [line for line in ax.lines if line.get_marker() == '*']
-            np.testing.assert_allclose(stars[0].get_xydata(), [[30., 40.]])
+            measured = [line for line in ax.lines if line.get_label() == 'joint fit source']
+            self.assertEqual(len(measured), 1)
+            np.testing.assert_allclose(measured[0].get_xydata(), [[30., 40.]])
+            self.assertEqual(measured[0].get_markerfacecolor(), 'none')
+            predictions = [line for line in ax.lines if line.get_label() == 'joint fit prediction']
+            np.testing.assert_allclose(predictions[0].get_xydata(), [[31., 41.]])
+            self.assertEqual(predictions[0].get_markerfacecolor(), 'none')
+            self.assertNotIn(predictions[0].get_marker(), ('+', 'x', '*'))
             self.assertNotIn('Jupiter', ' '.join(t.get_text() for t in ax.texts))
-            self.assertIn('candidate', ' '.join(t.get_text() for t in ax.texts))
+            self.assertIn('Mars — joint fit', ' '.join(t.get_text() for t in ax.texts))
+            legend = ' '.join(t.get_text() for t in ax.get_legend().get_texts())
+            self.assertIn('used in joint epoch fit', legend)
+            self.assertIn('conditional', legend)
 
     def test_saved_mirrored_camera_reconstructs_the_same_projection(self):
         from point_star_barghini import BarghiniCamera
@@ -154,6 +238,25 @@ class ReportTests(unittest.TestCase):
             self.assertFalse(any(line.get_marker() == 'x' for line in axis.lines))
             self.assertIn('Extinction zenith: no candidate',
                           ' '.join(item.get_text() for item in axis.texts))
+
+    def test_assumed_centre_zenith_is_labelled_as_assumption_at_saved_position(self):
+        from point_star_barghini import BarghiniCamera
+        from point_star_report import _draw_photometric_zenith
+        camera = BarghiniCamera.initial((100, 120), 60., np.eye(3))
+        science = {'photometry': {'photometric_zenith': {
+            'status': 'assumed_zenith', 'zenith_source': 'image_centre_assumption',
+            'zenith_unit_vector': camera.to_sky([[59.5, 49.5]])[0].tolist()}}}
+        fig, ax = plt.subplots()
+        try:
+            marker = _draw_photometric_zenith(ax, {'camera': camera.serialise()}, science, native_image=True)
+            self.assertIn('assumed', marker.get_label().lower())
+            self.assertNotIn('extinction', marker.get_label().lower())
+            np.testing.assert_allclose(marker.get_xydata(), [[59.5, 49.5]], atol=1e-7)
+            text = report_sections(self.sample_result(), science)['atmosphere']
+            self.assertIn('assumed at image centre', text)
+            self.assertIn('not an extinction measurement', text)
+        finally:
+            plt.close(fig)
 
     def test_geometric_fallback_is_not_labelled_as_extinction_zenith(self):
         from PIL import Image
@@ -395,7 +498,11 @@ class ReportTests(unittest.TestCase):
         self.assertIn('Jupiter — FITS-time match', labels)
         self.assertIn('Neptune (predicted—no detected source)', labels)
         self.assertIn('metadata-time planet match', legend)
-        self.assertEqual(prediction.get_ha(), 'right')
+        canvas = FigureCanvasAgg(axis.figure)
+        canvas.draw()
+        box = prediction.get_bbox_patch().get_window_extent(canvas.get_renderer())
+        self.assertGreaterEqual(box.x0, axis.bbox.x0)
+        self.assertLessEqual(box.x1, axis.bbox.x1)
         self.assertIn('Metadata-time source match shown; epoch not inferred',
                       candidate_axis.get_title())
         self.assertIn('metadata-time planet match', candidate_legend)
@@ -685,6 +792,84 @@ class ReportTests(unittest.TestCase):
             media = re.search(rb'/MediaBox\s*\[\s*0\s+0\s+([0-9.]+)\s+([0-9.]+)', payload)
             self.assertIsNotNone(media)
             self.assertLess(float(media.group(1)), float(media.group(2)))
+
+
+class JointFitPresentationTests(unittest.TestCase):
+    """Catch hidden source pixels and fit participation mislabelled as lookup."""
+
+    def joint_record(self):
+        matches = [dict(planet=name, detection_id=i, measured_x_px=30.+i*15,
+                        measured_y_px=40., predicted_x_px=31.+i*15,
+                        predicted_y_px=41., separation_arcmin=2., separation_px=1.4)
+                   for i, name in enumerate(('Mars', 'Jupiter', 'Saturn', 'Uranus'))]
+        best = dict(matches=matches, epoch_tdb='2020-01-01T12:00:00', jd_tdb=2458850.,
+                    planet_count=4, star_count=100, stellar_rms_arcmin=2., planet_rms_arcmin=2.,
+                    eligible=True, bounded=False, cost=10.,
+                    interval_95_jd_tdb=[2458849.9, None],
+                    search_limits_jd_tdb=[2458849., 2458850.1],
+                    profile=[dict(jd_tdb=2458849.9, cost=12.), dict(jd_tdb=2458850., cost=10.),
+                             dict(jd_tdb=2458850.1, cost=11.)],
+                    brightness=dict(status='soft_relative_evidence', channel='R', cost=.3))
+        return dict(status='joint_epoch_ambiguous', adopted=False, best_index=0,
+                    candidates=[best], reason='Physical zenith unresolved; upper interval truncated.',
+                    supported_search_jd_tdb=[2400000., 2458850.1], initial_fit=dict(rms_arcmin=2.1),
+                    metadata_comparison=dict(candidate_minus_metadata_seconds=3600., rows=[
+                        dict(detection_id=i, metadata_predicted_x_px=32.+i*15,
+                             metadata_predicted_y_px=42., metadata_residual_arcmin=3.)
+                        for i in range(4)]))
+
+    def test_joint_crops_show_unmarked_pixels_and_faithful_open_overlays(self):
+        from copy import deepcopy
+        from PIL import Image
+        from point_star_joint_report import joint_figure
+        joint = self.joint_record()
+        before = deepcopy(joint)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            pixels = np.zeros((100, 120, 3), dtype=np.uint8)
+            pixels[39:43, 29:80] = [160, 180, 255]
+            Image.fromarray(pixels).save(root/'source.png')
+            fig = joint_figure(root, dict(source=str(root/'source.png'), joint_epoch=joint), {})
+            self.addCleanup(plt.close, fig)
+            images = [ax for ax in fig.axes if ax.images]
+            self.assertEqual(len(images), 8, 'Each of four bodies needs raw and overlay crops')
+            for i, match in enumerate(joint['candidates'][0]['matches']):
+                raw, overlay = images[2*i:2*i+2]
+                self.assertEqual(len(raw.lines)+len(raw.collections)+len(raw.patches)+len(raw.texts), 0,
+                                 'Nothing may be drawn over the raw source pixels')
+                for ax in (raw, overlay):
+                    np.testing.assert_array_equal(ax.images[0].get_array(), pixels)
+                    self.assertEqual(ax.images[0].get_interpolation(), 'nearest')
+                self.assertEqual(raw.get_xlim(), overlay.get_xlim())
+                self.assertEqual(raw.get_ylim(), overlay.get_ylim())
+                np.testing.assert_allclose(overlay.lines[0].get_xydata(), [[30.+i*15, 40.]])
+                np.testing.assert_allclose(overlay.lines[1].get_xydata(), [[31.+i*15, 41.]])
+                np.testing.assert_allclose(overlay.lines[2].get_xydata(), [[32.+i*15, 42.]])
+                for marker in overlay.lines:
+                    self.assertEqual(marker.get_markerfacecolor(), 'none')
+                    self.assertNotIn(marker.get_marker(), ('+', 'x', '*'))
+                self.assertIsNone(overlay.get_legend(), 'Legends must not cover the crop')
+            text = ' '.join(t.get_text() for t in fig.texts)
+            self.assertIn('100 stars + 4 planets', text)
+            self.assertIn('used in joint epoch fit', text)
+            self.assertIn('not adopted', text)
+            self.assertEqual(joint, before, 'Rendering must not change scientific records')
+
+    def test_summary_separates_fit_participation_from_adoption(self):
+        result = ReportTests().sample_result()
+        joint = self.joint_record()
+        for adopted in (False, True):
+            with self.subTest(adopted=adopted):
+                joint['adopted'] = adopted
+                joint['status'] = 'joint_epoch_fitted' if adopted else 'joint_epoch_ambiguous'
+                science = dict(joint_epoch=joint)
+                prose = report_sections(result, science)['planets']
+                self.assertIn('100 stars + 4 planets used in joint epoch fit', prose)
+                table = dict(table_rows(result, science))
+                self.assertIn('4 planets used in joint fit', table['Planet epoch'])
+                self.assertIn('adopted' if adopted else 'not adopted', table['Planet epoch'])
+                if adopted:
+                    self.assertNotIn('not adopted', table['Planet epoch'])
 
 
 if __name__ == '__main__':

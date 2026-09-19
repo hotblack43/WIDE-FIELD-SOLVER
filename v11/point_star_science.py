@@ -319,7 +319,13 @@ def measure_photometry(image_path, solution, result, refraction):
         r['used_for_photometric_zenith'] = not bool(reason)
         if not reason:
             usable.append(r)
-    geometric_zenith, geometric_evidence = _full_horizon_geometric_zenith(solution, camera)
+    _, horizon_evidence = _full_horizon_geometric_zenith(solution, camera)
+    h, w = camera.shape
+    centre_px = [(w-1)/2., (h-1)/2.]
+    geometric_zenith = camera.to_sky([centre_px])[0]
+    geometric_evidence = dict(status='assumed_image_centre', centre_px=centre_px,
+        full_horizon_check=horizon_evidence, metadata_used=False,
+        reason='Investigator-requested fisheye default; full-horizon evidence is not required')
     if usable:
         pixels = np.array([[_float(coordinates[r['detection_id']], 'x_px'),
                             _float(coordinates[r['detection_id']], 'y_px')] for r in usable])
@@ -381,7 +387,8 @@ def measure_photometry(image_path, solution, result, refraction):
             row[f'{channel}_used_for_extinction'] = bool(retained)
         fitted['airmass_range'] = [float(np.min(x[keep])), float(np.max(x[keep]))]
         fitted['airmass_span'] = float(np.ptp(x[keep]))
-        fitted['status'] = ('provisional_zenith' if zenith['status'] != 'conditional_zenith' else
+        fitted['status'] = ('assumed_zenith' if zenith['status'] == 'assumed_zenith' else
+                           'provisional_zenith' if zenith['status'] != 'conditional_zenith' else
                             ('fitted' if fitted['airmass_span'] >= .3 else 'insufficient_airmass_leverage'))
         fitted['relation'] = f'{channel}_machine - catalogue_mag = intercept + k * airmass'
         fitted['catalogue_passband'] = 'local bright-star catalogue magnitude'
@@ -417,7 +424,9 @@ def measure_photometry(image_path, solution, result, refraction):
             ax.set_ylabel(r'$m_{machine}-m_{catalogue}$ [mag]', fontsize=8)
             ax.tick_params(labelsize=7)
             ax.grid(alpha=.2)
-        heading = ('Geometric-zenith airmass diagnostic'
+        heading = ('Assumed image-centre zenith airmass diagnostic'
+                   if zenith.get('zenith_source') == 'image_centre_assumption' else
+                   'Geometric-zenith airmass diagnostic'
                    if zenith.get('zenith_source') == 'centred_full_horizon_geometry'
                    else 'Blind photometric zenith')
         fig.suptitle(f"{heading}: {zenith['status']} — regression by channel", fontsize=10)
@@ -446,7 +455,9 @@ def measure_photometry(image_path, solution, result, refraction):
                    extinction_status=(representative['status']
                                       if representative else 'not_fitted'),
                    epoch_and_site_source=None, metadata_used=False,
-                   airmass_source=('blind_centred_full_horizon_geometry'
+                   airmass_source=('image_centre_assumption'
+                                   if zenith.get('zenith_source') == 'image_centre_assumption' else
+                                   'blind_centred_full_horizon_geometry'
                                    if zenith.get('zenith_source') == 'centred_full_horizon_geometry'
                                    else 'blind_photometric_zenith'),
                    photometric_zenith=zenith,

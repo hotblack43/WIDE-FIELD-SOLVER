@@ -7,6 +7,27 @@ import numpy as np
 from scipy.optimize import minimize
 
 
+def zenith_supports_visibility(status, source):
+    return status == 'conditional_zenith' or (status == 'assumed_zenith' and source == 'image_centre_assumption')
+
+
+def zenith_constraints(camera, record, rays):
+    """Visibility authority at this camera, including the explicit centre policy."""
+    from point_star_planet_solar import zenith_envelope
+    vector = record.get('zenith_unit_vector')
+    accepted = zenith_supports_visibility(record.get('status'), record.get('zenith_source'))
+    if record.get('zenith_source') == 'image_centre_assumption' and accepted:
+        h, w = camera.shape
+        vector = camera.to_sky([[(w-1)/2., (h-1)/2.]])[0].tolist()
+        envelope = dict(status='bounded', source='image_centre_assumption',
+                        centre_unit_vector=vector, radius_deg=0.,
+                        reason='Conditional on investigator-requested exact centre zenith, not an extinction confidence region',
+                        metadata_used=False)
+    else:
+        envelope = zenith_envelope(rays)
+    return vector, envelope, bool(accepted and vector is not None)
+
+
 def airmass(altitude_deg):
     altitude = np.asarray(altitude_deg, dtype=float)
     answer = np.full(altitude.shape, np.nan)
@@ -36,12 +57,13 @@ def fit_photometric_zenith(rays, dimming, radial_squared, *, loss_scale_mag=.1,
                     'Colours, clouds, JPEG response and lens response may bias the zenith. '
                     'A fitted extinction slope alone does not establish a physical zenith.')
     geometric = None
+    assumed_centre = (geometric_evidence or {}).get('status') == 'assumed_image_centre'
     if geometric_zenith_unit_vector is not None:
         geometric = np.asarray(geometric_zenith_unit_vector, dtype=float)
         if (geometric.shape != (3,) or not np.isfinite(geometric).all()
                 or np.linalg.norm(geometric) < 1e-12):
             raise ValueError('Geometric zenith must be a finite three-dimensional vector')
-        if not geometric_evidence or geometric_evidence.get('status') != 'centred_full_horizon':
+        if not assumed_centre and (not geometric_evidence or geometric_evidence.get('status') != 'centred_full_horizon'):
             raise ValueError('Geometric zenith requires an established centred full horizon')
         geometric = geometric/np.linalg.norm(geometric)
     if rays.shape != (nstars, 3) or radial.shape != y.shape or not all(
@@ -109,6 +131,26 @@ def fit_photometric_zenith(rays, dimming, radial_squared, *, loss_scale_mag=.1,
                 record['zenith_source'] = 'unconstrained_photometric_trial'
             return record
         sine = rays@geometric
+        if assumed_centre:
+            # This is an explicit instrument assumption, not a horizon detection
+            # or an extinction recovery. Never move/drop stars to make it true.
+            if photometric_trial is not None:
+                for key in photometric_trial:
+                    if key not in ('status', 'reason'):
+                        record.pop(key, None)
+            fixed = fixed_zenith_fit(geometric) if nstars >= 3 else None
+            if fixed is not None:
+                record.update(fixed)
+            record.update(status='assumed_zenith', zenith_source='image_centre_assumption',
+                zenith_unit_vector=geometric.tolist(), provisional=True,
+                conditional_sigma_deg=None,
+                below_assumed_horizon_count=int(np.sum(sine < -1e-9)),
+                minimum_altitude_deg=float(np.degrees(np.arcsin(np.clip(sine.min(), -1, 1)))) if nstars else None,
+                reason=reason + '; adopted investigator-requested image-centre zenith assumption',
+                method=record['method'] + '; explicit image-centre default',
+                assumption='Physical zenith is the exact detector-centre ray; not measured by extinction. '
+                           'No uncertainty in this assumption is included in conditional epoch intervals.')
+            return record
         if len(sine) and np.min(sine) < minimum_sine-1e-9:
             if photometric_trial is not None:
                 record['zenith_source'] = 'unconstrained_photometric_trial'
@@ -224,6 +266,19 @@ def fit_photometric_zenith(rays, dimming, radial_squared, *, loss_scale_mag=.1,
             reasons.append(f'{label} minimum is limited by the horizon boundary')
     if angle > max(3., 3*np.hypot(primary['conditional_sigma_deg'] or 180., sensitivity['conditional_sigma_deg'] or 180.)):
         reasons.append('Zenith changes under the radial-response sensitivity fit')
+    if assumed_centre:
+        record['centre_override_policy'] = dict(minimum_stars=50, minimum_extinction_snr=10.,
+            maximum_conditional_sigma_deg=1., maximum_radial_response_shift_deg=1.)
+        if nstars < 50:
+            reasons.append('Centre override requires at least 50 photometric sources')
+        for label, fit in (('primary', primary), ('radial-response sensitivity', sensitivity)):
+            if (fit['extinction_sigma'] is None or
+                    fit['extinction_mag_per_airmass'] < 10*max(fit['extinction_sigma'], 1e-8)):
+                reasons.append(f'{label} does not meet 10-sigma centre-override requirement')
+            if fit['conditional_sigma_deg'] is None or fit['conditional_sigma_deg'] > 1.:
+                reasons.append(f'{label} does not meet 1-degree centre-override precision')
+        if angle > 1.:
+            reasons.append('Radial-response zenith shift exceeds 1-degree centre-override limit')
     trial_status = 'not_identifiable' if reasons else 'conditional_zenith'
     trial_reason = '; '.join(reasons) if reasons else 'Photometry constrains a conditional zenith'
     record.update(selected, status=trial_status,

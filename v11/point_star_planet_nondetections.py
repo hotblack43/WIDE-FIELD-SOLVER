@@ -188,10 +188,12 @@ def apply_evidence(answer,evidence_rows):
     peers=[c for c in candidates if not solar_rejected(c) and not c['absence_penalty'] and c['match_count']==best['match_count']
            and c['cost_arcmin2']<=best['cost_arcmin2']+9*sigma*sigma]
     # Negative evidence must not turn an already ambiguous search into a claimed date.
+    from point_star_zenith import zenith_supports_visibility
+    visibility = out.get('visibility') or {}
     ambiguous=(original_status=='planet_epoch_ambiguous' or best['match_count']<2 or len(peers)>1
                or best.get('boundary_limited',False)
                or min((m.get('predicted_altitude_deg',90.) for m in best['matches']),default=0.)<.01
-               or (out.get('visibility') or {}).get('zenith_status')!='conditional_zenith'
+               or not zenith_supports_visibility(visibility.get('zenith_status'), visibility.get('zenith_source'))
                or best.get('solar_evidence', {}).get('status')=='solar_unresolved')
     out.update(status='planet_epoch_ambiguous' if ambiguous else 'conditional_planet_epoch',
         confidence='ambiguous_candidates_with_absence_checks' if ambiguous else 'conditional_multiple_planets',

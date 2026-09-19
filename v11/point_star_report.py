@@ -224,7 +224,10 @@ def report_sections(result, science=None, **legacy):
         atmosphere = 'Refraction: not run.'
     if photometric_zenith:
         zenith_status = photometric_zenith.get('status', 'unknown').replace('_', ' ')
-        if photometric_zenith.get('zenith_source') == 'centred_full_horizon_geometry':
+        if photometric_zenith.get('zenith_source') == 'image_centre_assumption':
+            atmosphere += (' Zenith: assumed at image centre; not an extinction measurement. '
+                           'Airmass and planet visibility are conditional on this assumption.')
+        elif photometric_zenith.get('zenith_source') == 'centred_full_horizon_geometry':
             atmosphere += (' Zenith: image-centre geometric zenith; the extinction trial remains not '
                            'identifiable; airmass provisional.')
         else:
@@ -331,9 +334,10 @@ def report_sections(result, science=None, **legacy):
         best = joint['candidates'][index] if index is not None else None
         planet_text = joint['status'].replace('_', ' ')+'. '
         if best:
-            planet_text += (f"{len(best['matches'])} bodies in best common-camera candidate; "
+            planet_text += (f"{best.get('star_count', '--')} stars + {len(best['matches'])} planets used in joint epoch fit; "
                             f"{best.get('epoch_tdb', '--')} TDB. ")
-        planet_text += ('Joint camera adopted. ' if joint.get('adopted') else 'Stellar-only camera retained. ')
+        planet_text += ('Joint camera adopted. ' if joint.get('adopted') else
+                        'Joint fit not adopted for saved coordinates; stellar-only camera retained. ')
         planet_text += 'Global search; metadata is validation only. See joint-fit page for residuals, brightness and limits.'
     return dict(lens=lens, astrometry=astrometry, atmosphere=atmosphere, planets=planet_text)
 
@@ -407,9 +411,13 @@ def table_rows(result, science):
         planet_value = 'Metadata-conditioned; '+planet_value
     joint = science.get('joint_epoch') or result.get('joint_epoch')
     if joint:
+        index = joint.get('best_index')
+        best = joint['candidates'][index] if index is not None else None
         planet_value = joint['status'].replace('joint_epoch_', '').replace('_', ' ')
-        planet_value += '; common camera adopted' if joint.get('adopted') else '; stellar-only camera retained'
-        planet_value += '; full global search (joint-fit page)'
+        if best:
+            planet_value = f"{len(best['matches'])} planets used in joint fit; "+planet_value
+        planet_value += '; adopted' if joint.get('adopted') else '; not adopted (stellar-only coordinates retained)'
+        planet_value += '; see joint-fit page'
         stellar_value = (f"Initial stellar-only: {stellar.get('status', '--').replace('_', ' ')}; "
                          f"provisional J{_fmt(stellar.get('applied_epoch_jyear'), 1)}")
     if by_channel:
@@ -472,7 +480,8 @@ def _draw_photometric_zenith(ax, result, science, *, native_image):
         return None
     vector = zenith.get('zenith_unit_vector')
     geometric = zenith.get('zenith_source') == 'centred_full_horizon_geometry'
-    source_label = 'Geometric zenith' if geometric else 'Extinction zenith'
+    assumed = zenith.get('zenith_source') == 'image_centre_assumption'
+    source_label = 'Image-centre zenith' if assumed else 'Geometric zenith' if geometric else 'Extinction zenith'
     note = f'{source_label}: no candidate'
     if vector is not None:
         # A rendered fallback overlay has margins/scaling, not detector pixels.
@@ -487,8 +496,7 @@ def _draw_photometric_zenith(ax, result, science, *, native_image):
                 height, width = camera.shape
                 if np.isfinite(x) and np.isfinite(y) and -.5 <= x < width-.5 and -.5 <= y < height-.5:
                     provisional = zenith.get('status') != 'conditional_zenith' or zenith.get('provisional', False)
-                    label = ('Geometric zenith' if geometric else 'Extinction zenith')
-                    label += ' — ' + ('provisional' if provisional else 'conditional')
+                    label = source_label + ' — ' + ('assumed' if assumed else 'provisional' if provisional else 'conditional')
                     marker, = ax.plot(x, y, marker='x', color='red', ms=13, mew=2.5,
                                       linestyle='none', label=label, zorder=6)
                     return marker
@@ -543,13 +551,14 @@ def write_report_sky_overlay(output, result, science, maximum_labels=24):
     labelled = json.loads(labelled_path.read_text()).get('stars', []) if labelled_path.is_file() else []
     labelled = labelled[:maximum_labels]
     planet_result = _joint_display_planets(result, science)
+    joint_fit = bool(planet_result.get('joint_epoch_status'))
     metadata_planets = planet_result.get('metadata_matches') or []
     selected_planets = planet_result.get('matches') or []
     metadata_only = bool(metadata_planets)
     candidate_only = not metadata_only and not selected_planets and bool(planet_result.get('candidate_matches'))
     planets = metadata_planets or selected_planets or planet_result.get('candidate_matches') or []
 
-    fig, ax = plt.subplots(figsize=(8, 8))
+    fig, ax = plt.subplots(figsize=(8, 8), dpi=190)
     ax.imshow(rgb)
     if loaded.provenance().get('display_method') != 'native_uint8_rgb':
         ax.text(.99, .01, 'Display stretch only — native samples retained for science',
@@ -574,26 +583,30 @@ def write_report_sky_overlay(output, result, science, maximum_labels=24):
                     bbox=dict(boxstyle='round,pad=.14', fc='black', ec='none', alpha=.58))
     for row in planets:
         x, y = float(row['measured_x_px']), float(row['measured_y_px'])
-        ax.plot(x, y, marker='*', ms=15, mfc='none', mec='#ff3bd5', mew=1.4)
+        ax.plot(x, y, marker='o' if joint_fit else '*', ms=15, mfc='none',
+                mec='#ff3bd5', mew=1., label='joint fit source' if joint_fit else '_nolegend_')
         metadata_source = (planet_result.get('observation_time_metadata') or {}).get('source', '')
         time_label = 'FITS-time' if str(metadata_source).startswith('fits:') else 'metadata-time'
-        label = (f"{row['planet']} — {time_label} match" if metadata_only else
+        label = (f"{row['planet']} — joint fit" if joint_fit else
+                 f"{row['planet']} — {time_label} match" if metadata_only else
                  row['planet'] + (' candidate' if candidate_only else ''))
         ax.annotate(label, (x, y), xytext=(10, 9), textcoords='offset points',
                     fontsize=9, weight='bold', color='white',
                     bbox=dict(boxstyle='round,pad=.2', fc='#a00078', ec='white', alpha=.9),
-                    arrowprops=dict(arrowstyle='-', color='white', lw=.7))
-        if science.get('joint_epoch') or result.get('joint_epoch'):
+                    arrowprops=dict(arrowstyle='-', color='white', lw=.7, shrinkB=8))
+        if joint_fit:
             ax.plot(float(row['predicted_x_px']), float(row['predicted_y_px']),
-                    marker='+', ms=8, color='#00e5ff', mew=1.)
+                    marker='s', ms=10, mfc='none', mec='#00e5ff', mew=.8,
+                    label='joint fit prediction')
     from matplotlib.lines import Line2D
     handles = [Line2D([], [], marker='o', linestyle='none', markersize=6,
                       markerfacecolor='none', markeredgecolor='#ffe45e',
                       label='identified catalogue star')]
     if planets:
-        handles.append(Line2D([], [], marker='*', linestyle='none', markersize=11,
-                              markerfacecolor='none', markeredgecolor='#ff3bd5', markeredgewidth=1.4,
-                              label=('metadata-time planet match' if metadata_only else
+        handles.append(Line2D([], [], marker='o' if joint_fit else '*', linestyle='none', markersize=11,
+                              markerfacecolor='none', markeredgecolor='#ff3bd5', markeredgewidth=1.,
+                              label=('planet used in joint epoch fit (identity conditional)' if joint_fit else
+                                     'metadata-time planet match' if metadata_only else
                                      'planet candidate' if candidate_only or planet_result.get('status') in
                                      ('planet_epoch_ambiguous', 'conditional_planet_epoch') else
                                      'matched planet')))
@@ -601,8 +614,8 @@ def write_report_sky_overlay(output, result, science, maximum_labels=24):
         ax, planet_result.get('predicted_planets', []))
     if prediction_handle is not None:
         handles.append(prediction_handle)
-    if (science.get('joint_epoch') or result.get('joint_epoch')) and planets:
-        handles.append(Line2D([], [], marker='+', linestyle='none', color='#00e5ff',
+    if joint_fit and planets:
+        handles.append(Line2D([], [], marker='s', linestyle='none', markerfacecolor='none', markeredgecolor='#00e5ff',
                               label='joint-model prediction (actual position)'))
     zenith_marker = _draw_photometric_zenith(
         ax, result, science, native_image=source.is_file())
@@ -616,6 +629,9 @@ def write_report_sky_overlay(output, result, science, maximum_labels=24):
     ax.set_ylim(height-.5, -.5)
     ax.axis('off')
     fig.tight_layout(pad=.05)
+    from point_star_plotting import arrange_source_labels
+    layout = arrange_source_labels(ax)
+    (output/'report_label_layout.json').write_text(json.dumps(layout, indent=2)+'\n')
     target = output/'report_sky_overlay.png'
     save_png(fig, target, dpi=190, bbox_inches='tight', pad_inches=.02)
     plt.close(fig)
@@ -862,7 +878,8 @@ def write_report(output, result, *, science=None, **unused):
                            hspace=.24)
     ax1 = fig.add_subplot(grid[0])
     zenith = (science.get('photometry') or {}).get('photometric_zenith') or {}
-    zenith_label = ('geometric zenith' if zenith.get('zenith_source') == 'centred_full_horizon_geometry'
+    zenith_label = ('assumed image-centre zenith' if zenith.get('zenith_source') == 'image_centre_assumption' else
+                    'geometric zenith' if zenith.get('zenith_source') == 'centred_full_horizon_geometry'
                     else 'extinction zenith')
     _show_image(ax1, sky_overlay,
                 f'Figure 1. Stars (yellow), planets (magenta); {zenith_label} '

@@ -8,6 +8,35 @@ sections below describe inherited checkpoints, not promises that missing
 refraction/OLS/precision dating capabilities are complete. "Boundary-truncated"
 uncertainty is a finite constraint, not absence of timing information.
 
+**Fisheye centre-zenith default (investigator request, 19 September 2026):**
+v11 uses the exact detector centre unless both extinction fits meet the new
+strong-override criteria documented in `V11_JOINT_EPOCH.md`. This is labelled
+`assumed_zenith` / `image_centre_assumption`, never an extinction recovery.
+The assumption enters airmass, planetary visibility, solar checks and joint
+adoption, and is recomputed for each camera. A closed horizon is no longer
+required. Below-horizon stars retain their measured coordinates; airmass is
+undefined and the count is audited. Frozen versions are unchanged.
+
+The joint-fit report now explicitly labels planet sources as used in the epoch
+fit, separately from whether that solution is adopted for saved coordinates.
+Each displayed body has an unmarked pixel crop paired with the same pixels and
+scale under hollow centroid/prediction markers; legends stay outside the crops.
+The sky overview uses hollow rings/squares and `joint fit` labels, not crosses
+over the source cores or unexplained `candidate` labels. This is presentation
+only: identities remain conditional, fit/adoption rules and numerical records
+are unchanged. Regression: `JointFitPresentationTests` and the joint-overlay
+test in `test_point_star_report.py`.
+
+Sky-report source labels now use pinned `adjustText` 1.4.0 jointly for stars,
+fitted planets and unmatched predictions. Layout uses final-export pixel
+coordinates (including the inverted image y axis), keeps source anchors fixed,
+and avoids marker footprints, the legend, notices and image margins. A local
+clearance pass checks the actual rounded label boxes after optimisation; no
+labels are dropped. `report_label_layout.json` records positions and any
+remaining conflicts, which also emit a warning if space is insufficient.
+This does not change the separate DS9 label layout or any scientific result.
+Crowded/edge/near-marker regressions check rendered geometry and repeatability.
+
 This inventory distinguishes implemented behavior from recorded proposals. A new
 version must preserve implemented behavior or document an explicit change, and
 must not describe a proposal as working merely because related products exist.
@@ -42,7 +71,7 @@ must not describe a proposal as working merely because related products exist.
 | RGB-versus-catalogue report diagnostics | Extended in v0.10.0 | Third PDF page compares camera R/G/B instrumental magnitudes with Gaia RP/G/BP for finite unsaturated Gaia matches. Its displayed line uses soft-L1 robust least squares with a fixed 0.1-mag loss scale and reports MAD residual scatter; no OLS line or fallback is shown. Passband mismatch and lack of calibration are explicit. Regression: `test_point_star_report.py`; report-only numerical change |
 | Extinction as nuisance regression in blind zenith search | Added in 0.3.0 using robust regression | Fixed membership; no site/time-derived airmass; G plot uses the exact fitted line. The OLS reference specified in GOAL.md and its comparison remain unimplemented |
 | Zenith estimated by minimising photometric regression scatter | Added in 0.3.0; conditional component | Synthetic recovery and degeneracy tests; real example remains unresolved under the radial-response check |
-| Centred full-horizon geometric zenith | Added in v6 | A closed, broad circular boundary must pass circle-residual, complete-azimuth and fitted-camera 90-degree horizon checks before supplying the provisional image-centre zenith when extinction is not identifiable; crops, ellipses and round vignettes do not qualify. A photometric zenith that passes the existing strong-evidence checks retains authority |
+| Fisheye centre-zenith default | Changed by explicit investigator request in v11 | Exact detector centre is assumed unless extinction passes the stringent override checks above. Full-horizon detection remains a separate diagnostic, not a prerequisite; older versions retain their original policy. This default assumes an upright, appropriately centred fisheye and is not evidence that arbitrary crops or tilted cameras point at zenith |
 | Zenith fitted through astrometric refraction residuals | Implemented downstream diagnostic | Different objective from photometric zenith; does not establish that photometric proposal works |
 | Joint photometric zenith/extinction and astrometric epoch constraint | **Not implemented** | Not part of the 0.3.0 proper-motion bugfix; must be designed and tested explicitly |
 | Metadata-conditioned planetary analysis | Default in v7 | After stellar astrometry, refraction and photometric zenith are fixed, v7 selects an explicit time, FITS `DATE-OBS`/`MJD-OBS`/`JD`, EXIF original/digitized/image time, or a recognized filename time in that priority order. It runs the complete modern planet pipeline inside ±1 day, records every parsed candidate and disagreement, and saves fitted-minus-metadata timing error. This measures conditional local accuracy, not global blind identifiability |

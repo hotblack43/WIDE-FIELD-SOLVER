@@ -147,10 +147,19 @@ bound is explicitly allowed. Image time metadata must not bound the v11
 planetary search or enter stellar, refraction, photometric-zenith or joint fits.
 
 Planet candidates must have nonnegative measured and predicted altitude relative
-to the adopted image-derived zenith, and valid detector projections. That zenith
-is the photometric result when the extinction evidence is identifiable; v6 may
-otherwise use the detector-centre ray only when a closed circular footprint and
-the fitted camera independently establish a full 90-degree horizon. The Barghini
+to the adopted zenith, and valid detector projections. On 19 September 2026 Peter
+explicitly requested the exact detector-centre ray as the default physical zenith
+for these fisheye images, without requiring a detected full horizon. This is an
+instrument assumption, not an extinction measurement or site metadata. Only very
+strong, stable extinction evidence may override it: at least 50 sources, positive
+extinction at >=10 sigma in both primary and radial-response fits, <=1 degree
+conditional angular uncertainty in each, <=1 degree separation between them,
+and all existing rank, airmass-leverage and boundary checks. Retain weaker trials
+as diagnostics. Recompute the centre ray whenever the fitted camera changes;
+propagate it through saved airmasses, visibility and solar checks. Keep stars
+below this assumed horizon in the astrometric and fixed photometric sample,
+flagging their undefined airmass rather than clipping or moving them. Conditional
+epoch intervals do not include uncertainty in the centre assumption. The Barghini
 reference Z is not a substitute for that zenith. Keep the limit at the horizon,
 not 10 degrees. Record source altitudes, zenith provenance and visibility
 rejection reasons. When no adopted image-derived zenith is available, report

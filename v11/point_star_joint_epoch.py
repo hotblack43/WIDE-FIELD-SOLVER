@@ -15,6 +15,7 @@ from scipy.optimize import brentq, least_squares, minimize_scalar
 
 from point_star_barghini import (BarghiniCamera, ARCMIN_PER_RADIAN,
     tangent_residuals_arcmin, radial_soft_l1_residuals)
+from point_star_zenith import zenith_constraints, zenith_supports_visibility
 
 
 def qualifies(matches):
@@ -159,6 +160,8 @@ def planet_product_view(planets, joint):
                status='planet_epoch_fitted' if adopted else 'planet_epoch_ambiguous',
                confidence='conditional_joint_epoch' if adopted else 'unconfirmed_joint_candidates')
     if adopted:
+        if planets.get('prediction_epoch_jd_tdb') == best['jd_tdb']:
+            out['predicted_planets'] = deepcopy(planets.get('predicted_planets', []))
         out['candidates'] = [dict(epoch_tdb=best['epoch_tdb'], jd_tdb=best['jd_tdb'], matches=selected)]
     else:
         out['candidates'] = [dict(epoch_tdb=c['epoch_tdb'], jd_tdb=c['jd_tdb'], matches=deepcopy(c['matches']))
@@ -259,7 +262,7 @@ def _adopt_joint_solution(image_path, output, result, science, cat, detections, 
     from point_star_diagnostics import write_diagnostics
     from point_star_planets import predict_other_planets, _visible_projection, _attach_identified_photometry
     from point_star_planet_ephemeris import planet_vectors
-    from point_star_planet_solar import SolarConstraint, classify_night, zenith_envelope
+    from point_star_planet_solar import SolarConstraint, classify_night
     staging = output/'joint_candidate_solution'
     staging.mkdir(exist_ok=False)
     # Only this run's own inputs are copied; the original authoritative files
@@ -276,8 +279,15 @@ def _adopt_joint_solution(image_path, output, result, science, cat, detections, 
     photometry = measure_photometry(image_path, staging, updated, refraction)
     zenith_info = photometry.get('photometric_zenith') or {}
     zenith = zenith_info.get('zenith_unit_vector')
-    if zenith_info.get('status') != 'conditional_zenith' or zenith is None:
-        return False, 'Joint-camera photometric zenith is not identifiable; staged products retained separately'
+    if not zenith_supports_visibility(zenith_info.get('status'), zenith_info.get('zenith_source')) or zenith is None:
+        return False, 'Joint-camera zenith is neither established nor explicitly assumed; staged products retained separately'
+    previous = fitted.get('zenith_constraint') or {}
+    if (previous.get('status') != zenith_info.get('status')
+            or previous.get('zenith_source') != zenith_info.get('zenith_source')
+            or previous.get('zenith_unit_vector') is None
+            or not np.allclose(previous['zenith_unit_vector'], zenith, rtol=0., atol=1e-10)):
+        return False, ('Regenerated zenith authority changed; candidate ranking and physical evidence '
+                       'would require re-evaluation. Stellar solution retained.')
     camera = BarghiniCamera.from_serialised(fitted['camera'])
     measured = camera.to_sky([[m['measured_x_px'], m['measured_y_px']] for m in fitted['matches']])
     directions = np.array([m['predicted_sky_vector'] for m in fitted['matches']])
@@ -285,8 +295,10 @@ def _adopt_joint_solution(image_path, output, result, science, cat, detections, 
         return False, 'Joint-camera photometric zenith invalidates planet visibility'
     by_id = {str(r['detection_id']): r for r in detections}
     fixed = [by_id[str(i)] for i in zenith_info.get('fitted_detection_ids', [])]
-    rays = camera.to_sky([[float(r['x_px']), float(r['y_px'])] for r in fixed])
-    solar = SolarConstraint(classify_night(updated, len(rows)), zenith_envelope(rays), zenith_unit_vector=zenith)
+    rays = (camera.to_sky([[float(r['x_px']), float(r['y_px'])] for r in fixed])
+            if fixed else np.empty((0, 3)))
+    zenith, envelope, _ = zenith_constraints(camera, zenith_info, rays)
+    solar = SolarConstraint(classify_night(updated, len(rows)), envelope, zenith_unit_vector=zenith)
     if solar.assess(fitted['jd_tdb'])['status'] != 'solar_consistent':
         return False, 'Joint-camera photometric zenith leaves solar consistency unresolved'
     final_planets = planet_product_view(science['planets'], dict(
@@ -298,8 +310,10 @@ def _adopt_joint_solution(image_path, output, result, science, cat, detections, 
         rms_arcmin=fitted['planet_rms_arcmin'],
         rms_px=float(np.sqrt(np.mean([m['separation_px']**2 for m in fitted['matches']]))),
         confidence='conditional_joint_epoch', candidate_matches=[])
-    final_planets['visibility'] = dict(final_planets.get('visibility') or {}, zenith_unit_vector=zenith)
+    final_planets['visibility'] = dict(final_planets.get('visibility') or {}, zenith_unit_vector=zenith,
+        zenith_status=zenith_info['status'], zenith_source=zenith_info.get('zenith_source'))
     final_planets['predicted_planets'] = predict_other_planets(camera, final_planets, planet_vectors)
+    final_planets['prediction_epoch_jd_tdb'] = fitted['jd_tdb']
     _attach_identified_photometry(staging, final_planets)
     annotate_stars(image_path, rows, staging, 40, names_cache=output/'display_names.json', offline=True)
     ii, jj = np.array(fitted['fitted_pairs']).T
@@ -341,7 +355,7 @@ def refine_joint_epoch(image_path, output, result, science, catalogue_path):
         FINAL_ASSOCIATION_PHYSICAL_FLOOR_ARCMIN, angular_separations_arcmin)
     from point_star_planet_ephemeris import planet_vectors
     from point_star_planet_brightness import planet_brightness, BRIGHT_PLANETS, SOURCE
-    from point_star_planet_solar import SolarConstraint, classify_night, zenith_envelope
+    from point_star_planet_solar import SolarConstraint, classify_night
     from point_star_planet_nondetections import check_candidate_absences
     from point_star_planets import _visible_projection, _load_sky_footprint
     output = Path(output)
@@ -388,7 +402,8 @@ def refine_joint_epoch(image_path, output, result, science, catalogue_path):
             'Geocentric apparent planet vectors versus ICRS proper-motion stars retain frame/aberration limitations; '
             '3-arcminute per-source uncertainty floor is conservative, not a correction.',
             'Topocentric parallax and integrated atmospheric refraction remain unmodelled; intervals exclude these systematics.',
-            'Image-derived zenith is a fixed conditional visibility constraint; metadata site is not used.'])
+            'Visibility is conditional on the recorded zenith policy; image-centre default is an instrument assumption, '
+            'not an extinction measurement. Its uncertainty is not included; metadata site is not used.'])
     candidates = record['candidates']
     for rank, proposal in enumerate(planets.get('candidates', []), 1):
         matches = proposal['matches']
@@ -433,6 +448,11 @@ def refine_joint_epoch(image_path, output, result, science, catalogue_path):
                 duplicate.setdefault('duplicate_global_ranks', []).append(rank)
                 continue
             fitted['identity'] = identity
+            fixed_rays = trial_camera.to_sky(xy[fixed_indices]) if fixed_indices else np.empty((0, 3))
+            zenith, envelope, zenith_accepted = zenith_constraints(trial_camera, zenith_info, fixed_rays)
+            fitted['zenith_constraint'] = dict(status=zenith_info.get('status'),
+                zenith_source=zenith_info.get('zenith_source'), zenith_unit_vector=zenith,
+                solar_envelope=envelope)
             directions = np.array([m['predicted_sky_vector'] for m in fitted['matches']])
             projected = _visible_projection(trial_camera, directions, zenith)
             measured_xy = np.array([[m['measured_x_px'], m['measured_y_px']] for m in matches])
@@ -458,7 +478,6 @@ def refine_joint_epoch(image_path, output, result, science, catalogue_path):
                                           star_residual_arcmin=star_res, delta_chi2=delta, passes=bool(passes)))
             geometry = geometry and all(c['passes'] for c in conflicts)
             fitted['star_identity_checks'] = conflicts
-            envelope = zenith_envelope(trial_camera.to_sky(xy[fixed_indices])) if fixed_indices else zenith_envelope([])
             solar = SolarConstraint(classify_night(result, len(pairs)), envelope, zenith_unit_vector=zenith)
             solar_evidence = solar.assess(fitted['jd_tdb'])
             fitted['solar_evidence'] = solar_evidence
@@ -466,7 +485,8 @@ def refine_joint_epoch(image_path, output, result, science, catalogue_path):
             absence_candidate = dict(proposal, jd_tdb=fitted['jd_tdb'], epoch_tdb=fitted['epoch_tdb'],
                 matches=fitted['matches'], solar_evidence=solar_evidence,
                 rms_arcmin=fitted['planet_rms_arcmin'], cost_arcmin2=sum(m['separation_arcmin']**2 for m in fitted['matches']))
-            absence_input = dict(planets, candidates=[absence_candidate])
+            absence_input = dict(planets, candidates=[absence_candidate],
+                visibility=dict(planets.get('visibility') or {}, zenith_unit_vector=zenith))
             checked = check_candidate_absences(image_path, absence_input, trial_camera, detections,
                 rows, planet_vectors, valid_mask=_load_sky_footprint(output), solution=output)
             absence = checked['candidates'][0]
@@ -477,7 +497,7 @@ def refine_joint_epoch(image_path, output, result, science, catalogue_path):
             fitted['brightness'] = relative_brightness_evidence(matches, photo, predicted)
             fitted['eligible'] = bool(geometry and visible and not absence['absence_penalty']
                                       and solar_evidence['status'] != 'solar_inconsistent')
-            fitted['physical_checks_passed'] = bool(visible and zenith_info.get('status') == 'conditional_zenith'
+            fitted['physical_checks_passed'] = bool(visible and zenith_accepted
                                                     and solar_evidence['status'] == 'solar_consistent')
             candidates.append(fitted)
         except (ValueError, RuntimeError, KeyError, FloatingPointError) as exc:

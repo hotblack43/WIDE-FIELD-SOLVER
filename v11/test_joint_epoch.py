@@ -38,6 +38,65 @@ class GlobalContextTests(unittest.TestCase):
 
 
 class JointFitTests(unittest.TestCase):
+    def test_adoption_handles_empty_photometry_and_declines_changed_zenith_authority(self):
+        from astropy.io import fits
+        from point_star_joint_epoch import attempt_adoption, profile_joint_candidate
+        initial, xy, cat, jd, ephemeris, matches = self.fixture()
+        fitted = profile_joint_candidate(initial, xy, cat, matches, ephemeris,
+                                         (jd-1, jd+1), star_sigma_arcmin=.1, planet_sigma_arcmin=.1)
+        fitted['fitted_pairs'] = [[i, i] for i in range(len(xy))]
+        camera = BarghiniCamera.from_serialised(fitted['camera'])
+        vector = camera.to_sky([[499.5, 399.5]])[0]
+        for prior_source in ('image_centre_assumption', 'photometric_extinction'):
+            with self.subTest(prior_source=prior_source), tempfile.TemporaryDirectory() as d:
+                output = Path(d); (output/'dots').mkdir()
+                (output/'display_names.json').write_text('{}\n')
+                image_path = output/'empty.fits'
+                fits.PrimaryHDU(np.full(camera.shape, 100., dtype=np.float32)).writeto(image_path)
+                detections = [dict(detection_id=str(i), x_px=str(p[0]), y_px=str(p[1]),
+                                   source_class='compact', saturated='False') for i, p in enumerate(xy)]
+                with (output/'dots/star_candidates.csv').open('w') as handle:
+                    writer = csv.DictWriter(handle, fieldnames=list(detections[0]))
+                    writer.writeheader(); writer.writerows(detections)
+                trial = copy.deepcopy(fitted)
+                trial['zenith_constraint'] = dict(
+                    status='assumed_zenith' if prior_source == 'image_centre_assumption' else 'conditional_zenith',
+                    zenith_source=prior_source, zenith_unit_vector=vector.tolist())
+                result = dict(source=str(image_path), status='point_star_fit_converged',
+                              camera=initial.serialise(), fit={'count': len(xy)})
+                science = dict(planets={'searched_planets': [], 'visibility': {}})
+                with patch('point_star_planet_ephemeris.sun_vectors',
+                           side_effect=lambda dates: np.tile(-vector, (len(dates), 1))):
+                    accepted, reason, failed = attempt_adoption(
+                        image_path, output, result, science, cat, detections, trial, copy.deepcopy(result))
+                self.assertFalse(failed, reason)
+                self.assertEqual(accepted, prior_source == 'image_centre_assumption', reason)
+                if accepted:
+                    self.assertEqual(science['photometry']['photometric_zenith']['fitted_count'], 0)
+                    self.assertEqual(result['coordinate_epoch_source'], 'joint_stellar_planet_profile')
+                    self.assertTrue((output/'star_coordinates.csv').is_file())
+                else:
+                    self.assertIn('zenith authority changed', reason.lower())
+                    self.assertEqual(result['camera'], initial.serialise())
+                    self.assertFalse((output/'star_coordinates.csv').exists())
+
+    def test_centre_zenith_visibility_tracks_trial_camera_not_initial_sky_vector(self):
+        from point_star_zenith import zenith_constraints
+        from point_star_planet_solar import SolarConstraint
+        camera = BarghiniCamera.initial((800, 1000), 500., np.eye(3))
+        camera.p[3] += .03
+        saved = dict(status='assumed_zenith', zenith_source='image_centre_assumption',
+                     zenith_unit_vector=[1., 0., 0.])
+        vector, envelope, accepted = zenith_constraints(camera, saved, np.empty((0, 3)))
+        self.assertTrue(accepted)
+        np.testing.assert_allclose(camera.project([vector])[0], [499.5, 399.5], atol=1e-7)
+        solar = SolarConstraint({'status': 'night_supported'}, envelope,
+            zenith_unit_vector=vector, sun_function=lambda dates: np.tile(-np.asarray(vector), (len(dates), 1)))
+        self.assertEqual(solar.assess(2450000.)['status'], 'solar_consistent')
+        self.assertEqual(saved['zenith_unit_vector'], [1., 0., 0.])
+        rejected = dict(saved, status='not_identifiable', zenith_source='unconstrained_photometric_trial')
+        self.assertFalse(zenith_constraints(camera, rejected, np.empty((0, 3)))[2])
+
     def test_regeneration_failure_returns_stellar_fallback(self):
         from point_star_joint_epoch import attempt_adoption
         result = {'camera': {'unchanged': True}}
@@ -100,6 +159,15 @@ class JointFitTests(unittest.TestCase):
             self.assertEqual(rows[0]['epoch_tdb'], '2020')
             self.assertEqual(rows[0]['identity_status'], 'selected_planet_match')
             self.assertEqual(final['metadata_validation_matches'][0]['epoch_tdb'], '2000')
+
+    def test_adopted_joint_predictions_survive_view_but_stale_predictions_do_not(self):
+        from point_star_joint_epoch import planet_product_view
+        predictions = [dict(planet='Ceres', predicted_x_px=10., predicted_y_px=20.)]
+        best = dict(matches=[], epoch_tdb='2020', jd_tdb=2458849.)
+        joint = dict(adopted=True, best_index=0, candidates=[best], status='joint_epoch_fitted')
+        planets = dict(predicted_planets=predictions, prediction_epoch_jd_tdb=2458849.)
+        self.assertEqual(planet_product_view(planets, joint)['predicted_planets'], predictions)
+        self.assertEqual(planet_product_view(dict(planets, prediction_epoch_jd_tdb=2400000.), joint)['predicted_planets'], [])
 
     def test_control_modes_with_no_planets_preserve_initial_solution(self):
         from point_star_joint_epoch import refine_joint_epoch

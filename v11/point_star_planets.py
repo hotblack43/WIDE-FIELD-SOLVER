@@ -153,7 +153,9 @@ def search_planet_epochs(camera, detections, jd_grid, sky_grid, vector_function,
     if zenith.shape != (3,) or not np.isfinite(zenith).all() or np.linalg.norm(zenith) < 1e-12:
         raise ValueError('Planet visibility needs a finite nonzero zenith vector')
     zenith = zenith/np.linalg.norm(zenith)
-    visibility_source = ('image-derived centred full-horizon geometry'
+    visibility_source = ('investigator-assumed image-centre zenith'
+                         if zenith_source == 'image_centre_assumption' else
+                         'image-derived centred full-horizon geometry'
                          if zenith_source == 'centred_full_horizon_geometry'
                          else 'image-derived photometric extinction zenith')
     output['visibility'] = dict(source=visibility_source, zenith_source=zenith_source,
@@ -653,8 +655,9 @@ def search_planet_epochs(camera, detections, jd_grid, sky_grid, vector_function,
     best = candidates[0]
     peers = [c for c in candidates if c['match_count'] == best['match_count'] and
              c['cost_arcmin2'] <= best['cost_arcmin2']+9*positional_sigma_arcmin**2]
+    from point_star_zenith import zenith_supports_visibility
     ambiguous = (best['match_count'] < 2 or len(peers) > 1 or best['boundary_limited']
-                 or zenith_status != 'conditional_zenith'
+                 or not zenith_supports_visibility(zenith_status, zenith_source)
                  or min(m['predicted_altitude_deg'] for m in best['matches']) < .01)
     output.update(status='planet_epoch_ambiguous' if ambiguous else 'conditional_planet_epoch',
                   confidence='ambiguous_positional_candidates' if ambiguous else 'conditional_multiple_planets',
@@ -1176,7 +1179,7 @@ def fit_blind_planet_epoch(image_path, solution, result, *, epoch_limits=(1850.,
     photometric_zenith = json.loads(zenith_path.read_text()) if zenith_path.is_file() else {}
     jd, grid, provenance = load_ephemeris(*epoch_limits)
     from point_star_planet_solar import (
-        classify_night, zenith_envelope, SolarConstraint, annotate_candidates, write_solar_evidence)
+        classify_night, SolarConstraint, annotate_candidates, write_solar_evidence)
     fixed_ids = {str(identity) for identity in photometric_zenith.get('fitted_detection_ids', [])}
     fixed_rows = [row for identity, row in used.items() if str(identity) in fixed_ids]
     camera = _camera_from_result(result)
@@ -1184,8 +1187,9 @@ def fit_blind_planet_epoch(image_path, solution, result, *, epoch_limits=(1850.,
         fixed_rays = camera.to_sky([[float(row['x_px']), float(row['y_px'])] for row in fixed_rows])
     else:
         fixed_rays = np.empty((0, 3))
-    solar = SolarConstraint(classify_night(result, len(used)), zenith_envelope(fixed_rays),
-                            zenith_unit_vector=photometric_zenith.get('zenith_unit_vector'))
+    from point_star_zenith import zenith_constraints
+    zenith, envelope, _ = zenith_constraints(camera, photometric_zenith, fixed_rays)
+    solar = SolarConstraint(classify_night(result, len(used)), envelope, zenith_unit_vector=zenith)
     # Patched/local callables used by tests and embedders stay on the serial
     # reference path; the shipped module function is safe for process workers.
     parallel_safe = getattr(planet_vectors, '__module__', '') == 'point_star_planet_ephemeris'
@@ -1195,7 +1199,7 @@ def fit_blind_planet_epoch(image_path, solution, result, *, epoch_limits=(1850.,
                                  gate_arcmin=gate_arcmin,
                                  positional_sigma_arcmin=max(
                                      float(result['fit'].get('rms_arcmin', 3.)), 3.),
-                                 zenith_unit_vector=photometric_zenith.get('zenith_unit_vector'),
+                                 zenith_unit_vector=zenith,
                                  zenith_status=photometric_zenith.get('status', 'unresolved'),
                                  zenith_source=photometric_zenith.get('zenith_source'),
                                  latest_jd_tdb=ceiling['jd_tdb'], planet_workers=workers,
@@ -1279,12 +1283,12 @@ def fit_blind_planet_epoch(image_path, solution, result, *, epoch_limits=(1850.,
     answer['surviving_source_identity_alternatives'] = {key: sorted(value) for key, value in surviving.items()}
     answer['solar_rejected_source_identity_alternatives'] = {key: sorted(value) for key, value in rejected.items()}
     photometry_fields = _attach_identified_photometry(output, answer)
-    answer['candidate_selection'] = ('nonnegative measured/predicted altitude relative to photometric zenith and valid detector projection; '
+    answer['candidate_selection'] = ('nonnegative measured/predicted altitude relative to the recorded adopted zenith and valid detector projection; '
         'all measured detections considered; an isolated matched star may be challenged only with positional delta chi-square >=9; '
         'a coherent three-or-more-planet constellation anchored by two independently eligible planets may recruit a matched star '
         'inside the ordinary planet gate only when the planet residual is smaller than the catalogue residual; saturated/broad sources retained; '
         'accepted stellar field implies nighttime; candidates requiring daylight throughout their positional interval '
-        'for all zeniths in the fixed stellar-horizon envelope are excluded from selection')
+        'for all zeniths in the recorded solar envelope (an assumed point for the centre default) are excluded from selection')
     performance = answer.get('planet_search_performance')
     if performance is not None:
         for key, value in post_search_counts.items():

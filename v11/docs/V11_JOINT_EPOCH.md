@@ -123,3 +123,86 @@ is retained. This is a real joint candidate fit, not an adopted precise epoch.
 
 [Acceptance report, joint-fit audit on page 4](../../results/v11-final-20260919/runs/2026_09_19__05_00_17.fits-v0.11.0-20260919T160524Z-pJDF70/analysis/report.pdf)
 and [comparison image](../../results/v11-final-20260919/runs/2026_09_19__05_00_17.fits-v0.11.0-20260919T160524Z-pJDF70/analysis/joint_epoch_comparison.png).
+
+### Readability correction, 19 September
+
+The investigator found that stacked crosses hid the source cores and the word
+`candidate` obscured whether planets actually constrained the fit. The revised
+report labels the four bodies `used in joint epoch fit` and separately states
+whether the joint solution is adopted. Paired crops show unmarked pixels above
+the identical pixels/scale with hollow markers; no legend covers a crop. The
+full-sky overview likewise uses hollow rings/squares with `joint fit` labels.
+Predictions and measured centroids stay at their saved coordinates. No fit,
+identity, adoption status, uncertainty or numerical product changes.
+
+The [revised PDF](../../results/v11-readable-20260919/analysis/report.pdf) and
+[paired-crop image](../../results/v11-readable-20260919/analysis/joint_epoch_comparison.png)
+are re-rendered from the same saved MMTO fit; the original report is preserved.
+
+The subsequent label-collision correction adds
+[adjustText](https://adjusttext.readthedocs.io/en/stable/) 1.4.0 to the v11-only
+dependency lock. Star and planet source labels are placed together at 190 DPI,
+with fixed marker/legend/notice obstacles. Actual label-frame extents are
+checked after optimisation, and a nearest-clear local translation handles
+residual collisions without moving anchors or dropping text. The layout audit
+records any unresolved overlap rather than claiming arbitrary fields are solved.
+The MMTO redraw has 28 labels and zero recorded conflicts. Leader lines show
+which source owns each relocated label; source pixels and fit data are unchanged.
+
+[Collision-corrected PDF](../../results/v11-label-layout-20260919/analysis/report.pdf)
+and [sky overlay](../../results/v11-label-layout-20260919/analysis/report_sky_overlay.png).
+
+## Fisheye zenith policy update — 19 September 2026
+
+Peter explicitly requested image centre as the default zenith. V11 now adopts
+the camera ray through `((width-1)/2, (height-1)/2)` without requiring a detected
+closed horizon. It is recorded as `assumed_zenith`, source
+`image_centre_assumption`, with metadata unused. The report explicitly says
+this is **not an extinction measurement**. This is an upright/centred-fisheye
+instrument assumption; it is not justified for arbitrary crops or tilted cameras.
+
+An extinction result overrides centre only with at least 50 usable stars,
+>=10-sigma positive extinction in both primary and radial-response sensitivity
+fits, <=1-degree conditional angular uncertainty in each, <=1-degree separation
+between the two zeniths, and all existing full-rank, airmass-span and non-boundary
+checks. These are conservative operational thresholds, not calibrated odds.
+The robust regression is unchanged; an OLS reference remains unimplemented.
+
+Weak trials remain saved separately. All stars remain in astrometry and the fixed
+zenith-search sample; any falling below the assumed horizon have undefined
+airmass, retain their measured coordinates, and are counted explicitly. The
+centre ray follows each trial camera and the regenerated adopted camera. Planet
+visibility and solar checks may pass conditional on this explicit assumption;
+the solar region is a point at the assumed zenith, retaining the existing solar
+guard. No location or timestamp supplies this direction. Epoch confidence
+intervals exclude uncertainty in the instrument assumption.
+
+Adoption also checks that regenerated photometry retained the candidate's zenith
+authority and direction (numerical roundoff tolerance only). If it changes,
+v11 conservatively retains the stellar solution rather than publishing stale
+altitudes, solar or absence evidence. Joint re-profiling under a changed
+extinction-derived zenith remains a limitation; the assumed centre follows the
+same candidate camera exactly and does not suffer this transition.
+
+Regressions cover weak/empty photometry, below-horizon stars, strong versus
+moderate extinction, camera-dependent centre projection, solar/visibility
+authority, and truthful report labels. Adopted-epoch predictions of unmatched
+bodies (including Ceres/Vesta when visible) are retained in report/export views;
+stale predictions from another epoch are not. These predictions are not matches.
+
+### Fresh MMTO acceptance
+
+The from-pixels rerun of `2026_09_19__02_20_01.fits.bz2` with the final policy
+adopts a joint solution: 1,409 stars plus Mars, Saturn and Uranus; stellar RMS
+2.543360 arcmin and planet RMS 2.673188 arcmin. The exact centre projects to
+(710.5, 705.0) pixels. Two retained stars lie below the assumed horizon.
+The best epoch is 2026-09-19 02:09:26 UTC, with conditional 95% interval
+2026-09-18 20:10:53 to 2026-09-19 08:26:49 UTC. Metadata did not select it.
+Ceres, Vesta and Neptune remain visible as unmatched predictions, not detections.
+
+[Final report](../../results/v11-centre-final-20260919/runs/2026_09_19__02_20_01.fits-v0.11.0-20260919T190829Z-xmWUN7/analysis/report.pdf)
+and [sky image](../../results/v11-centre-final-20260919/runs/2026_09_19__02_20_01.fits-v0.11.0-20260919T190829Z-xmWUN7/analysis/report_sky_overlay.png).
+All 362 v11 tests complete successfully (one skipped). The historical v11 demo
+retains 3,611 associations, 0.370165-pixel RMS and 40 labels. Final saved camera,
+zenith projection, planet altitudes, prediction epoch and code hashes were
+checked for consistency; the sky-label audit reports zero conflicts.

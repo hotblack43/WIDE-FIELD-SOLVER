@@ -188,7 +188,8 @@ def collect_overlays(output, camera, science):
             x, y = camera.project([ray/np.linalg.norm(ray)])[0]
             provisional = zenith.get('status') != 'conditional_zenith' or zenith.get('provisional', False)
             rows.append(dict(x=float(x), y=float(y), kind='zenith',
-                             label='Zenith ('+('provisional' if provisional else 'conditional')+')'))
+                             label=('Zenith (assumed image centre)' if zenith.get('zenith_source') == 'image_centre_assumption'
+                                    else 'Zenith ('+('provisional' if provisional else 'conditional')+')')))
     h, w = camera.shape
     return [r for r in rows if np.isfinite([r['x'],r['y']]).all()
             and -.5 <= r['x'] < w-.5 and -.5 <= r['y'] < h-.5]

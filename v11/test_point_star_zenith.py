@@ -21,6 +21,44 @@ def photometric_field(extinction=.23, noise=.015, vignette=0.):
 
 
 class ZenithTests(unittest.TestCase):
+    def test_explicit_centre_default_survives_weak_extinction_and_below_horizon_rays(self):
+        from point_star_zenith import fit_photometric_zenith
+        rays, dimming, radial, _ = photometric_field(extinction=0.)
+        rays[0] = [1., 0., -.005]
+        answer = fit_photometric_zenith(
+            rays, dimming, radial, geometric_zenith_unit_vector=[0., 0., 1.],
+            geometric_evidence={'status': 'assumed_image_centre', 'centre_px': [99.5, 99.5]})
+        self.assertEqual(answer['status'], 'assumed_zenith')
+        self.assertEqual(answer['zenith_source'], 'image_centre_assumption')
+        np.testing.assert_allclose(answer['zenith_unit_vector'], [0., 0., 1.])
+        self.assertEqual(answer['below_assumed_horizon_count'], 1)
+        self.assertEqual(answer['fitted_count'], len(rays))
+        self.assertNotIn('extinction_mag_per_airmass', answer)
+        self.assertFalse(answer['metadata_used'])
+
+    def test_only_very_strong_stable_extinction_overrides_explicit_centre(self):
+        from point_star_zenith import fit_photometric_zenith
+        for noise, expected in ((.015, 'photometric_extinction'), (.08, 'image_centre_assumption')):
+            with self.subTest(noise=noise):
+                rays, dimming, radial, truth = photometric_field(noise=noise)
+                answer = fit_photometric_zenith(
+                    rays, dimming, radial, geometric_zenith_unit_vector=[0., 0., 1.],
+                    geometric_evidence={'status': 'assumed_image_centre', 'centre_px': [99.5, 99.5]})
+                self.assertEqual(answer['zenith_source'], expected)
+                if expected == 'photometric_extinction':
+                    self.assertLess(np.degrees(np.arccos(np.clip(np.dot(answer['zenith_unit_vector'], truth), -1, 1))), 1.)
+                else:
+                    np.testing.assert_allclose(answer['zenith_unit_vector'], [0., 0., 1.])
+                    self.assertIn('photometric_trial', answer)
+
+    def test_empty_photometry_still_honours_explicit_centre(self):
+        from point_star_zenith import fit_photometric_zenith
+        answer = fit_photometric_zenith(
+            np.empty((0, 3)), [], [], geometric_zenith_unit_vector=[0., 0., 1.],
+            geometric_evidence={'status': 'assumed_image_centre', 'centre_px': [99.5, 99.5]})
+        self.assertEqual(answer['status'], 'assumed_zenith')
+        np.testing.assert_allclose(answer['zenith_unit_vector'], [0., 0., 1.])
+
     def test_airmass_includes_the_horizon_without_clipping_low_stars(self):
         from point_star_zenith import airmass
         from point_star_science import _airmass_kasten_young
