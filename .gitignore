@@ -15,3 +15,11 @@ results/
 /raw_allsky_samples/.download.lock
 /raw_allsky_samples/derived/
 /raw_allsky_samples/*.log
+
+# Host-local acquisition state and bulk scientific data.
+/goBIG
+/raw_allsky_samples/inspection.json
+/raw_allsky_samples/manifest.sqlite*
+/raw_allsky_samples/mmto/mmto-skycam/
+/data/zenodo-3736793/all/
+/reports/planet_database_extract_*/

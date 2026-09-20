@@ -2,8 +2,9 @@
 
 Updated 2026-09-19. A source is marked **SUCCESS** only when an original file
 was downloaded, decoded, and numerically inspected. The machine-readable
-inspection record is `raw_allsky_samples/inspection.json`; originals are kept
-unchanged beneath `raw_allsky_samples/`.
+inspection record and live MMTO originals are host-local files beneath
+`raw_allsky_samples/`; they are deliberately ignored by Git. Published URLs,
+sizes and SHA-256 hashes retain the reproducible audit trail.
 
 | Camera/site | Result | Public source | Inspected format and dimensions | Stored data | Colour layout | Stars | Sample |
 |---|---|---|---|---|---|---|---|
@@ -35,7 +36,7 @@ and regrouped by observing night, including any legacy daytime frames. They are
 not counted among the two inspected reference samples unless they appear in the
 inspection record.
 
-Inspected originals:
+Inspected host-local originals (not versioned in Git):
 
 - `2026_03_15__00_00_18.fits.bz2`, 6,105,484 bytes, SHA-256
   `61b9883c184101bb5210b1d7efb17e3a3c4c6ff3a517371442e412d37949823e`.
@@ -138,7 +139,7 @@ classified **RAW NOT FOUND**; licensing varies by operator.
 ## Inspection limits
 
 Preview PNGs are derived visual checks and never replace the originals. Exact
-array statistics and recursively captured metadata are in
+array statistics and recursively captured metadata are in the host-local
 `raw_allsky_samples/inspection.json`. Solar-altitude selection is implemented
 from each registered site's latitude, longitude and timezone. Moon-down
 selection is not yet implemented.
