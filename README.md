@@ -6,7 +6,7 @@ Peter Thejll and Chris Flynn
 
 [![Solver regression](https://github.com/hotblack43/WIDE-FIELD-SOLVER/actions/workflows/tests.yml/badge.svg)](https://github.com/hotblack43/WIDE-FIELD-SOLVER/actions/workflows/tests.yml)
 [![Python 3.12](https://img.shields.io/badge/Python-3.12-312E81)](pyproject.toml)
-[![Development line](https://img.shields.io/badge/development-v0.10.0-C026D3)](v10/README.md)
+[![Latest release](https://img.shields.io/badge/release-v0.11.0-C026D3)](v11/README.md)
 [![MMTO astrometry](https://img.shields.io/badge/MMTO_RMS-0.327_px-F2B134)](docs/SCIENTIFIC_STATUS.md)
 [![License: BSD 3-Clause](https://img.shields.io/badge/license-BSD_3--Clause-312E81)](LICENSE)
 
@@ -65,27 +65,27 @@ The tested platform is Linux. Install
 ```bash
 git clone https://github.com/hotblack43/WIDE-FIELD-SOLVER.git
 cd WIDE-FIELD-SOLVER
-uv sync --project v10 --frozen
-./go10.sh /full/path/to/image.fits
+uv sync --project v11 --frozen
+./go11.sh /full/path/to/image.fits
 ```
 
 Compressed FITS input is accepted directly:
 
 ```bash
-./go10.sh /full/path/to/image.fits.bz2
+./go11.sh /full/path/to/image.fits.bz2
 ```
 
 Canon CR2 input is decoded from the native 14-bit Bayer sensor data, not its
 embedded JPEG preview:
 
 ```bash
-./go10.sh /full/path/to/image.cr2
+./go11.sh /full/path/to/image.cr2
 ```
 
 Shell-expanded wildcards process a batch sequentially with the same options:
 
 ```bash
-./go10.sh raw_allsky_samples/mmto/mmto-skycam/*/*.fits.bz2 \
+./go11.sh raw_allsky_samples/mmto/mmto-skycam/*/*.fits.bz2 \
   --results-dir /path/to/results
 ```
 
@@ -122,7 +122,7 @@ zenith or observation epoch. Instrumental count rates are not calibrated fluxes.
 Metadata is not allowed to seed or tune the stellar astrometric fit; when used
 later for planetary analysis it is labelled as metadata-conditioned. See
 [the durable scientific goal](GOAL.md) and
-[the detailed v0.10.0 feature inventory](v10/docs/FEATURE_STATUS.md).
+[the detailed v0.11.0 feature inventory](v11/docs/FEATURE_STATUS.md).
 
 ## Citation, releases and reuse
 
@@ -132,10 +132,10 @@ and redistribute it under those terms. If you use WIDE-FIELD SOLVER in
 scientific work, please use the repository's [`CITATION.cff`](CITATION.cff);
 GitHub's **Cite this repository** menu supplies APA and BibTeX forms.
 
-The latest packaged release is v0.6.0; current development is v0.10.0 under
-`v10/`. The complete v9 runtime is preserved unchanged. Historical solvers
-remain available for reproducible comparison and are protected by recorded
-manifests and regression tests.
+The latest packaged release is v0.11.0, and `go11.sh` is the recommended
+launcher. Its complete runtime is frozen by `docs/v11-runtime.json`. Historical
+solvers remain available for reproducible comparison and are protected by
+recorded manifests and regression tests.
 
 The BSD licence covers project-authored software, not third-party code,
 catalogues or images. Those materials retain their own terms. Read
@@ -219,8 +219,8 @@ durable FIFO queue in `raw_allsky_samples/manifest.sqlite`. Existing files and
 checksum-verified `REUSE` events are deliberately not bulk-enqueued. A separate
 worker takes at most one image per invocation and calls the frozen root
 `go10.sh` with that image only. It writes automated runs to
-`results/mmto-automatic/`; neither `go10.sh` nor `v10/` is modified, and current
-`go11.sh`/`v11/` development is explicitly outside this queue.
+`results/mmto-automatic/`; neither `go10.sh` nor `v10/` is modified, and the
+frozen `go11.sh`/`v11/` release is explicitly outside this queue.
 
 The processing worker is normally scheduled every two minutes under
 `/tmp/wide-field-solver-mmto-processing.lock`, independently of acquisition.

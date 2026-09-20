@@ -48,9 +48,23 @@ class V11BoundaryTests(unittest.TestCase):
     def test_manifest_covers_joint_runtime_and_matches_files(self):
         manifest = json.loads((ROOT/'v11/SOURCE_MANIFEST.json').read_text())
         self.assertEqual(manifest['version'], '0.11.0')
+        self.assertEqual(manifest['release_status'], 'released as v0.11.0')
         for name in ('point_star_joint_epoch.py', 'point_star_joint_report.py', 'uv.lock',
-                     'data/stars_gaia_dr3_g75.csv', 'data/planet-reference-1850-2036.npz'):
+                     'data/stars_gaia_dr3_g75.csv', 'data/planet-reference-1850-2036.npz',
+                     'examples/mmto/2026_09_19__02_20_01.fits.bz2',
+                     'examples/mmto/baseline.json', 'scripts/check_mmto_demo.py',
+                     'scripts/run_mmto_demo.py', 'test_mmto_demo.py'):
             self.assertIn(name, manifest['sha256'])
+        self.assertEqual(
+            manifest['sha256']['examples/mmto/2026_09_19__02_20_01.fits.bz2'],
+            'd7278337c18a87e19b4254dbd053769cc10233732f1ce686a44b235a567fa960')
+        tracked = {
+            path.removeprefix('v11/') for path in subprocess.run(
+                ['git', 'ls-files', 'v11'], cwd=ROOT, check=True,
+                capture_output=True, text=True).stdout.splitlines()
+        }
+        tracked.discard('SOURCE_MANIFEST.json')
+        self.assertEqual(set(manifest['sha256']), tracked)
         for name, digest in manifest['sha256'].items():
             with self.subTest(path=name):
                 self.assertEqual(hashlib.sha256((ROOT/'v11'/name).read_bytes()).hexdigest(), digest)

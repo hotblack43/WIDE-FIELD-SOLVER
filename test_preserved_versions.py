@@ -252,6 +252,22 @@ class PreservedVersionTests(unittest.TestCase):
                          'Every v10 runtime asset and launcher must exist in git clones:\n'
                          + tracked.stderr)
 
+    def test_v11_runtime_and_launchers_match_public_release(self):
+        record = json.loads((ROOT/'docs/v11-runtime.json').read_text())
+        self.assertEqual(record['version'], '0.11.0')
+        self.assertEqual(record['snapshot_kind'], 'public v0.11.0 release boundary')
+        tracked = set(subprocess.run(
+            ['git', 'ls-files', 'v11'], cwd=ROOT, check=True,
+            capture_output=True, text=True).stdout.splitlines())
+        expected = tracked | {'go11.sh', 'go_v0.11.0.sh'}
+        self.assertEqual(set(record['sha256']), expected)
+        for name, expected_digest in record['sha256'].items():
+            with self.subTest(file=name):
+                self.assertEqual(
+                    hashlib.sha256((ROOT/name).read_bytes()).hexdigest(),
+                    expected_digest,
+                    'Preserved v11 changed: develop upgrades in a new version directory')
+
 
 if __name__ == '__main__':
     unittest.main()

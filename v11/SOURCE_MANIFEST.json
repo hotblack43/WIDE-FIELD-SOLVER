@@ -1,10 +1,6 @@
 {
-  "version": "0.11.0",
-  "based_on_version": "0.10.0",
   "based_on_commit": "8d414d5b6909bbdab7474804dbcf022e573871d4",
-  "parent_snapshot": "../docs/v10-runtime.json",
-  "parent_snapshot_section": "working_tree_parent_snapshot",
-  "release_status": "development; see docs/V11_JOINT_EPOCH.md for numerical changes and acceptance",
+  "based_on_version": "0.10.0",
   "changes": [
     "Independent v11 package preserves current v10 bytes without changing or committing another window work.",
     "Global planet search never bounded by observation metadata; supplied timestamps are validation only.",
@@ -14,8 +10,13 @@
     "Joint authoritative product view shared by PDF/FITS/identified photometry; recoverable staged adoption.",
     "Report actual-position crops, joint profile, finite boundary-truncated interval and metadata discrepancy.",
     "Correct inherited double exposure normalization: raw counts enter counts/exposure magnitude helper once.",
-    "Lossless physical product and CSV-body deduplication behind legacy-compatible SQLite views; verified ZIP archives for adopted intermediate snapshots; no numerical changes."
+    "Lossless physical product and CSV-body deduplication behind legacy-compatible SQLite views; verified ZIP archives for adopted intermediate snapshots; no numerical changes.",
+    "Permitted native-colour MMTO FITS demonstration with offline catalogue use and conservative regression limits.",
+    "Public BSD 3-Clause release packaging with explicit software, observation, and photograph rights boundaries."
   ],
+  "parent_snapshot": "../docs/v10-runtime.json",
+  "parent_snapshot_section": "working_tree_parent_snapshot",
+  "release_status": "released as v0.11.0",
   "sha256": {
     ".gitignore": "2172eb4e11b97a29351a776ad6174ebd9d43b26f1b49c6ff8a2284ee999d01db",
     ".python-version": "7b55f8e67b5623c4bef3fa691288da9437d79d3aba156de48d481db32ac7d16d",
@@ -166,5 +167,6 @@
     "tests/fixtures/bootstrap_pixels.json": "6b665b19610d9c188025b1dc3eaa487ac51502ec58971f80391e8cd09bb422fe",
     "uv.lock": "cf47c3b06dec4a2241f5aed93506388d69f723ddb39bfc20690fd6a4ebd9bff1",
     "view_fits.sh": "b9cd5aa92b0ad599dbab4f859beba0a0c0e9b713c13bf93d9a71d0a941593e15"
-  }
+  },
+  "version": "0.11.0"
 }

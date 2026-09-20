@@ -55,11 +55,16 @@ preserved version during an upgrade.
 `go9.sh`, `go_v0.9.0.sh`, and the complete `v9/` package are frozen at the v10
 boundary; their hashes are in `docs/v9-runtime.json`.
 
-Develop upgrades in `v10/`, launched by `go10.sh` or `go_v0.10.0.sh`, with its own
-catalogue, lockfile, ephemeris data and source manifest. All versions must work
-without `.worktrees`. Update the v10 manifest deliberately and test all preserved
-versions before publishing. Never merge a development worktree over a preserved
-runtime.
+`go10.sh`, `go_v0.10.0.sh`, and the complete `v10/` package are frozen at the v11
+boundary; their hashes are in `docs/v10-runtime.json`. `go11.sh`,
+`go_v0.11.0.sh`, and the complete `v11/` package are frozen at the public
+`v0.11.0` release; their hashes are in `docs/v11-runtime.json`.
+
+Develop later upgrades in a new version directory with its own launchers,
+catalogue, lockfile, ephemeris data and source manifest. Never overwrite v11 or
+another preserved runtime. All versions must work without `.worktrees`; update
+the new version's manifest deliberately and test all preserved versions before
+publishing.
 
 ## Local patch-helper fallback
 

@@ -49,6 +49,18 @@ class V11ReleaseDocumentationTests(unittest.TestCase):
         self.assertIn("Fred Espenak", combined)
         self.assertIn("not included", combined)
 
+    def test_release_notes_name_curated_assets_and_scientific_boundary(self):
+        notes = (ROOT/"docs/RELEASE_v0.11.0.md").read_text()
+        for name in (
+            "wide-field-solver-v0.11.0.tar.gz",
+            "wide-field-solver-v0.11.0.zip",
+            "SHA256SUMS",
+        ):
+            self.assertIn(name, notes)
+        self.assertIn("automatic “Source code”", notes)
+        self.assertIn("metadata-conditioned", notes)
+        self.assertIn("provided with permission from Tim Pickering", notes)
+
 
 if __name__ == "__main__":
     unittest.main()

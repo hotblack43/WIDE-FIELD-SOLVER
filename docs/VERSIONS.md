@@ -13,17 +13,19 @@ tests; they are not aliases for the newest code.
 | `go7.sh` | Frozen | v0.7.0 detector-parity selection |
 | `go8.sh` | Frozen | v0.8.0 compressed FITS, count rates and saturated wings |
 | `go8a.sh` | Frozen work snapshot | Portable result storage plus v8 capabilities |
-| `go9.sh` | **Current development** | v0.9.0 consolidated runtime and current reports |
+| `go9.sh` | Frozen | v0.9.0 consolidated runtime and reports |
+| `go10.sh` | Frozen | v0.10.0 native colour inputs and metadata-conditioned planet validation |
+| `go11.sh` | **Latest release; recommended** | v0.11.0 joint stellar/planetary epoch profile and permitted MMTO demo |
 
-For new work, use `go9.sh`. Use an earlier launcher only when reproducing an
+For new work, use `go11.sh`. Use an earlier launcher only when reproducing an
 older result or testing an explicitly version-dependent change.
 
 ## Releases versus the development line
 
-The latest packaged GitHub release is v0.6.0. The repository's main branch has
-subsequently retained v0.7.0, v0.8.0, v8a and v0.9.0 as separately preserved
-runtimes. Calling v0.9.0 “current” therefore describes the development line; it
-does not imply that a v0.9.0 release asset has been published.
+The latest packaged GitHub release is v0.11.0. Download the named `.tar.gz` or
+`.zip` asset and `SHA256SUMS` from that release; GitHub's automatic source-code
+archives are not the curated runnable package. Every earlier launcher remains a
+separately preserved runtime.
 
 The complete launcher syntax and output-directory behaviour remain in the
 repository's `REFERENCE.md`.

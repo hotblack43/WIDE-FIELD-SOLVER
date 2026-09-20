@@ -8,7 +8,8 @@ authors:
     given-names: Peter
   - family-names: Flynn
     given-names: Chris
-version: 0.9.0
+version: 0.11.0
+date-released: 2026-09-20
 repository-code: https://github.com/hotblack43/WIDE-FIELD-SOLVER
 url: https://github.com/hotblack43/WIDE-FIELD-SOLVER
 license: BSD-3-Clause
