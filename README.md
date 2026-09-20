@@ -156,7 +156,7 @@ Preview one MMTO night without downloading:
 
 ```bash
 uv run --frozen python download_samples.py \
-  --site mmto --night 2026-09-18 --sun-below -12 \
+  --site mmto --night 2026-09-18 --sun-below -18 --moon-down \
   --cadence 20m --max-files 20 --dry-run
 ```
 
@@ -165,7 +165,11 @@ noon the following date. `--sun-below -12` retains only exposures with the
 geometric centre of the Sun more than 12 degrees below the site's horizon,
 excluding bright dusk and dawn twilight. Site latitude,
 longitude and timezone come from `sources.json`; missing latitude or longitude
-is an error rather than an assumed location. Remove `--dry-run` to download.
+is an error rather than an assumed location. `--moon-down` additionally retains
+only exposures for which the Moon's topocentric geometric centre is below the
+horizon. It uses Astropy's built-in ephemeris and no atmospheric refraction.
+Both filters run on listing timestamps before any raw image is downloaded.
+Remove `--dry-run` to download.
 `--date` and `--start`/`--end` retain their site-local civil-day meanings:
 
 ```bash
@@ -208,8 +212,8 @@ uv run --frozen python run_raw_allsky_cron.py --site mmto --dry-run
 
 Installing the repository does not modify cron. On a capture host, the MMTO
 acquisition command is normally scheduled at minutes 0, 20 and 40 under
-`/tmp/wide-field-raw-allsky-mmto.lock`. Moon-down selection remains future
-work; solar-altitude selection is available through `--sun-below` for any
+`/tmp/wide-field-raw-allsky-mmto.lock`. Moon-down selection is available through
+`--moon-down`, and solar-altitude selection through `--sun-below`, for any
 registered telescope with latitude and longitude.
 
 ### Automatic MMTO processing queue

@@ -140,6 +140,7 @@ classified **RAW NOT FOUND**; licensing varies by operator.
 
 Preview PNGs are derived visual checks and never replace the originals. Exact
 array statistics and recursively captured metadata are in the host-local
-`raw_allsky_samples/inspection.json`. Solar-altitude selection is implemented
-from each registered site's latitude, longitude and timezone. Moon-down
-selection is not yet implemented.
+`raw_allsky_samples/inspection.json`. Solar-altitude and Moon-down selection are
+implemented from each registered site's latitude, longitude, timezone and
+listing timestamps. Moon-down means the Moon's topocentric geometric centre is
+below zero degrees altitude using Astropy's built-in ephemeris and no refraction.

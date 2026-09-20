@@ -20,7 +20,12 @@ from .http import HttpClient, TransferError
 from .manifest import Manifest, OutputLockedError, output_lock
 from .model import Candidate, Selection
 from .registry import SourceRegistry
-from .solar import filter_by_solar_altitude, validate_solar_site
+from .solar import (
+    filter_by_moon_altitude,
+    filter_by_solar_altitude,
+    validate_moon_site,
+    validate_solar_site,
+)
 
 
 LOG = logging.getLogger(__name__)
@@ -143,6 +148,11 @@ def build_parser() -> argparse.ArgumentParser:
         type=_solar_altitude,
         metavar="DEGREES",
         help="retain only exposures with geometric solar altitude below this value",
+    )
+    parser.add_argument(
+        "--moon-down",
+        action="store_true",
+        help="retain only exposures with the Moon's geometric centre below the horizon",
     )
     parser.add_argument(
         "--log-level",
@@ -270,6 +280,9 @@ def run(
         if args.sun_below is not None:
             for site in sites:
                 validate_solar_site(site)
+        if args.moon_down:
+            for site in sites:
+                validate_moon_site(site)
         site_by_key = {(site.source_id, site.camera_id): site for site in sites}
         ranges = {
             (site.source_id, site.camera_id): (
@@ -290,6 +303,8 @@ def run(
                     candidates, site_by_key, sun_below_deg=args.sun_below
                 )
             )
+        if args.moon_down:
+            candidates = list(filter_by_moon_altitude(candidates, site_by_key))
         selection_limit = len(candidates) if args.backfill_missing and candidates else args.max_files
         selection = select_candidates(
             candidates,

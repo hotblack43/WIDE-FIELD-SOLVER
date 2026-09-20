@@ -117,6 +117,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(args.cadence, "10m")
         self.assertEqual(args.max_files, 20)
         self.assertFalse(args.latest)
+        self.assertFalse(args.moon_down)
 
     def test_date_and_range_are_mutually_exclusive(self):
         with self.assertRaises(SystemExit):
@@ -199,6 +200,29 @@ class CliTests(unittest.TestCase):
         self.assertIn("first.raw", rendered)
         self.assertNotIn("second.raw", rendered)
 
+    def test_moon_down_removes_moon_up_candidate_before_selection(self):
+        adapter = _FixtureAdapter(
+            self.base,
+            first_at=datetime(2026, 3, 20, 0, 0, tzinfo=UTC),
+            second_at=datetime(2026, 3, 20, 12, 0, tzinfo=UTC),
+        )
+        adapter.site = Site("fixture", "camera-a", "Equator", "UTC", 0.0, 0.0, 0.0)
+        args = build_parser().parse_args(
+            [
+                "--site", "fixture",
+                "--date", "2026-03-20",
+                "--moon-down",
+                "--dry-run",
+            ]
+        )
+        stream = io.StringIO()
+        with redirect_stdout(stream):
+            status = run(args, registry=_FixtureRegistry(adapter))
+        rendered = stream.getvalue()
+        self.assertEqual(status, 0)
+        self.assertIn("first.raw", rendered)
+        self.assertNotIn("second.raw", rendered)
+
     def test_solar_filter_refuses_missing_site_coordinates_before_listing(self):
         class CoordinateLessAdapter:
             def __init__(self):
@@ -220,6 +244,36 @@ class CliTests(unittest.TestCase):
                 "--site", "fixture",
                 "--date", "2026-03-20",
                 "--sun-below", "0",
+                "--dry-run",
+            ]
+        )
+        with self.assertLogs("allsky_download.cli", level="ERROR") as logs:
+            status = run(args, registry=_FixtureRegistry(adapter))
+        self.assertEqual(status, 2)
+        self.assertFalse(adapter.listed)
+        self.assertIn("latitude and longitude", "\n".join(logs.output))
+
+    def test_moon_filter_refuses_missing_site_coordinates_before_listing(self):
+        class CoordinateLessAdapter:
+            def __init__(self):
+                self.listed = False
+                self.site = Site(
+                    "fixture", "camera-a", "Unknown", "UTC", None, None, None
+                )
+
+            def sites(self, camera_id):
+                return (self.site,)
+
+            def list_candidates(self, client, site, date_range):
+                self.listed = True
+                return ()
+
+        adapter = CoordinateLessAdapter()
+        args = build_parser().parse_args(
+            [
+                "--site", "fixture",
+                "--date", "2026-03-20",
+                "--moon-down",
                 "--dry-run",
             ]
         )
