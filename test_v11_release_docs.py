@@ -61,6 +61,21 @@ class V11ReleaseDocumentationTests(unittest.TestCase):
         self.assertIn("metadata-conditioned", notes)
         self.assertIn("provided with permission from Tim Pickering", notes)
 
+    def test_release_notes_require_one_archive_not_both(self):
+        notes = (ROOT/"docs/RELEASE_v0.11.0.md").read_text()
+        self.assertIn("Choose one archive", notes)
+        self.assertIn("Verification is optional", notes)
+        self.assertNotIn("Download these three named release assets", notes)
+        self.assertNotIn("sha256sum -c SHA256SUMS\n", notes)
+        self.assertIn(
+            "grep 'wide-field-solver-v0.11.0.tar.gz$' SHA256SUMS | sha256sum -c -",
+            notes,
+        )
+        self.assertIn(
+            "grep 'wide-field-solver-v0.11.0.zip$' SHA256SUMS | sha256sum -c -",
+            notes,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

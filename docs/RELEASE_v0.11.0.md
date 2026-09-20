@@ -9,23 +9,29 @@ photograph.
 
 ## Download and verify
 
-Download these three named release assets—not GitHub's automatic “Source code”
-archives—into one directory:
+Choose one archive—not GitHub's automatic “Source code” archives:
 
-- `wide-field-solver-v0.11.0.tar.gz`
-- `wide-field-solver-v0.11.0.zip`
-- `SHA256SUMS`
+- `wide-field-solver-v0.11.0.tar.gz` for a tar archive; or
+- `wide-field-solver-v0.11.0.zip` for a ZIP archive.
 
-Verify either package before unpacking:
+Do not download both. Verification is optional. To verify the archive you
+chose, also download `SHA256SUMS` and run the matching command below.
+
+For the tar archive:
 
 ```sh
-sha256sum -c SHA256SUMS
+grep 'wide-field-solver-v0.11.0.tar.gz$' SHA256SUMS | sha256sum -c -
 tar -xzf wide-field-solver-v0.11.0.tar.gz
 cd wide-field-solver-v0.11.0
 ```
 
-The ZIP contains the same files and can be used on systems where it is more
-convenient.
+For the ZIP archive, which contains the same files:
+
+```sh
+grep 'wide-field-solver-v0.11.0.zip$' SHA256SUMS | sha256sum -c -
+unzip wide-field-solver-v0.11.0.zip
+cd wide-field-solver-v0.11.0
+```
 
 ## Quick start
 
