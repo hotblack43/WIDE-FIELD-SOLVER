@@ -207,6 +207,18 @@ class Manifest:
             )
         return None
 
+    def recorded_verified_urls(self) -> set[str]:
+        """Return URLs already recorded as complete, without re-hashing every file."""
+        return {
+            row[0]
+            for row in self.connection.execute(
+                """
+                SELECT remote_url FROM downloads
+                WHERE download_status='downloaded' AND validation_status='verified'
+                """
+            )
+        }
+
     def set_inspection_id(self, remote_url: str, kind: str, inspection_id: str) -> None:
         with self.connection:
             self.connection.execute(

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import closing
 from datetime import date
 import logging
 import math
 from pathlib import Path, PurePath
+import sqlite3
 from typing import Sequence
 
 from .cadence import (
@@ -16,7 +18,7 @@ from .cadence import (
 )
 from .http import HttpClient, TransferError
 from .manifest import Manifest, OutputLockedError, output_lock
-from .model import Candidate
+from .model import Candidate, Selection
 from .registry import SourceRegistry
 from .solar import filter_by_solar_altitude, validate_solar_site
 
@@ -90,6 +92,8 @@ class _ArgumentParser(argparse.ArgumentParser):
             self.error("--start requires --end")
         if result.end is not None and result.start is None:
             self.error("--end requires --start")
+        if result.latest and result.backfill_missing:
+            self.error("--latest cannot be combined with --backfill-missing")
         return result
 
 
@@ -119,6 +123,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--latest",
         action="store_true",
         help="select the newest cadence slots (intended for incremental cron runs)",
+    )
+    parser.add_argument(
+        "--backfill-missing",
+        action="store_true",
+        help=argparse.SUPPRESS,
     )
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--dry-run", action="store_true")
@@ -191,6 +200,34 @@ def _print_selection(selection) -> None:
     )
 
 
+def _selection(items, eligible_count: int) -> Selection:
+    items = tuple(items)
+    return Selection(
+        candidates=items,
+        eligible_count=eligible_count,
+        truncated=eligible_count > len(items),
+        known_bytes=sum(item.size_bytes for item in items if item.size_bytes is not None),
+        unknown_size_count=sum(item.size_bytes is None for item in items),
+    )
+
+
+def _read_recorded_verified_urls(path: Path) -> set[str]:
+    """Read completed URLs for an accurate dry-run without creating SQLite state."""
+    if not path.is_file():
+        return set()
+    with closing(sqlite3.connect(path.resolve().as_uri()+'?mode=ro', uri=True)) as db:
+        db.execute('PRAGMA query_only=ON')
+        return {
+            row[0]
+            for row in db.execute(
+                """
+                SELECT remote_url FROM downloads
+                WHERE download_status='downloaded' AND validation_status='verified'
+                """
+            )
+        }
+
+
 def _resolve_sites(adapter, camera_ids: list[str] | None):
     if not camera_ids:
         return adapter.sites(None)
@@ -253,30 +290,41 @@ def run(
                     candidates, site_by_key, sun_below_deg=args.sun_below
                 )
             )
+        selection_limit = len(candidates) if args.backfill_missing and candidates else args.max_files
         selection = select_candidates(
             candidates,
             ranges,
             parse_duration(args.cadence),
-            args.max_files,
+            selection_limit,
             newest=args.latest,
         )
-        _print_selection(selection)
         if args.dry_run:
+            if args.backfill_missing:
+                recorded = _read_recorded_verified_urls(args.output / 'manifest.sqlite')
+                missing = [candidate for candidate in selection.candidates
+                           if candidate.url not in recorded]
+                selection = _selection(missing[:args.max_files], len(missing))
+            _print_selection(selection)
             return 0
-
-        destinations: dict[Path, str] = {}
-        for candidate in selection.candidates:
-            site = site_by_key[(candidate.source_id, candidate.camera_id)]
-            path = _destination(args.output, candidate, site)
-            other_url = destinations.setdefault(path, candidate.url)
-            if other_url != candidate.url:
-                raise ValueError(
-                    f"two remote objects map to the same local path: {path}"
-                )
 
         failed = False
         with output_lock(args.output):
             with Manifest(args.output / "manifest.sqlite") as manifest:
+                if args.backfill_missing:
+                    recorded = manifest.recorded_verified_urls()
+                    missing = [candidate for candidate in selection.candidates
+                               if candidate.url not in recorded]
+                    selection = _selection(missing[:args.max_files], len(missing))
+                _print_selection(selection)
+                destinations: dict[Path, str] = {}
+                for candidate in selection.candidates:
+                    site = site_by_key[(candidate.source_id, candidate.camera_id)]
+                    path = _destination(args.output, candidate, site)
+                    other_url = destinations.setdefault(path, candidate.url)
+                    if other_url != candidate.url:
+                        raise ValueError(
+                            f"two remote objects map to the same local path: {path}"
+                        )
                 for candidate in selection.candidates:
                     existing = manifest.verified_download(candidate, args.output)
                     if existing is not None:

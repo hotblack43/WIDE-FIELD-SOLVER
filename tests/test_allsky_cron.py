@@ -39,7 +39,7 @@ class CronTests(unittest.TestCase):
             self.assertEqual(args[args.index("--night") + 1], "2026-09-18")
             self.assertNotIn("--date", args)
 
-    def test_mmto_uses_newest_slot_one_file_and_solar_filter(self):
+    def test_mmto_backfills_oldest_missing_slot_one_file_and_solar_filter(self):
         args = cron_download_arguments(
             "mmto",
             datetime(2026, 9, 19, 2, 30, tzinfo=timezone.utc),
@@ -49,7 +49,8 @@ class CronTests(unittest.TestCase):
         self.assertEqual(args[args.index("--cadence") + 1], "20m")
         self.assertEqual(args[args.index("--max-files") + 1], "1")
         self.assertEqual(args[args.index("--sun-below") + 1], "-12")
-        self.assertIn("--latest", args)
+        self.assertIn("--backfill-missing", args)
+        self.assertNotIn("--latest", args)
         self.assertIn("--enqueue-processing", args)
         self.assertIn("--dry-run", args)
 

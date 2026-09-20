@@ -65,8 +65,8 @@ class PlotThingsOneTests(unittest.TestCase):
         self.addCleanup(plot.plt.close, empty)
         self.assertTrue(any('No usable' in t.get_text() for t in empty.axes[0].texts))
 
-    def test_compact_pages_keep_two_bright_two_fainter_stars_in_rgb_columns(self):
-        self.assertIn('lightcurves_RGB', plot.PLOT_REGISTRY, 'Compact page is not registered')
+    def test_rgb_pages_show_every_selected_star_in_bright_and_faint_blocks(self):
+        self.assertIn('lightcurves_RGB', plot.PLOT_REGISTRY, 'RGB page is not registered')
         rows, selected = [], []
         for column in (0, 1):
             for row in range(4):
@@ -79,14 +79,63 @@ class PlotThingsOneTests(unittest.TestCase):
         for key in ('lightcurves_RGB', 'airmass_RGB'):
             fig = plot.PLOT_REGISTRY[key](rows, selected, args)
             self.addCleanup(plot.plt.close, fig)
-            self.assertEqual(len(fig.axes), 12)
-            for row, sid in enumerate(('s00', 's01', 's10', 's11')):
-                for col, channel in enumerate('RGB'):
-                    ax = fig.axes[row*3+col]
-                    self.assertIn(sid, ax.get_title(loc='left'))
-                    self.assertTrue(ax.get_ylabel().startswith(channel))
-                    want = [8., -5.] if key == 'lightcurves_RGB' else [1.5, (-9., -10., -11.)[col]]
-                    self.assertEqual(ax.collections[0].get_offsets().tolist(), [want])
+            self.assertEqual(len(fig.axes), 24)
+            for block in (0, 1):
+                for row in range(4):
+                    sid = f's{block}{row}'
+                    for col, channel in enumerate('RGB'):
+                        ax = fig.axes[row*6+block*3+col]
+                        self.assertIn(sid, ax.get_title(loc='left'))
+                        self.assertTrue(ax.get_ylabel().startswith(channel))
+                        want = ([8., -5.] if key == 'lightcurves_RGB'
+                                else [1.5, (-9., -10., -11.)[col]])
+                        self.assertEqual(ax.collections[0].get_offsets().tolist(), [want])
+
+    def test_rgb_time_panels_share_one_magnitude_range(self):
+        args = SimpleNamespace(catalogue_band='matched', target_mag=5.)
+        selected = [
+            dict(catalogue_sha256='cat', star_id='bright', display_name='Bright',
+                 gaia_g=2., column=0, row=0),
+            dict(catalogue_sha256='cat', star_id='faint', display_name='Faint',
+                 gaia_g=5., column=1, row=0),
+        ]
+        rows = []
+        for star_id, magnitude in [('bright', -10.), ('faint', -4.)]:
+            rows.extend(dict(row, hours_since_local_noon=8., machine_mag=magnitude)
+                        for row in self.colour_rows(star_id=star_id))
+
+        figure = plot.lightcurve_page(rows, selected, args, 'RGB')
+        self.addCleanup(plot.plt.close, figure)
+        visible = [axis for axis in figure.axes if axis.get_visible()]
+        self.assertEqual(len(visible), 6)
+        for axis in visible:
+            lower, upper = axis.get_ylim()
+            self.assertAlmostEqual(lower, -3.7)
+            self.assertAlmostEqual(upper, -10.3)
+            self.assertTrue(axis.yaxis_inverted())
+
+    def test_rgb_airmass_panels_share_one_residual_magnitude_range(self):
+        args = SimpleNamespace(catalogue_band='matched', target_mag=5.)
+        selected = [
+            dict(catalogue_sha256='cat', star_id='bright', display_name='Bright',
+                 gaia_g=2., column=0, row=0),
+            dict(catalogue_sha256='cat', star_id='faint', display_name='Faint',
+                 gaia_g=5., column=1, row=0),
+        ]
+        rows = []
+        for star_id, magnitude in [('bright', -10.), ('faint', -4.)]:
+            rows.extend(dict(row, hours_since_local_noon=8., machine_mag=magnitude)
+                        for row in self.colour_rows(star_id=star_id))
+
+        figure = plot.lightcurve_page(rows, selected, args, 'RGB', against_airmass=True)
+        self.addCleanup(plot.plt.close, figure)
+        visible = [axis for axis in figure.axes if axis.get_visible()]
+        self.assertEqual(len(visible), 6)
+        for axis in visible:
+            lower, upper = axis.get_ylim()
+            self.assertAlmostEqual(lower, -16.4)
+            self.assertAlmostEqual(upper, -7.6)
+            self.assertFalse(axis.yaxis_inverted())
 
     def test_rates_and_local_noon_clock(self):
         self.assertEqual(plot.machine_magnitude(100), -5.)
@@ -161,6 +210,25 @@ class PlotThingsOneTests(unittest.TestCase):
         self.assertEqual(len({s['star_id'] for s in selected}), 8)
         self.assertTrue(all(abs(s['gaia_g']-5) < .11 for s in selected if s['column'] == 1))
 
+    def test_same_gaia_star_combines_nights_across_catalogue_digests(self):
+        rows = [dict(channel='G', catalogue_sha256='old-cat' if i < 2 else 'new-cat',
+                     star_id='same-star', source_sha256=f'image-{i}', display_name='Same star',
+                     gaia_g=2., gaia_rp=1.5, gaia_bp=2.5,
+                     local_noon_day=f'2026-09-{17+i:02d}', utc_mid=f'2026-09-{17+i:02d}T03:00:00Z',
+                     hours_since_local_noon=8.+i, machine_mag=-5.-i/10)
+                for i in range(4)]
+        selected = plot.select_stars(rows, minimum=2, coverage=1.)
+        self.assertEqual(len(selected), 1)
+        self.assertEqual(selected[0]['star_id'], 'same-star')
+        self.assertEqual(selected[0]['g_measurements'], 4)
+        self.assertEqual(selected[0]['catalogue_sha256s'], ['new-cat', 'old-cat'])
+        figure = plot.lightcurve_page(
+            rows, selected, SimpleNamespace(catalogue_band='matched', target_mag=5.), 'G')
+        self.addCleanup(plot.plt.close, figure)
+        visible = [axis for axis in figure.axes if axis.get_visible()]
+        self.assertEqual(len(visible), 1)
+        self.assertEqual(sum(len(collection.get_offsets()) for collection in visible[0].collections), 4)
+
     def test_figures_use_channel_catalogue_bands_and_actual_local_hours(self):
         rows = [dict(channel=c, catalogue_sha256='cat', star_id='s', display_name='Named star',
                      gaia_g=5., gaia_rp=4., gaia_bp=6., local_noon_day='2026-09-18',
@@ -234,24 +302,26 @@ class RunSelectionTests(unittest.TestCase):
         ''')
 
     def add_run(self, run_id, *, day=1, version='0.10.0', catalogue='cat', image=None,
-                source=None, exit_code=0, epoch_mode='fit', code='code', result=None):
+                source=None, exit_code=0, epoch_mode='fit', code='code', result=None,
+                database=None):
+        database = database or self.db
         data = dict(model='Barghini', epoch_mode=epoch_mode, blind=epoch_mode != 'fixed',
                     metadata_used=epoch_mode == 'fixed', code_sha256={'solver.py': code})
         if epoch_mode == 'fixed':
             data['coordinate_epoch_jyear'] = 2000.
         data.update(result or {})
-        self.db.execute('INSERT INTO runs VALUES (?,?,?,?,?,?,?,?,?)', (
+        database.execute('INSERT INTO runs VALUES (?,?,?,?,?,?,?,?,?)', (
             run_id, f'2026-09-{day:02d}T00:00:00+00:00', source or str(self.image),
             self.digest if image is None else image, catalogue, exit_code, version,
             json.dumps(data), '{}'))
-        self.db.execute('INSERT INTO products VALUES (?,?,?)', (run_id, 'photometry_summary.json',
+        database.execute('INSERT INTO products VALUES (?,?,?)', (run_id, 'photometry_summary.json',
                         json.dumps(dict(metadata_used=False, airmass_source='blind_photometric_zenith'))))
         values = dict(exposure_seconds=20, exposure_status='available', saturation_known=True,
                       airmass=1.5, G_count_rate_adu_per_s=100, G_saturated=False,
                       G_measurement_method='aperture')
-        self.db.execute('INSERT INTO measurements VALUES (?,?,?,?,?,?)', (
+        database.execute('INSERT INTO measurements VALUES (?,?,?,?,?,?)', (
             run_id, 'stellar_photometry.csv', 1, 'Gaia DR3 1', 'd1', json.dumps(values)))
-        self.db.commit()
+        database.commit()
 
     def select(self, **options):
         self.assertTrue(hasattr(plot, 'select_mmto_runs'), 'Consistent run selection is missing')
@@ -266,7 +336,26 @@ class RunSelectionTests(unittest.TestCase):
         self.assertEqual(audit['superseded_successful_runs'], 1)
         self.assertEqual(audit['failed_mmto_runs'], 1)
 
-    def test_default_never_merges_versions_configs_or_catalogues(self):
+    def test_default_uses_latest_successful_run_per_image_across_all_reductions(self):
+        self.add_run('old-v10', day=1, image='image-one')
+        self.add_run('latest-v11', day=3, version='0.11.0', image='image-one')
+        self.add_run('other-v10', day=2, image='image-two')
+        self.add_run('other-config-v11', day=4, version='0.11.0', image='image-three', code='changed')
+        self.add_run('newer-fixed-control', day=5, version='0.11.0', image='image-one',
+                     epoch_mode='fixed')
+        self.add_run('failed', day=6, version='0.11.0', image='image-four', exit_code=1)
+        chosen, audit = self.select()
+        self.assertEqual({r['run_id'] for r in chosen},
+                         {'latest-v11', 'other-v10', 'other-config-v11'})
+        self.assertEqual(audit['selection_mode'], 'latest_successful_per_image_across_all_reductions')
+        self.assertEqual(audit['selected']['unique_images'], 3)
+        self.assertEqual(audit['selected']['solver_versions'], {'0.10.0': 1, '0.11.0': 2})
+        self.assertEqual(audit['superseded_successful_runs'], 1)
+        self.assertEqual(audit['nonblind_control_runs'], 1)
+        self.assertEqual(audit['failed_mmto_runs'], 1)
+        self.assertEqual(len(audit['available_reductions']), 4)
+
+    def test_explicit_version_never_merges_versions_configs_or_catalogues(self):
         self.add_run('a')
         self.add_run('a-copy', day=2)
         self.add_run('b', image='second')
@@ -274,7 +363,7 @@ class RunSelectionTests(unittest.TestCase):
         self.add_run('fixed', day=4, epoch_mode='fixed')
         self.add_run('other-code', day=5, code='changed')
         self.add_run('other-catalogue', day=6, catalogue='other')
-        chosen, audit = self.select()
+        chosen, audit = self.select(solver_version='0.10.0')
         self.assertEqual({r['run_id'] for r in chosen}, {'a-copy', 'b'})
         self.assertEqual(audit['selected']['solver_version'], '0.10.0')
         self.assertEqual(audit['selected']['unique_images'], 2)
@@ -365,22 +454,68 @@ class RunSelectionTests(unittest.TestCase):
         self.add_run('new-version', day=4, version='0.11.0')
         before = self.database.read_bytes()
         rows, audit, images = plot.load_measurements(self.database, self.catalogue, self.root)
-        self.assertEqual([r['run_id'] for r in rows], ['latest'])
-        self.assertEqual([r['run_id'] for r in images], ['latest'])
+        self.assertEqual([r['run_id'] for r in rows], ['new-version'])
+        self.assertEqual([r['run_id'] for r in images], ['new-version'])
         output = self.root/'plots'
-        with redirect_stdout(io.StringIO()):
+        output.mkdir()
+        (output/'99_stale_plot.png').write_bytes(b'old generated plot')
+        (output/'01_notes.png').write_bytes(b'unrelated numbered image')
+        (output/'keep.txt').write_text('unrelated file')
+        (output/'summary.json').write_text(json.dumps(
+            {'generated_files': ['99_stale_plot.png', 'summary.json']})+'\n')
+        stream = io.StringIO()
+        with redirect_stdout(stream):
             plot.main(['--database', str(self.database), '--catalogue', str(self.catalogue),
-                       '--image-root', str(self.root), '--output', str(output), '--plots', 'rgb_catalogue'])
+                       '--image-root', str(self.root), '--output', str(output), '--overwrite',
+                       '--plots', 'rgb_catalogue'])
         summary = json.loads((output/'summary.json').read_text())
-        self.assertEqual(summary['run_selection']['selected_run_ids'], ['latest'])
-        self.assertEqual(summary['solver_version'], '0.10.0')
-        self.assertEqual(summary['run_selection']['superseded_successful_runs'], 1)
+        self.assertEqual(summary['run_selection']['selected_run_ids'], ['new-version'])
+        self.assertEqual(summary['solver_versions'], {'0.11.0': 1})
+        self.assertEqual(summary['run_selection']['superseded_successful_runs'], 2)
+        self.assertIn('latest successful solution for each image', stream.getvalue())
+        self.assertIn('1 unique database image; verified FITS data for 1 across 1 plotted night',
+                      stream.getvalue())
+        self.assertIn('Excluded: 2 superseded successful runs', stream.getvalue())
+        self.assertFalse((output/'99_stale_plot.png').exists())
+        self.assertEqual((output/'01_notes.png').read_bytes(), b'unrelated numbered image')
+        self.assertEqual((output/'keep.txt').read_text(), 'unrelated file')
         with (output/'measurements.csv').open() as handle:
             exported = list(csv.DictReader(handle))
         self.assertEqual(len(exported), 1)
-        self.assertEqual(exported[0]['solver_version'], '0.10.0')
-        self.assertEqual(exported[0]['config_sha256'], summary['run_selection']['selected']['config_sha256'])
+        self.assertEqual(exported[0]['solver_version'], '0.11.0')
+        self.assertEqual(exported[0]['config_sha256'], summary['image_provenance'][0]['config_sha256'])
         self.assertEqual(self.database.read_bytes(), before)
+
+    def test_loader_merges_databases_and_prefers_latest_solution_per_image(self):
+        self.add_run('primary-old')
+        second_image = self.root/'MMTO-second.fits'
+        with fits.open(self.image) as hdus:
+            hdus[0].header['DATE-OBS'] = '2026-09-18T20:20:00'
+            hdus[0].header['DATE'] = '2026-09-19T03:20:22'
+            hdus.writeto(second_image)
+        second_digest = hashlib.sha256(second_image.read_bytes()).hexdigest()
+        automatic = self.root/'automatic.sqlite'
+        with sqlite3.connect(automatic) as db:
+            db.executescript('''
+                CREATE TABLE runs(run_id, recorded_at_utc, source_path, source_sha256,
+                                  catalogue_sha256, exit_code, solver_version,
+                                  result_json, source_manifest_json);
+                CREATE TABLE products(run_id, product, content);
+                CREATE TABLE measurements(run_id, product, row_number, star_id, detection_id, values_json);
+            ''')
+            self.add_run('automatic-new', day=2, version='0.11.0', database=db)
+            self.add_run('automatic-only', day=2, source=str(second_image),
+                         image=second_digest, database=db)
+        rows, audit, images = plot.load_measurements(
+            [self.database, automatic], self.catalogue, self.root)
+        self.assertEqual({row['run_id'] for row in rows},
+                         {'automatic-new', 'automatic-only'})
+        self.assertEqual({image['run_id'] for image in images},
+                         {'automatic-new', 'automatic-only'})
+        self.assertEqual(audit['run_selection']['selected']['unique_images'], 2)
+        self.assertEqual(audit['run_selection']['superseded_successful_runs'], 1)
+        self.assertEqual({Path(row['source_database']).name for row in rows},
+                         {'automatic.sqlite'})
 
 
 if __name__ == '__main__':

@@ -249,6 +249,34 @@ class CliTests(unittest.TestCase):
             self.assertTrue((output / "manifest.sqlite").is_file())
         self.assertEqual(self.counts, {"listing": 2, "first": 1, "second": 0})
 
+    def test_backfill_missing_gets_oldest_unrecorded_slot_after_latest(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "samples"
+            latest = self.parse(
+                "--max-files", "1", "--latest", "--output", str(output)
+            )
+            backfill = self.parse(
+                "--max-files", "1", "--backfill-missing", "--output", str(output)
+            )
+            dry_backfill = self.parse(
+                "--max-files", "1", "--backfill-missing", "--dry-run",
+                "--output", str(output)
+            )
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(run(latest, registry=self.registry), 0)
+                self.assertEqual(run(backfill, registry=self.registry), 0)
+            preview = io.StringIO()
+            with redirect_stdout(preview):
+                self.assertEqual(run(dry_backfill, registry=self.registry), 0)
+            self.assertIn("SUMMARY\tselected=0\teligible=0", preview.getvalue())
+            self.assertTrue((
+                output / "fixture" / "camera-a" / "2025-12-31" / "first.raw"
+            ).is_file())
+            self.assertTrue((
+                output / "fixture" / "camera-a" / "2025-12-31" / "second.raw"
+            ).is_file())
+        self.assertEqual(self.counts, {"listing": 3, "first": 1, "second": 1})
+
     def test_listing_transfer_error_returns_operational_failure(self):
         class FailingClient:
             def get_text(self, url):

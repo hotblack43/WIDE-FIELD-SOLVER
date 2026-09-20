@@ -56,7 +56,7 @@ def cron_download_arguments(
         "--sun-below", "-12",
         "--cadence", "20m",
         "--max-files", "1",
-        "--latest",
+        "--backfill-missing",
         "--enqueue-processing",
         "--output", str(output),
     ]

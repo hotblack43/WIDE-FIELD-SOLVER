@@ -197,8 +197,10 @@ even when they predate the solar-altitude filter.
 
 The safe incremental MMTO command uses a Phoenix-local noon-to-noon observing
 night, rejects exposures with solar altitude greater than or equal to -12 degrees,
-uses a 20-minute cadence, selects the newest slot, and permits at most one new
-raw file per invocation:
+uses a 20-minute cadence, selects the oldest cadence slot not already recorded
+as downloaded, and permits at most one new raw file per invocation. This lets a
+late-published archive file be recovered on a later cycle instead of being
+permanently skipped:
 
 ```bash
 uv run --frozen python run_raw_allsky_cron.py --site mmto --dry-run

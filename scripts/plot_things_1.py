@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 from collections import Counter, defaultdict
-from contextlib import closing
+from contextlib import ExitStack, closing
 import csv
 from datetime import datetime, timedelta, timezone
 import hashlib
@@ -155,8 +155,8 @@ def reduction_configuration(result, manifest):
     return config
 
 
-def select_mmto_runs(db, *, solver_version='0.10.0', config_sha256=None, catalogue_sha256=None):
-    """Select one reduction cohort, then latest successful run per content hash.
+def select_mmto_runs(db, *, solver_version=None, config_sha256=None, catalogue_sha256=None):
+    """Select the latest successful run per image, or one explicitly requested cohort.
 
     Call inside the caller's read transaction. Selection precedes all photometric
     quality cuts; an unusable new channel cannot resurrect an older measurement.
@@ -164,10 +164,18 @@ def select_mmto_runs(db, *, solver_version='0.10.0', config_sha256=None, catalog
     columns = ('run_id', 'recorded_at_utc', 'source_path', 'source_sha256',
                'catalogue_sha256', 'solver_version', 'result_json', 'source_manifest_json', 'exit_code')
     groups, configurations = defaultdict(list), {}
-    audit = dict(failed_mmto_runs=0, unusable_provenance_runs=0, other_solver_runs=0,
-                 successful_mmto_candidate_runs=0)
-    all_runs = [dict(zip(columns, values)) for values in db.execute(
-        'SELECT '+', '.join(columns)+' FROM runs ORDER BY recorded_at_utc, run_id')]
+    audit = dict(failed_mmto_runs=0, unusable_provenance_runs=0, nonblind_control_runs=0,
+                 other_solver_runs=0, successful_mmto_candidate_runs=0)
+    database_connections = [(None, db)] if hasattr(db, 'execute') else list(db)
+    all_runs = []
+    for database_path, connection in database_connections:
+        for values in connection.execute(
+                'SELECT '+', '.join(columns)+' FROM runs ORDER BY recorded_at_utc, run_id'):
+            run = dict(zip(columns, values))
+            run['source_database'] = database_path
+            all_runs.append(run)
+    all_runs.sort(key=lambda run: (run['recorded_at_utc'], run['run_id'],
+                                   run['source_database'] or ''))
     # A known MMTO content hash remains a candidate after a filename/path change.
     # Original FITS validation still checks the actual site before plotting.
     mmto_hashes = {r['source_sha256'] for r in all_runs if r['source_sha256']
@@ -180,18 +188,19 @@ def select_mmto_runs(db, *, solver_version='0.10.0', config_sha256=None, catalog
             audit['failed_mmto_runs'] += 1
             continue
         audit['successful_mmto_candidate_runs'] += 1
-        if run['solver_version'] != solver_version:
+        if solver_version is not None and run['solver_version'] != solver_version:
             audit['other_solver_runs'] += 1
             continue
         config = reduction_configuration(json_object(run.pop('result_json')),
                                          json_object(run.pop('source_manifest_json')))
-        if not run['source_sha256'] or not run['catalogue_sha256'] or config is None:
+        if (not run['source_sha256'] or not run['catalogue_sha256']
+                or not run['solver_version'] or config is None):
             audit['unusable_provenance_runs'] += 1
             continue
         digest = hashlib.sha256(json.dumps(config, sort_keys=True,
                                           separators=(',', ':')).encode()).hexdigest()
         run['config_sha256'] = digest
-        key = (solver_version, digest, run['catalogue_sha256'])
+        key = (run['solver_version'], digest, run['catalogue_sha256'])
         groups[key].append(run)
         configurations[key] = config
     available = [dict(solver_version=key[0], config_sha256=key[1], catalogue_sha256=key[2],
@@ -202,18 +211,57 @@ def select_mmto_runs(db, *, solver_version='0.10.0', config_sha256=None, catalog
                 and (catalogue_sha256 is None or key[2] == catalogue_sha256)]
     if not eligible:
         raise ValueError('No successful MMTO runs with usable provenance match '
-                         f'solver={solver_version}, config={config_sha256}, catalogue={catalogue_sha256}. '
-                         'Use --list-reductions to inspect available groups for a solver version.')
+                         f'solver={solver_version or "any"}, config={config_sha256}, '
+                         f'catalogue={catalogue_sha256}. Use --list-reductions to inspect '
+                         'available reduction groups.')
+    if solver_version is None and config_sha256 is None and catalogue_sha256 is None:
+        controls = [key for key in eligible if not (
+            configurations[key].get('epoch_mode') == 'fit'
+            and configurations[key].get('blind') is True
+            and configurations[key].get('metadata_used') is not True)]
+        audit['nonblind_control_runs'] = sum(len(groups[key]) for key in controls)
+        eligible = [key for key in eligible if key not in controls]
+        if not eligible:
+            raise ValueError('No successful blind fitted-epoch MMTO runs with usable provenance; '
+                             'use explicit reduction selectors to inspect control runs.')
+        candidates = [run for key in eligible for run in groups[key]]
+        latest = {}
+        for run in candidates:
+            latest[run['source_sha256']] = run
+        runs = sorted(latest.values(), key=lambda r: (r['recorded_at_utc'], r['run_id'],
+                                                      r['source_database'] or ''))
+        versions = Counter(r['solver_version'] for r in runs)
+        catalogues = Counter(r['catalogue_sha256'] for r in runs)
+        selected_keys = {(r['solver_version'], r['config_sha256'], r['catalogue_sha256'])
+                         for r in runs}
+        audit.update(
+            selection_mode='latest_successful_per_image_across_all_reductions',
+            policy='latest successful usable-provenance run per image SHA-256 across all reductions before quality cuts',
+            cohort_policy=None,
+            configuration_scope='recorded settings and code provenance; historical CLI may be incomplete',
+            available_reductions=available,
+            selected=dict(scope='all_reductions',
+                          solver_versions=dict(sorted(versions.items())),
+                          catalogue_sha256s=dict(sorted(catalogues.items())),
+                          reduction_cohorts=len(selected_keys),
+                          successful_runs=len(candidates), unique_images=len(runs)),
+            selected_run_ids=[r['run_id'] for r in runs],
+            superseded_successful_runs=len(candidates)-len(runs),
+            other_reduction_runs=0)
+        return runs, audit
     # Coverage counts images, never repeated runs. Ties prefer the newest cohort,
     # then the lexical key for reproducibility within a database snapshot.
     chosen = max(eligible, key=lambda key: (
         len({r['source_sha256'] for r in groups[key]}),
-        max((r['recorded_at_utc'], r['run_id']) for r in groups[key]), key))
+        max((r['recorded_at_utc'], r['run_id'], r['source_database'] or '')
+            for r in groups[key]), key))
     latest = {}
     for run in groups[chosen]:
         latest[run['source_sha256']] = run
-    runs = sorted(latest.values(), key=lambda r: (r['recorded_at_utc'], r['run_id']))
-    audit.update(policy='one reduction cohort; latest successful run per image SHA-256 before quality cuts',
+    runs = sorted(latest.values(), key=lambda r: (r['recorded_at_utc'], r['run_id'],
+                                                  r['source_database'] or ''))
+    audit.update(selection_mode='explicit_reduction_cohort',
+                 policy='one reduction cohort; latest successful run per image SHA-256 before quality cuts',
                  cohort_policy='most unique images; ties newest recorded run, then lexical key',
                  configuration_scope='recorded settings and code provenance; historical CLI may be incomplete',
                  available_reductions=available,
@@ -225,25 +273,42 @@ def select_mmto_runs(db, *, solver_version='0.10.0', config_sha256=None, catalog
     return runs, audit
 
 
-def load_measurements(database, catalogue, image_root, *, solver_version='0.10.0',
+def database_paths(database):
+    if isinstance(database, (str, Path)):
+        return [Path(database)]
+    return [Path(path) for path in database]
+
+
+def load_measurements(database, catalogue, image_root, *, solver_version=None,
                       config_sha256=None, catalogue_sha256=None):
+    databases = database_paths(database)
     gaia = read_catalogue(catalogue)
-    names = cached_names([ROOT/'v10/data/display_names.json',
-                          database.parent/'lightcurves/display_names.json'])
+    names = cached_names([ROOT/'v10/data/display_names.json'] +
+                         [path.parent/'lightcurves/display_names.json' for path in databases])
     rows, images = [], []
     audit = Counter()
-    with closing(sqlite3.connect(database.resolve().as_uri()+'?mode=ro', uri=True)) as db:
-        db.execute('PRAGMA query_only=ON')
-        db.execute('BEGIN')
-        runs, run_selection = select_mmto_runs(db, solver_version=solver_version,
-                                             config_sha256=config_sha256, catalogue_sha256=catalogue_sha256)
+    with ExitStack() as stack:
+        connections = {}
+        for path in databases:
+            resolved = str(path.resolve())
+            connection = stack.enter_context(closing(sqlite3.connect(
+                Path(resolved).as_uri()+'?mode=ro', uri=True)))
+            connection.execute('PRAGMA query_only=ON')
+            connection.execute('BEGIN')
+            connections[resolved] = connection
+        runs, run_selection = select_mmto_runs(list(connections.items()),
+                                              solver_version=solver_version,
+                                              config_sha256=config_sha256,
+                                              catalogue_sha256=catalogue_sha256)
         for run in runs:
+            db = connections[run['source_database']]
             run_id, source, digest, cat_sha = (run[k] for k in
                                              ('run_id', 'source_path', 'source_sha256', 'catalogue_sha256'))
             provenance_fields = {k: run[k] for k in ('solver_version', 'config_sha256', 'recorded_at_utc')}
             meta, error = image_metadata(source, digest, image_root)
             images.append(dict(run_id=run_id, source_path=source, source_sha256=digest,
                                catalogue_sha256=cat_sha, timing=meta, omission_reason=error,
+                               source_database=run['source_database'],
                                **provenance_fields))
             if meta is None:
                 audit['images_without_verified_mmto_time'] += 1
@@ -286,6 +351,7 @@ def load_measurements(database, catalogue, image_root, *, solver_version='0.10.0
                         audit[channel+'_rejected_rows'] += 1
                         continue
                     rows.append(dict(run_id=run_id, source_path=source, source_sha256=digest,
+                        source_database=run['source_database'],
                         **provenance_fields,
                         catalogue_sha256=cat_sha, star_id=sid, detection_id=detection,
                         display_name=names.get(sid, ''), channel=channel,
@@ -296,7 +362,8 @@ def load_measurements(database, catalogue, image_root, *, solver_version='0.10.0
                         machine_mag=machine_magnitude(rate), utc_mid=meta['utc_mid'],
                         local_noon_day=meta['local_noon_day'],
                         hours_since_local_noon=meta['hours_since_local_noon']))
-        db.rollback()
+        for db in connections.values():
+            db.rollback()
     # Late saved aliases can name the same star in earlier runs.
     for row in rows:
         row['display_name'] = names.get(row['star_id'], '')
@@ -307,7 +374,7 @@ def select_stars(rows, minimum=3, coverage=.6, target=5.):
     grouped = defaultdict(list)
     for row in rows:
         if row['channel'] == 'G':
-            grouped[(row['catalogue_sha256'], row['star_id'])].append(row)
+            grouped[row['star_id']].append(row)
     if not grouped:
         return []
     limit = max(minimum, math.ceil(coverage * max(map(len, grouped.values()))))
@@ -316,7 +383,9 @@ def select_stars(rows, minimum=3, coverage=.6, target=5.):
     used = {key for key, _ in bright}
     faint = sorted((item for item in eligible if item[0] not in used),
                    key=lambda item: (abs(item[1][0]['gaia_g']-target), -len(item[1]), item[0]))[:4]
-    return [dict(catalogue_sha256=key[0], star_id=key[1],
+    return [dict(catalogue_sha256=(group[0]['catalogue_sha256'] if len({
+                     r['catalogue_sha256'] for r in group}) == 1 else None),
+                 catalogue_sha256s=sorted({r['catalogue_sha256'] for r in group}), star_id=key,
                  display_name=next((r['display_name'] for r in group if r['display_name']), ''),
                  gaia_g=group[0]['gaia_g'], g_measurements=len(group),
                  column=col, row=index)
@@ -359,24 +428,25 @@ def catalogue_page(rows, selected, args):
 
 def lightcurve_page(rows, selected, args, channel, *, against_airmass=False):
     compact = channel == 'RGB'
-    fig, axes = plt.subplots(4, 3 if compact else 2,
-                             figsize=(18, 12) if compact else (15, 12), sharex=True)
+    fig, axes = plt.subplots(4, 6 if compact else 2,
+                             figsize=(24, 12) if compact else (15, 12), sharex=True)
     styles = night_styles(rows)
     lookup = defaultdict(list)
     for row in rows:
-        lookup[(row['catalogue_sha256'], row['star_id'], row['channel'])].append(row)
+        lookup[(row['star_id'], row['channel'])].append(row)
     for ax in axes.flat:
         ax.set_visible(False)
     if compact:
-        panels = [(s, axes[s['row']+2*s['column'], c], ch)
-                  for s in selected if s['row'] < 2 for c, ch in enumerate('RGB')]
+        panels = [(s, axes[s['row'], 3*s['column']+c], ch)
+                  for s in selected for c, ch in enumerate('RGB')]
     else:
         panels = [(s, axes[s['row'], s['column']], channel) for s in selected]
+    page_magnitudes = []
     for star, ax, panel_channel in panels:
         band = 'G' if args.catalogue_band == 'G' else BANDS[panel_channel]
         catalogue_field = 'gaia_'+band.lower()
         ax.set_visible(True)
-        group = lookup[(star['catalogue_sha256'], star['star_id'], panel_channel)]
+        group = lookup[(star['star_id'], panel_channel)]
         original_count = len(group)
         if against_airmass:
             group = [r for r in group if r.get('airmass_verified')
@@ -389,10 +459,12 @@ def lightcurve_page(rows, selected, args, channel, *, against_airmass=False):
             if points:
                 x = [r['airmass'] if against_airmass else r['hours_since_local_noon'] for r in points]
                 y = [r['machine_mag']-r[catalogue_field] if against_airmass else r['machine_mag'] for r in points]
+                page_magnitudes.extend(value for value in map(finite, y) if value is not None)
                 ax.scatter(x, y, s=32, alpha=.85,
                            color=colour, marker=marker, label=night)
         omission = f' | omitted={original_count-len(group)}' if len(group) < original_count else ''
-        ax.set_title(f"{label} | Gaia G {star['gaia_g']:.2f} | N={len(group)}{omission}", loc='left', fontsize=10)
+        ax.set_title(f"{label} | Gaia G {star['gaia_g']:.2f} | N={len(group)}{omission}",
+                     loc='left', fontsize=8 if compact else 10)
         ax.set_ylabel(f'{panel_channel} machine − Gaia {band} [mag]' if against_airmass else f'{panel_channel} machine mag')
         if not against_airmass:
             ax.invert_yaxis()
@@ -400,6 +472,12 @@ def lightcurve_page(rows, selected, args, channel, *, against_airmass=False):
         if not group:
             message = 'No verified airmass/catalogue pairs' if against_airmass else 'No usable rates in this channel'
             ax.text(.5, .5, message, ha='center', transform=ax.transAxes)
+    if page_magnitudes:
+        low, high = min(page_magnitudes), max(page_magnitudes)
+        padding = max(.05, .05*(high-low))
+        for _, ax, _ in panels:
+            ax.set_ylim((low-padding, high+padding) if against_airmass
+                        else (high+padding, low-padding))
     if not selected:
         axes[0, 0].set_visible(True)
         axes[0, 0].text(.5, .5, 'Insufficient repeated stars for the requested coverage',
@@ -413,22 +491,24 @@ def lightcurve_page(rows, selected, args, channel, *, against_airmass=False):
              else f'MMTO: selected-star {channel} machine magnitudes versus time')
     fig.suptitle(title, fontsize=17, y=.99)
     if compact:
-        for x, ch in zip((.205, .528, .85), 'RGB'):
-            fig.text(x, .893, ch+' channel', ha='center', weight='bold')
-        fig.text(.5, .872, f'Top two rows: bright sample · Bottom two rows: near Gaia G = {args.target_mag:g}',
-                 ha='center', fontsize=10)
+        fig.text(.255, .89, 'Bright sample', ha='center', weight='bold')
+        fig.text(.745, .89, f'Near Gaia G = {args.target_mag:g}', ha='center', weight='bold')
+        for block in range(2):
+            for column, panel_channel in enumerate('RGB'):
+                fig.text((block*3+column+.5)/6, .865, panel_channel+' channel',
+                         ha='center', weight='bold')
     else:
         fig.text(.27, .893, 'Bright sample', ha='center', weight='bold')
         fig.text(.76, .893, f'Near Gaia G = {args.target_mag:g}', ha='center', weight='bold')
     fig.supxlabel('Stored airmass from the blind image solution' if against_airmass
                   else 'Hours since preceding local noon at MMTO (America/Phoenix)', y=.045)
-    footer = ('Machine mag = −2.5 log₁₀(stored ADU/s). Stored blind airmass; no fit or clipping. '
-              'Camera/Gaia passbands differ.' if against_airmass else
+    footer = ('Machine mag = −2.5 log₁₀(stored ADU/s). Stored blind airmass; common y-range; '
+              'no fit or clipping. Camera/Gaia passbands differ.' if against_airmass else
               '−2.5 log₁₀(stored ADU/s); exposure midpoint from verified FITS clocks. '
-              'Same stars in R/G/B. No detrending or clipping.')
+              'Same stars in R/G/B; common y-range. No detrending or clipping.')
     fig.text(.5, .012, footer, ha='center', fontsize=9)
     fig.subplots_adjust(left=.06 if compact else .08, right=.985, bottom=.10,
-                        top=.84 if compact else .86, hspace=.38, wspace=.30 if compact else .24)
+                        top=.82 if compact else .86, hspace=.38, wspace=.30 if compact else .24)
     return fig
 
 
@@ -436,8 +516,9 @@ def colour_measurements(rows, max_mag=5.5):
     """Pair accepted channels of one detection, never different images or reductions."""
     grouped = defaultdict(dict)
     for row in rows:
-        key = tuple(row[k] for k in ('catalogue_sha256', 'run_id', 'source_sha256',
-                                    'star_id', 'detection_id'))
+        key = (row.get('source_database'),) + tuple(
+            row[k] for k in ('catalogue_sha256', 'run_id', 'source_sha256',
+                             'star_id', 'detection_id'))
         if row['channel'] in grouped[key]:
             raise ValueError(f'Duplicate colour channel for {key}')
         grouped[key][row['channel']] = row
@@ -516,8 +597,10 @@ DEFAULT_PLOTS = ['rgb_catalogue', 'lightcurves_RGB', 'airmass_RGB', 'colours']
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--database', type=Path, default=ROOT/'results/stars.sqlite')
-    parser.add_argument('--solver-version', default='0.10.0', help='exact saved solver version (default: 0.10.0)')
+    parser.add_argument('--database', type=Path, action='append',
+                        help='solution database; repeat to combine databases (default: main and automatic MMTO)')
+    parser.add_argument('--solver-version',
+                        help='restrict plots to one exact saved solver version; default: latest successful solution per image across all versions')
     parser.add_argument('--config-sha256', help='pin a recorded configuration fingerprint from --list-reductions')
     parser.add_argument('--catalogue-sha256', help='pin the solver catalogue digest (not the Gaia comparison CSV)')
     parser.add_argument('--list-reductions', action='store_true', help='show eligible reduction groups without plotting')
@@ -535,6 +618,10 @@ def main(argv=None):
     parser.add_argument('--colour-max-mag', type=float, default=5.5,
                         help='faint Gaia G limit for same-exposure RGB colour diagrams')
     args = parser.parse_args(argv)
+    databases = args.database or [ROOT/'results/stars.sqlite']
+    automatic_database = ROOT/'results/mmto-automatic/stars.sqlite'
+    if args.database is None and automatic_database.is_file():
+        databases.append(automatic_database)
     keys = list(PLOT_REGISTRY) if args.plots == 'all' else args.plots.split(',')
     if not keys or any(k not in PLOT_REGISTRY for k in keys):
         parser.error('Choose plot keys from: '+', '.join(PLOT_REGISTRY))
@@ -546,19 +633,24 @@ def main(argv=None):
                              catalogue_sha256=args.catalogue_sha256)
     try:
         if args.list_reductions:
-            with closing(sqlite3.connect(args.database.resolve().as_uri()+'?mode=ro', uri=True)) as db:
-                db.execute('PRAGMA query_only=ON')
-                db.execute('BEGIN')
-                _, selection = select_mmto_runs(db, **selection_options)
+            with ExitStack() as stack:
+                connections = []
+                for path in databases:
+                    db = stack.enter_context(closing(sqlite3.connect(
+                        path.resolve().as_uri()+'?mode=ro', uri=True)))
+                    db.execute('PRAGMA query_only=ON')
+                    db.execute('BEGIN')
+                    connections.append((str(path.resolve()), db))
+                _, selection = select_mmto_runs(connections, **selection_options)
             print(json.dumps(selection, indent=2))
             return
-        rows, audit, images = load_measurements(args.database, args.catalogue, args.image_root, **selection_options)
+        rows, audit, images = load_measurements(databases, args.catalogue, args.image_root,
+                                                **selection_options)
     except (ValueError, sqlite3.Error) as error:
         parser.error(str(error))
     if not rows:
         parser.error('No MMTO rates with verified original FITS metadata; check --database and --image-root')
     run_selection = audit.pop('run_selection')
-    chosen_catalogue = run_selection['selected']['catalogue_sha256']
     for row in rows:
         band = 'G' if args.catalogue_band == 'G' else BANDS[row['channel']]
         catalogue_mag = row['gaia_'+band.lower()]
@@ -572,6 +664,20 @@ def main(argv=None):
     if 'colours' in keys:
         products.append('colours.csv')
     products += [f'{i:02d}_{key}.png' for i, key in enumerate(keys, 1)]
+    previous_summary = json_object((args.output/'summary.json').read_text()
+                                   if (args.output/'summary.json').is_file() else None)
+    previous_products = previous_summary.get('generated_files', [])
+    stale_generated_plots = []
+    if args.overwrite and isinstance(previous_products, list):
+        for name in previous_products:
+            if (not isinstance(name, str) or name in products or Path(name).name != name
+                    or len(name) < 8 or not name[:2].isdigit() or name[2] != '_'
+                    or not name.endswith('.png')):
+                continue
+            path = args.output/name
+            if path.is_file() or path.is_symlink():
+                stale_generated_plots.append(path)
+        stale_generated_plots.sort()
     if not args.overwrite and any((args.output/p).exists() for p in products):
         parser.error('Output exists; use --overwrite to regenerate')
     with PdfPages(args.output/'inspection.pdf') as pdf:
@@ -590,35 +696,87 @@ def main(argv=None):
                 'machine_b_minus_g', 'machine_g_minus_r', 'airmass'])
             writer.writeheader(); writer.writerows(colours)
     (args.output/'selected_stars.json').write_text(json.dumps(selected, indent=2)+'\n')
-    summary = dict(database=str(args.database.resolve()), dataset='MMTO', plots=keys,
-                   solver_version=args.solver_version, run_selection=run_selection,
+    solver_versions = dict(sorted(Counter(i['solver_version'] for i in images).items()))
+    catalogue_sha256s = sorted({i['catalogue_sha256'] for i in images})
+    summary = dict(database=str(databases[0].resolve()),
+                   databases=[str(path.resolve()) for path in databases],
+                   dataset='MMTO', plots=keys,
+                   solver_version=next(iter(solver_versions)) if len(solver_versions) == 1 else None,
+                   solver_versions=solver_versions, run_selection=run_selection,
                    plotter_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
                    comparison_catalogue_sha256=hashlib.sha256(args.catalogue.read_bytes()).hexdigest(),
                    rate_only=True, magnitude_definition='-2.5 log10(stored ADU/s)',
-                   catalogue_band=args.catalogue_band, catalogue_sha256=chosen_catalogue,
+                   catalogue_band=args.catalogue_band,
+                   catalogue_sha256=catalogue_sha256s[0] if len(catalogue_sha256s) == 1 else None,
+                   catalogue_sha256s=catalogue_sha256s,
                    local_timezone='America/Phoenix', time_axis='hours since preceding local noon',
                    measurements_by_channel=dict(Counter(r['channel'] for r in rows)),
                    airmass_definition='Stored blind image-solution airmass; finite values >= 1',
                    selected_airmass_points_by_channel={c: sum(
                        r['channel'] == c and r['airmass_verified'] and r['airmass'] is not None
                        and r['airmass'] >= 1 and r['machine_minus_catalogue_mag'] is not None
-                       and any(s['star_id'] == r['star_id'] and s['catalogue_sha256'] == r['catalogue_sha256']
-                               for s in selected) for r in rows) for c in 'RGB'},
+                       and any(s['star_id'] == r['star_id'] for s in selected)
+                       for r in rows) for c in 'RGB'},
                    images_by_local_noon_day={night: len({r['source_sha256'] for r in rows
                        if r['local_noon_day'] == night}) for night in night_styles(rows)},
                    selection=dict(min_points=args.min_points, coverage=args.coverage,
                                   target_mag=args.target_mag, stars=selected,
-                                  compact_star_ids=[s['star_id'] for s in selected if s['row'] < 2]),
+                                  rgb_page_star_ids=[s['star_id'] for s in selected]),
                    colours=dict(enabled='colours' in keys, max_gaia_g=args.colour_max_mag,
                                 star_exposure_pairs=len(colours),
                                 stars=len({v['star_id'] for v in colours})),
-                   audit=audit, image_provenance=images, generated_files=products)
+                   audit=audit, image_provenance=images, generated_files=products,
+                   removed_stale_generated_plots=[p.name for p in stale_generated_plots])
     (args.output/'summary.json').write_text(json.dumps(summary, indent=2)+'\n')
+    for path in stale_generated_plots:
+        path.unlink()
     print(args.output/'inspection.pdf')
-    print(f"Solver {args.solver_version}; {len(run_selection['selected_run_ids'])} unique images; "
-          f"{run_selection['superseded_successful_runs']} older successful runs skipped; "
-          f"configuration {run_selection['selected']['config_sha256']}")
-    print(json.dumps({k: summary[k] for k in ('measurements_by_channel', 'images_by_local_noon_day')}, indent=2))
+    image_count = len(run_selection['selected_run_ids'])
+    verified_image_count = audit.get('verified_images', 0)
+    night_count = len(summary['images_by_local_noon_day'])
+    if run_selection['selection_mode'] == 'latest_successful_per_image_across_all_reductions':
+        print(f"Selected latest successful solution for each image: {image_count} unique "
+              f"database image{'s' if image_count != 1 else ''}; verified FITS data for "
+              f"{verified_image_count} across {night_count} plotted "
+              f"night{'s' if night_count != 1 else ''}.")
+    else:
+        selected = run_selection['selected']
+        print(f"Selected explicit solver {selected['solver_version']} reduction "
+              f"{selected['config_sha256']}: {image_count} unique database "
+              f"image{'s' if image_count != 1 else ''}; verified FITS data for "
+              f"{verified_image_count} across {night_count} plotted "
+              f"night{'s' if night_count != 1 else ''}.")
+    print('Solver versions used: '+', '.join(
+        f'{version} ({count} image{"s" if count != 1 else ""})'
+        for version, count in solver_versions.items()))
+    print(f"Plots: {len(keys)} pages ({', '.join(keys)}).")
+    print('Measurements: '+', '.join(
+        f'{channel}={summary["measurements_by_channel"].get(channel, 0)}' for channel in 'RGB')+'.')
+    print('Nights: '+', '.join(
+        f'{night}={count} image{"s" if count != 1 else ""}'
+        for night, count in summary['images_by_local_noon_day'].items())+'.')
+    exclusions = [
+        (run_selection['superseded_successful_runs'],
+         'superseded successful run', 'superseded successful runs'),
+        (run_selection['other_reduction_runs'],
+         'successful run from another reduction cohort',
+         'successful runs from other reduction cohorts'),
+        (run_selection['other_solver_runs'],
+         'successful run from another solver version',
+         'successful runs from other solver versions'),
+        (run_selection['failed_mmto_runs'], 'failed MMTO run', 'failed MMTO runs'),
+        (run_selection['nonblind_control_runs'],
+         'non-blind control run', 'non-blind control runs'),
+        (run_selection['unusable_provenance_runs'],
+         'successful run with unusable provenance',
+         'successful runs with unusable provenance'),
+    ]
+    print('Excluded: '+', '.join(
+        f'{count} {singular if count == 1 else plural}'
+        for count, singular, plural in exclusions)+'.')
+    if stale_generated_plots:
+        print(f'Removed {len(stale_generated_plots)} stale generated plot file'
+              f'{"s" if len(stale_generated_plots) != 1 else ""}.')
 
 
 if __name__ == '__main__':
