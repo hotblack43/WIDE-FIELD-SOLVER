@@ -9,11 +9,17 @@
 \newcommand{\px}{\,\mathrm{px}}
 
 \begin{document}
-\title{Blind astrometry and instrumental photometry of wide-field sky images}
-\subtitle{From single fisheye photographs to repeated native-colour FITS observations}
-\author{P. Thejll\inst{1}\corrauth{pth@dmi.dk}}
-\institute{Danish Meteorological Institute, Skt. Kjelds Plads 11,
-  DK-2100 Copenhagen~\O, Denmark}
+\title{Blind astrometry and instrumental photometry of fisheye sky images}
+%\subtitle{ - }
+\author{Peter Thejll\inst{1}\corrauth{pth@dmi.dk} \and Chris Flynn\inst{2}}
+\institute{
+  Danish Meteorological Institute, Skt. Kjelds Plads 11,
+  DK-2100 Copenhagen~\O, Denmark
+  \and
+  Centre for Astrophysics and Supercomputing,
+  Swinburne University of Technology,
+  Hawthorn, VIC 3122, Australia
+}
 \date{Received 18 September 2026 / Accepted ---}
 
 \abstract
@@ -40,7 +46,7 @@ measurements form 162 repeated stellar series. A separate fisheye photograph
 shows that a planetary configuration can select the correct calendar date,
 although the site-supplied timing minimum is uncertain by several hours.}
 {A single model can support astrometry, photometry, and post-fit solar-system
-validation across heterogeneous wide fields, but not every image contains
+validation across heterogeneous wide fields, although not every image contains
 every constraint. Archives that retain native-colour FITS planes and repeated
 observations are therefore substantially more valuable than rendered previews:
 they preserve detector-level information for saturation recovery, colour
@@ -71,10 +77,10 @@ explicit models for super-wide fields \citep{AntunaSanchez2022,Yang2025}.
 Here we join blind initialization, dense association, robust global refinement,
 and native-plane photometry in one inspectable workflow.
 
-The primary contract is strict. Site, time, camera, and object names do not seed
-the stellar solution. Every detected source remains available, including large
-and saturated detections. Metadata may be revealed only after astrometric
-parameters are fixed, for separate validation. A planet matched at a FITS
+The stellar astrometric fit uses only image-derived source positions; site, time,
+camera, and object names are withheld. Every detected source remains available,
+including large and saturated detections. Metadata may be revealed only after
+astrometric parameters are fixed, for separate validation. A planet matched at a FITS
 timestamp is therefore a post-fit validation; a topocentric date search with a
 supplied site is conditional rather than fully blind epoch inference.
 

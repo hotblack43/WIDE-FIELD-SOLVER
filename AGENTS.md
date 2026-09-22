@@ -75,3 +75,6 @@ occurred in a session, do not retry the helper for every edit. Use a narrow
 as a fallback only for the known helper failure; it does not relax the
 requirements to preserve unrelated working-tree changes or to avoid destructive
 commands.
+
+## Language
+- No LaTeX file destined for, copied from, mirrored with, or synchronized to Overleaf may contain the word `contract`; treat it as an AI mannerism. Before any Overleaf upload, push, or synchronization, search the entire project case-insensitively and remove every occurrence from the material being synchronized. For audit-only requests, report occurrences without editing the `.tex` files unless the user explicitly asks for changes.

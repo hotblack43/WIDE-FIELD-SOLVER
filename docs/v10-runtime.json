@@ -148,6 +148,7 @@
     "base_commit": "8d414d5b6909bbdab7474804dbcf022e573871d4",
     "snapshot_kind": "working-tree; pre-existing exposure-rate fix retained, not committed here",
     "dirty_paths": [
+      "v10/AGENTS.md",
       "v10/SOURCE_MANIFEST.json",
       "v10/point_star_science.py",
       "v10/test_point_star_science.py"
@@ -157,12 +158,12 @@
       "go_v0.10.0.sh": "efa9f1e2620a41520d3bd7cb90b53a4fe2f268d5ff927e8d8a8f5b3cdd1941be",
       "v10/.gitignore": "30fb581ec5cf1746fd5acf8749dceab068368f8375be97242e323a93e1baf5f8",
       "v10/.python-version": "7b55f8e67b5623c4bef3fa691288da9437d79d3aba156de48d481db32ac7d16d",
-      "v10/AGENTS.md": "62fb8f925d13d543897b6a20965dd05123eb4e04cb28a673033482d6d535a558",
+      "v10/AGENTS.md": "6e41430b6ca7af4c486dfdcb265dc7ea33693ca5db8b4c9ad7c137b844689748",
       "v10/GOAL.md": "3bfe2d025927a51552d174eae526716a19cd38f47c72c05b43d5537f9bba3629",
       "v10/HANDOFF.md": "33d73f296b20facf2d35380141cd7ecc35a491227c949002e7fb213ae01bbf14",
       "v10/NOTICE.md": "5ae750e282eaa70c5752d2249575ba286ff8a430c177b5ce0dd1daadc7c06983",
       "v10/README.md": "6fdde3ecd65e28006d445b24440772d9eb2d30475fba06e002f8fdb1d83fb4e3",
-      "v10/SOURCE_MANIFEST.json": "1a8d4bc94085487951909c62163f6eef903943bb083261b71468b67027f36321",
+      "v10/SOURCE_MANIFEST.json": "c9caaa2b328a542d3106ac7e93fa2fc963827aa13004b682ec3022c6a4e1cf75",
       "v10/analyse.sh": "26b3fd13c31100b3492d73f1663d3fcd6602c8e49a562911aa4755a27f3e1cac",
       "v10/analyse_image.py": "4199ad09479d48340954a3b7f1110da0517d8cc0008368e38d76c5bf2832a37b",
       "v10/barghini_model.py": "fd591084b407034907f03c3f9cca05126037fc06691c374c3cda3fc884d085af",

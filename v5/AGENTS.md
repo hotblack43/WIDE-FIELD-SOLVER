@@ -35,3 +35,6 @@ revealed only after the fitted results are fixed, for separate validation.
 Do not replace the photometric-zenith constraint with metadata-derived airmass
 or describe a metadata-centred planet lookup as blind epoch inference.
 Preserve implemented capabilities and add regression evidence for new ones.
+
+## Language
+- No LaTeX file destined for, copied from, mirrored with, or synchronized to Overleaf may contain the word `contract`; treat it as an AI mannerism. Before any Overleaf upload, push, or synchronization, search the entire project case-insensitively and remove every occurrence from the material being synchronized. For audit-only requests, report occurrences without editing the `.tex` files unless the user explicitly asks for changes.

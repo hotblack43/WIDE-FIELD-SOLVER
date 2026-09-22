@@ -11,7 +11,7 @@
   ],
   "sha256": {
     ".python-version": "7b55f8e67b5623c4bef3fa691288da9437d79d3aba156de48d481db32ac7d16d",
-    "AGENTS.md": "954ad480018af445ed14d94a50b253a420a9a81cd4fab619152f9efa08dd5924",
+    "AGENTS.md": "6151475f019ff2b3fd7c5c3b29dbcc94f9f4c7c6c4d9d6a569dfddc404d5161e",
     "analyse_image.py": "79149d2ee1db6cd45fc226ed8caeca0c3606bdd8f584e1d911d00eafb77a5646",
     "analyse.sh": "26b3fd13c31100b3492d73f1663d3fcd6602c8e49a562911aa4755a27f3e1cac",
     "barghini_model.py": "fd591084b407034907f03c3f9cca05126037fc06691c374c3cda3fc884d085af",

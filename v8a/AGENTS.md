@@ -46,3 +46,6 @@ This directory is the parallel v8a work snapshot of the v0.8.0 runtime. Keep roo
 `v6/`, `v7/` and the running `v8/` unchanged; `../docs/v7-runtime.json` records the exact v7 parent
 snapshot. Develop v8a changes only here and through `go8a.sh`. Keep this
 package self-contained and runnable without `.worktrees`.
+
+## Language
+- No LaTeX file destined for, copied from, mirrored with, or synchronized to Overleaf may contain the word `contract`; treat it as an AI mannerism. Before any Overleaf upload, push, or synchronization, search the entire project case-insensitively and remove every occurrence from the material being synchronized. For audit-only requests, report occurrences without editing the `.tex` files unless the user explicitly asks for changes.
