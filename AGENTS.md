@@ -60,6 +60,10 @@ boundary; their hashes are in `docs/v10-runtime.json`. `go11.sh`,
 `go_v0.11.0.sh`, and the complete `v11/` package are frozen at the public
 `v0.11.0` release; their hashes are in `docs/v11-runtime.json`.
 
+`go12.sh`, `go_v0.12.0.sh`, and `v12/` are the active experimental development
+runtime. They do not define a frozen release boundary until a later version
+records their hashes.
+
 Develop later upgrades in a new version directory with its own launchers,
 catalogue, lockfile, ephemeris data and source manifest. Never overwrite v11 or
 another preserved runtime. All versions must work without `.worktrees`; update
