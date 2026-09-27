@@ -86,8 +86,8 @@ The sidecar contains:
 - `extinction_diagnostics.png` and `.pdf`: the overall fit-quality dashboard;
   and
 - `extinction_by_band_and_night.png` and `.pdf`: separate R/G/B time plots of
-  every accepted per-image `k`, with nightly median and scaled-MAD markers, plus
-  per-night `k` histograms for each band.
+  every accepted per-image `k`, with nightly median and scaled-MAD error bars,
+  plus an aligned curve of nightly scaled MAD for each band.
 
 Rows lacking an accepted nightly coefficient or image zero point have no
 corrected value and state why. Consumers must not substitute a raw machine

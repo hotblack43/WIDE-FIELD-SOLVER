@@ -75,6 +75,16 @@ class LoadedCalibrationData:
     manifest_path: str = ""
 
 
+@dataclass(frozen=True)
+class NightlyUncertaintyPoint:
+    night: str
+    channel: str
+    catalogue_sha256: str
+    observed_utc: datetime
+    extinction_mag_per_airmass: float
+    scaled_mad_mag_per_airmass: float
+
+
 def _utc_time(value: str) -> datetime:
     parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
     if parsed.tzinfo is None or parsed.utcoffset() is None:
@@ -503,6 +513,67 @@ def _result_maps(
     return adopted_coefficients, zero_points, image_fits, star_weights
 
 
+def _nightly_uncertainty_points(
+    results: dict[str, NightCalibrationResult],
+    manifest_by_source: dict[str, ManifestEntry],
+    channel: str,
+) -> tuple[NightlyUncertaintyPoint, ...]:
+    """Return ordered nightly points shared by median and uncertainty panels."""
+
+    points: list[NightlyUncertaintyPoint] = []
+    for result in results.values():
+        fits_by_group: dict[tuple[str, str, str], list[ImageFit]] = defaultdict(list)
+        for fit in result.image_fits:
+            if (
+                fit.accepted
+                and fit.channel == channel
+                and fit.source_sha256 in manifest_by_source
+            ):
+                fits_by_group[(fit.night, fit.catalogue_sha256, fit.channel)].append(
+                    fit
+                )
+        for coefficient in result.night_coefficients:
+            if (
+                coefficient.model != result.adopted_model
+                or coefficient.status != "accepted"
+                or coefficient.channel != channel
+                or coefficient.extinction_mag_per_airmass is None
+                or coefficient.scaled_mad is None
+            ):
+                continue
+            fits = fits_by_group.get(
+                (coefficient.night, coefficient.catalogue_sha256, channel), ()
+            )
+            times = [
+                manifest_by_source[fit.source_sha256].observed_utc for fit in fits
+            ]
+            if not times:
+                continue
+            observed_utc = datetime.fromtimestamp(
+                sum(item.timestamp() for item in times) / len(times), tz=UTC
+            )
+            points.append(
+                NightlyUncertaintyPoint(
+                    night=coefficient.night,
+                    channel=channel,
+                    catalogue_sha256=coefficient.catalogue_sha256,
+                    observed_utc=observed_utc,
+                    extinction_mag_per_airmass=coefficient.extinction_mag_per_airmass,
+                    scaled_mad_mag_per_airmass=coefficient.scaled_mad,
+                )
+            )
+    return tuple(
+        sorted(
+            points,
+            key=lambda item: (
+                item.observed_utc,
+                item.night,
+                item.catalogue_sha256,
+            ),
+        )
+    )
+
+
 def _write_diagnostics(
     output: Path,
     results: dict[str, NightCalibrationResult],
@@ -673,21 +744,21 @@ def _write_diagnostics(
     )
     colour_map = plt.get_cmap("turbo", max(len(nights), 1))
     colours = {night: colour_map(index) for index, night in enumerate(nights)}
-    adopted_by_band_night = {
-        (item.channel, item.night, item.catalogue_sha256): item
-        for item in adopted
-        if item.status == "accepted"
-        and item.extinction_mag_per_airmass is not None
-    }
-
-    band_figure, band_axes = plt.subplots(2, 3, figsize=(18, 10))
+    band_figure, band_axes = plt.subplots(
+        2, 3, figsize=(18, 10), sharex="col"
+    )
     for column, channel in enumerate(channels):
         time_axis = band_axes[0, column]
-        histogram_axis = band_axes[1, column]
-        band_slopes: list[float] = []
+        uncertainty_axis = band_axes[1, column]
+        uncertainty_points = _nightly_uncertainty_points(
+            results, manifest_by_source, channel
+        )
+        uncertainty_by_group = {
+            (item.night, item.catalogue_sha256): item
+            for item in uncertainty_points
+        }
         for night in nights:
             colour = colours[night]
-            night_slopes: list[float] = []
             for catalogue_sha256 in catalogues:
                 fits = sorted(
                     accepted_by_band_night_catalogue.get(
@@ -704,19 +775,15 @@ def _write_diagnostics(
                     for fit in fits
                 ]
                 slopes = [fit.line.slope for fit in fits]
-                night_slopes.extend(slopes)
                 time_axis.plot(times, slopes, ".", color=colour, alpha=0.65)
-                coefficient = adopted_by_band_night.get(
-                    (channel, night, catalogue_sha256)
+                point = uncertainty_by_group.get(
+                    (night, catalogue_sha256)
                 )
-                if coefficient is not None:
-                    median_time = datetime.fromtimestamp(
-                        sum(item.timestamp() for item in times) / len(times), tz=UTC
-                    )
+                if point is not None:
                     time_axis.errorbar(
-                        [median_time],
-                        [coefficient.extinction_mag_per_airmass],
-                        yerr=[coefficient.scaled_mad or 0.0],
+                        [point.observed_utc],
+                        [point.extinction_mag_per_airmass],
+                        yerr=[point.scaled_mad_mag_per_airmass],
                         fmt="o",
                         color=colour,
                         markeredgecolor="black",
@@ -724,41 +791,44 @@ def _write_diagnostics(
                         capsize=3,
                     )
                     time_axis.hlines(
-                        coefficient.extinction_mag_per_airmass,
+                        point.extinction_mag_per_airmass,
                         times[0],
                         times[-1],
                         color=colour,
                         linewidth=1.2,
                     )
-            if night_slopes:
-                band_slopes.extend(night_slopes)
-                histogram_axis.hist(
-                    night_slopes,
-                    bins="auto",
-                    histtype="step",
-                    color=colour,
-                    linewidth=1.2,
-                    label=night,
-                )
         time_axis.axhline(0.0, color="0.35", linewidth=0.7)
         time_axis.set(
             title=f"{channel}: per-image k and nightly median ± scaled MAD",
             ylabel="k [mag / airmass]",
         )
-        time_axis.tick_params(axis="x", rotation=30)
-        histogram_axis.set(
-            title=f"{channel}: per-night image-k histograms",
-            xlabel="k [mag / airmass]",
-            ylabel="images",
-        )
-        if band_slopes:
-            histogram_axis.axvline(
-                sorted(band_slopes)[len(band_slopes) // 2],
-                color="black",
-                linestyle="--",
-                linewidth=0.8,
-                label="all-image median" if column == 2 else None,
+        time_axis.tick_params(axis="x", labelbottom=False)
+        if uncertainty_points:
+            uncertainty_axis.plot(
+                [item.observed_utc for item in uncertainty_points],
+                [item.scaled_mad_mag_per_airmass for item in uncertainty_points],
+                color="0.35",
+                linewidth=1.2,
+                zorder=1,
             )
+            for point in uncertainty_points:
+                uncertainty_axis.plot(
+                    [point.observed_utc],
+                    [point.scaled_mad_mag_per_airmass],
+                    "o",
+                    color=colours[point.night],
+                    markeredgecolor="black",
+                    markeredgewidth=0.5,
+                    label=point.night,
+                    zorder=2,
+                )
+        uncertainty_axis.set(
+            title=f"{channel}: nightly k uncertainty (scaled MAD)",
+            xlabel="Observation time (UTC)",
+            ylabel="scaled MAD [mag / airmass]",
+        )
+        uncertainty_axis.set_ylim(bottom=0.0)
+        uncertainty_axis.tick_params(axis="x", rotation=30)
     legend_entries: dict[str, object] = {}
     for axis in band_axes[1]:
         handles, labels = axis.get_legend_handles_labels()

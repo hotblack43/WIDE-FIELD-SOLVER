@@ -15,12 +15,17 @@ from scripts.calibrate_nightly_extinction import (
     CalibrationAuditRow,
     LoadedCalibrationData,
     ManifestEntry,
+    _nightly_uncertainty_points,
     load_mmto_calibration_data,
     main,
     read_mmto_manifest,
     write_calibration_outputs,
 )
-from scripts.nightly_extinction import CalibrationConfig, StellarMeasurement
+from scripts.nightly_extinction import (
+    CalibrationConfig,
+    StellarMeasurement,
+    calibrate_night,
+)
 
 
 def create_manifest_database(path: Path) -> None:
@@ -481,6 +486,29 @@ class CalibrationDatabaseLoadingTests(unittest.TestCase):
 
 
 class CalibrationOutputTests(unittest.TestCase):
+    def test_nightly_uncertainty_points_use_same_night_time_as_median_marker(
+        self,
+    ) -> None:
+        data = synthetic_loaded_data(10)
+        result = calibrate_night(data.measurements, CalibrationConfig())
+        manifest_by_source = {
+            item.source_sha256: item for item in data.manifest_entries
+        }
+
+        points = _nightly_uncertainty_points(
+            {"2026-09-25": result}, manifest_by_source, "R"
+        )
+
+        self.assertEqual(len(points), 1)
+        point = points[0]
+        self.assertEqual(point.night, "2026-09-25")
+        self.assertEqual(
+            point.observed_utc,
+            datetime(2026, 9, 26, 4, 30, tzinfo=timezone.utc),
+        )
+        self.assertAlmostEqual(point.extinction_mag_per_airmass, 0.1425, 12)
+        self.assertAlmostEqual(point.scaled_mad_mag_per_airmass, 0.0185325, 12)
+
     def test_writer_creates_complete_sidecar_and_diagnostics(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             output = Path(temporary) / "sidecar"
