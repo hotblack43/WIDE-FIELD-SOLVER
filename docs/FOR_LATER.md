@@ -128,3 +128,58 @@ tests before treating such an archive as a calibration dataset.
 The downloaded APICAM trial has now been run through the development launcher
 and its repeated luminance photometry is analysed separately from colour data.
 Do not fold exposure timestamps or the known Paranal site into the blind fit.
+
+## Spatial photometric response and wide-field vignetting
+
+Recorded 2026-09-22 for a later audit and implementation pass. This note does
+not change the solver or validate a correction.
+
+Some existing plots of stellar magnitude residuals show radial structure. That
+structure must not be ignored: a good Barghini plate solution establishes the
+image geometry, but it does not establish uniform photometric sensitivity
+across the detector. Current instrumental photometry may therefore retain lens
+vignetting or another position-dependent camera response.
+
+Tim Pickering's public `tepickering/skycam-utils` implementation was reviewed at
+commit `2dc41cd56160fdc3ea5bb1566b9ffc6f9f03d14c`. Its current Alcor point-star
+path repairs bad pixels, estimates and subtracts a corner bias, performs
+aperture or Gaussian photometry, and applies zeropoint, colour and airmass
+terms. It does not flat-field the stellar measurements. Its surface-brightness
+path divides by the WCS-derived pixel solid angle, which is a geometric area
+correction rather than a lens-throughput correction. Its extinction-map output
+explicitly records `EXTFLAT=none` and leaves a measured spatial trend
+uncorrected pending stronger calibration evidence.
+
+For this solver, a measured and suitably matched flat through the complete
+camera, lens and window system is the preferred correction. It must be matched
+to the sensor, lens, aperture, focus, filter or colour channel, and image
+geometry. If no trustworthy measured flat is available, a smooth radial model
+may be a useful interim response model, but its coefficients and shading centre
+must be calibrated and independently validated. The shading centre must not be
+assumed to equal the Barghini projection centre.
+
+Do not derive a brightness correction from the astrometric lens model alone,
+and do not impose a cosine-fourth law without empirical support. The WCS can
+determine pixel solid angle for surface-brightness work, but that does not
+determine optical throughput. Integrated point-star flux generally must not
+receive an additional pixel-area correction.
+
+The later investigation should:
+
+1. Audit image decoding and linearity, bias/dark handling, any existing
+   flat-fielding, background estimation, flux extraction, and output labels.
+2. Quantify catalogue-minus-instrumental residuals against detector `x`, `y`,
+   radius, azimuth, colour channel, magnitude, airmass, and observing night.
+3. Separate radial response from atmospheric extinction. This is difficult for
+   a fixed zenith-pointing camera because detector radius and airmass are
+   strongly correlated; use independent flats, changed camera orientations, or
+   defensible atmospheric constraints rather than fitting the degeneracy away.
+4. If a model response is used, fit its centre and coefficients independently
+   of the astrometric projection and record its provenance and applicability.
+5. Validate with synthetic stars of known flux and imposed sensitivity, an
+   identity response map, invalid-map regions, and held-out real stars or
+   exposures. Synthetic recovery alone is not evidence of improved absolute
+   accuracy.
+6. Decide whether existing photometric products require reprocessing. Preserve
+   astrometric solving when calibration is absent, while labelling photometry
+   explicitly as spatially uncorrected.
