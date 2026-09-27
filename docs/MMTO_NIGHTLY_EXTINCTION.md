@@ -42,20 +42,24 @@ stars and an airmass span of at least 1.0. A night/channel needs at least 10
 accepted images. Failed gates remain visible as insufficient or excluded rows;
 the code does not silently admit fainter stars or reduce the sample thresholds.
 
-The adopted nightly coefficient is the ordinary, unweighted median of accepted
-per-image OLS slopes:
+Each image is fitted with robust Theil--Sen regression using the joint-median
+intercept. The adopted nightly coefficient is the ordinary, unweighted median
+of those accepted per-image robust slopes:
 
 ```text
 k_night = median(k_image)
 ```
 
 Its scaled MAD records real image-to-image variability and is not divided by
-the square root of the image count. Repeatability-weighted bright-star fits,
-weighted magnitude 4--5 fits, and full-airmass fits are sensitivity diagnostics
-only. They never replace `reference_ols` in corrected magnitudes.
+the square root of the image count. Unweighted OLS, repeatability-weighted
+bright-star fits, weighted magnitude 4--5 fits, and full-airmass OLS fits are
+sensitivity diagnostics only. They never replace `reference_theil_sen` in
+corrected magnitudes.
 
 After fixing `k_night`, every accepted image gets a new fixed-slope stellar zero
-point. Corrected stellar or planetary magnitudes use
+point from the median stellar offset; its uncertainty uses the scaled MAD. This
+keeps a single bad calibrator from shifting every corrected object in the image.
+Corrected stellar or planetary magnitudes use
 
 ```text
 m_corrected = m_machine - Z_fixed - k_night X_object
@@ -108,7 +112,7 @@ Pass one completed sidecar explicitly:
 ```
 
 The calibrated join is exact in source SHA-256, catalogue SHA-256, observing
-night, and channel. The plotter uses only an accepted `reference_ols` nightly
+night, and channel. The plotter uses only an accepted `reference_theil_sen` nightly
 coefficient and its corresponding fixed-slope image zero point. Missing joins,
 invalid planet airmass, or unreproducible saved aperture fluxes are written to
 `planet_extinction_correction_audit.csv` and omitted. There is no fallback to a
@@ -139,18 +143,20 @@ explicit audit exclusions.
 ## Current data audit (2026-09-27 snapshot)
 
 The inspectable run in
-`results/nightly-extinction/20260927-band-diagnostics/` found 39 accepted and 33
+`results/nightly-extinction/20260927-robust-theil-sen/` found 39 accepted and 33
 insufficient night/channel combinations from 823,778 valid stellar channel
 measurements. All accepted reference stars are brighter than magnitude 4.0 and
 have at least 10 observations; accepted image fits have at least 30 stars and
 an airmass span above 1.0.
 
-The accepted nightly medians span 0.170--0.414 in R, 0.155--0.398 in G, and
-0.276--0.496 mag/airmass in B. The band/night plot shows substantial early-night
+The accepted robust nightly medians span 0.179--0.473 in R, 0.175--0.418 in G,
+and 0.272--0.560 mag/airmass in B. Across the 39 accepted groups, the median
+Theil--Sen-minus-OLS shift is +0.017 mag/airmass, with a range from -0.031 to
++0.095. The band/night plot shows substantial early-night
 instability from 4--14 September, including individual negative slopes and
 slopes above 1 mag/airmass. The 12 September medians are elevated in all three
-bands (R 0.414, G 0.398, B 0.496), and 14 September has unusually large scaled
-MADs (R 0.279, G 0.259, B 0.341). Most 17--25 September sequences are tighter,
+bands (R 0.473, G 0.418, B 0.560), and 14 September has unusually large scaled
+MADs (R 0.348, G 0.316, B 0.280). Most 17--25 September sequences are tighter,
 although 21 September and the B data on 25 September retain appreciable
 scatter. These are flags for scientific inspection, not grounds for automatic
 clipping or changing the adopted estimator.
@@ -165,7 +171,7 @@ usable unsaturated ordinary-aperture G photometry: Saturn 200, Mars 63, Uranus
 47, Vesta 5, and Jupiter 1. No Venus detection is present. The source database
 also yields 394 usable R points and 388 usable B points. The final plots and
 tables are in
-`results/planet-plots-extinction-corrected-20260927-final/{R,G,B}/`. The source
+`results/planet-plots-extinction-corrected-20260927-robust/{R,G,B}/`. The source
 database SHA-256 remained
 `cc4a81f8897eba1d111438e7b4d79fdf92a5884101bc1a87e5ae1813dabb89db`
 before and after sidecar generation and plotting.

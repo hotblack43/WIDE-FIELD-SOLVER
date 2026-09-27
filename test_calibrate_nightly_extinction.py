@@ -505,13 +505,29 @@ class CalibrationOutputTests(unittest.TestCase):
             manifest = json.loads(
                 (output / "calibration_manifest.json").read_text(encoding="utf-8")
             )
+            self.assertEqual(manifest["adopted_model"], "reference_theil_sen")
             self.assertEqual(
                 manifest["formulae"]["machine_magnitude"],
                 "m_machine = -2.5 log10(count_rate_adu_per_s)",
             )
             self.assertEqual(
+                manifest["formulae"]["image_fit_estimator"],
+                "Theil-Sen slope with joint-median intercept",
+            )
+            self.assertEqual(
                 manifest["formulae"]["corrected_magnitude"],
                 "m_corrected = m_machine - Z_fixed - k_night X",
+            )
+            with (output / "nightly_extinction_coefficients.csv").open(
+                newline="", encoding="utf-8"
+            ) as source:
+                coefficient_rows = list(csv.DictReader(source))
+            self.assertTrue(
+                any(
+                    row["model"] == "reference_theil_sen"
+                    and row["status"] == "accepted"
+                    for row in coefficient_rows
+                )
             )
             with (output / "image_zero_points.csv").open(
                 newline="", encoding="utf-8"

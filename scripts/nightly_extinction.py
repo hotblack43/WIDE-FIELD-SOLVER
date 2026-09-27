@@ -14,9 +14,11 @@ import math
 from typing import AbstractSet
 
 import numpy as np
+from scipy.stats import theilslopes
 
 
 StarKey = tuple[str, str]
+ADOPTED_MODEL = "reference_theil_sen"
 
 
 @dataclass(frozen=True)
@@ -350,6 +352,103 @@ def fit_image_ols(
     )
 
 
+def fit_image_robust(
+    measurements: Sequence[StellarMeasurement],
+    reference_star_ids: AbstractSet[StarKey],
+    config: CalibrationConfig,
+    *,
+    model: str = ADOPTED_MODEL,
+) -> ImageFit:
+    """Robustly fit ``delta_m = Z + k X`` for one image and channel."""
+
+    if not measurements:
+        raise ValueError("image fit requires at least one measurement")
+    identity = {
+        (row.night, row.source_sha256, row.catalogue_sha256, row.channel)
+        for row in measurements
+    }
+    if len(identity) != 1:
+        raise ValueError("image fit requires one night, image, catalogue, and channel")
+    night, source_sha256, catalogue_sha256, channel = next(iter(identity))
+
+    eligible_by_star: dict[StarKey, StellarMeasurement] = {}
+    for row in measurements:
+        if row.star_key not in reference_star_ids:
+            continue
+        if reference_measurement_exclusion_reasons(row, config):
+            continue
+        if row.airmass > config.max_reference_airmass:
+            continue
+        eligible_by_star.setdefault(row.star_key, row)
+    rows = [eligible_by_star[key] for key in sorted(eligible_by_star)]
+    star_keys = tuple(row.star_key for row in rows)
+    airmass = np.asarray([row.airmass for row in rows], dtype=float)
+    sample_count = len(rows)
+    airmass_min = float(np.min(airmass)) if sample_count else None
+    airmass_max = float(np.max(airmass)) if sample_count else None
+    airmass_span = (
+        airmass_max - airmass_min
+        if airmass_min is not None and airmass_max is not None
+        else None
+    )
+
+    if sample_count < config.min_stars_per_image:
+        status = "insufficient_reference_stars"
+    elif airmass_span is None or airmass_span < config.min_airmass_span:
+        status = "insufficient_airmass_span"
+    else:
+        status = "accepted"
+
+    if status != "accepted":
+        line = LineFit(
+            status=status,
+            intercept=None,
+            slope=None,
+            covariance=None,
+            intercept_uncertainty=None,
+            slope_uncertainty=None,
+            rms=None,
+            residuals=(),
+            sample_count=sample_count,
+            airmass_min=airmass_min,
+            airmass_max=airmass_max,
+            airmass_span=airmass_span,
+        )
+    else:
+        delta_magnitude = np.asarray(
+            [row.delta_magnitude for row in rows], dtype=float
+        )
+        result = theilslopes(delta_magnitude, airmass, method="joint")
+        predicted = result.intercept + result.slope * airmass
+        residual_array = delta_magnitude - predicted
+        line = LineFit(
+            status=status,
+            intercept=float(result.intercept),
+            slope=float(result.slope),
+            covariance=None,
+            intercept_uncertainty=None,
+            slope_uncertainty=None,
+            rms=float(np.sqrt(np.mean(np.square(residual_array)))),
+            residuals=tuple(float(value) for value in residual_array),
+            sample_count=sample_count,
+            airmass_min=airmass_min,
+            airmass_max=airmass_max,
+            airmass_span=airmass_span,
+        )
+
+    return ImageFit(
+        night=night,
+        source_sha256=source_sha256,
+        catalogue_sha256=catalogue_sha256,
+        channel=channel,
+        model=model,
+        status=status,
+        accepted=status == "accepted",
+        line=line,
+        star_keys=star_keys,
+    )
+
+
 def _fit_image_weighted(
     measurements: Sequence[StellarMeasurement],
     star_ids: AbstractSet[StarKey],
@@ -611,11 +710,16 @@ def _fixed_slope_zero_point(
         ],
         dtype=float,
     )
-    zero_point = float(np.mean(offsets))
+    zero_point = float(np.median(offsets))
     residuals = offsets - zero_point
     rms = float(np.sqrt(np.mean(np.square(residuals))))
     if len(eligible) > 1:
-        uncertainty = float(np.std(residuals, ddof=1) / math.sqrt(len(eligible)))
+        robust_scatter = _scaled_mad(residuals)
+        uncertainty = (
+            float(robust_scatter / math.sqrt(len(eligible)))
+            if robust_scatter is not None
+            else None
+        )
     else:  # unreachable with the adopted defaults, but explicit for custom configs
         uncertainty = None
     return ImageZeroPoint(
@@ -665,7 +769,7 @@ def calibrate_night(
         for row in group_rows:
             by_image[row.source_sha256].append(row)
         image_fits = [
-            fit_image_ols(by_image[source], reference_ids, config)
+            fit_image_robust(by_image[source], reference_ids, config)
             for source in sorted(by_image)
         ]
         all_image_fits.extend(image_fits)
@@ -673,7 +777,7 @@ def calibrate_night(
             night=night,
             catalogue_sha256=catalogue_sha256,
             channel=channel,
-            model="reference_ols",
+            model=ADOPTED_MODEL,
             image_fits=image_fits,
             config=config,
         )
@@ -687,6 +791,10 @@ def calibrate_night(
             (item.catalogue_sha256, item.star_id): item.weight
             for item in star_weights
         }
+        reference_ols = [
+            fit_image_ols(by_image[source], reference_ids, config)
+            for source in sorted(by_image)
+        ]
         bright_weighted = [
             _fit_image_weighted(
                 by_image[source],
@@ -717,6 +825,7 @@ def calibrate_night(
             for source in sorted(by_image)
         ]
         for model, fits in (
+            ("reference_ols", reference_ols),
             ("bright_weighted", bright_weighted),
             ("faint_weighted", faint_weighted),
             ("full_airmass_ols", full_airmass),
@@ -741,7 +850,7 @@ def calibrate_night(
         )
 
     return NightCalibrationResult(
-        adopted_model="reference_ols",
+        adopted_model=ADOPTED_MODEL,
         image_fits=tuple(all_image_fits),
         sensitivity_image_fits=tuple(all_sensitivity_fits),
         night_coefficients=tuple(coefficients),

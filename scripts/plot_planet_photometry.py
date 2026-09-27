@@ -21,6 +21,7 @@ from zoneinfo import ZoneInfo
 
 
 ROOT = Path(__file__).resolve().parents[1]
+ADOPTED_EXTINCTION_MODEL = "reference_theil_sen"
 PLANET_TYPES = {"major_planet", "minor_planet"}
 DETECTION_STATUSES = {"metadata_time_match", "selected_planet_match"}
 CSV_FIELDS = [
@@ -155,7 +156,7 @@ def load_nightly_image_calibrations(directory):
     seen_coefficients = set()
     with coefficient_path.open(newline="", encoding="utf-8") as stream:
         for row in csv.DictReader(stream):
-            if row.get("model") != "reference_ols":
+            if row.get("model") != ADOPTED_EXTINCTION_MODEL:
                 continue
             coefficient_key = (
                 row.get("catalogue_sha256", ""),
@@ -186,7 +187,7 @@ def load_nightly_image_calibrations(directory):
     seen_zero_points = set()
     with zero_point_path.open(newline="", encoding="utf-8") as stream:
         for row in csv.DictReader(stream):
-            if row.get("model") != "reference_ols":
+            if row.get("model") != ADOPTED_EXTINCTION_MODEL:
                 continue
             key = (
                 row.get("source_sha256", ""),
@@ -2556,7 +2557,7 @@ def write_extinction_corrected_distance_outputs(
             "- 5 log10(sun_planet_distance_AU * earth_planet_distance_AU)"
         ),
         "calibration_policy": (
-            "Only accepted reference_ols sidecar rows with the exact source SHA-256, "
+            "Only accepted reference_theil_sen sidecar rows with the exact source SHA-256, "
             "catalogue SHA-256, Arizona observing night, and channel are used; "
             "there is no legacy or raw fallback."
         ),
@@ -2639,7 +2640,7 @@ def main(argv=None):
         dest="extinction_corrected_distance_corrected",
         action="store_true",
         help=(
-            "apply the exact nightly reference_ols sidecar zero point and "
+            "apply the exact nightly reference_theil_sen sidecar zero point and "
             "extinction, then normalize both planet distances"
         ),
     )

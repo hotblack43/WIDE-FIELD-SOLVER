@@ -12,6 +12,7 @@ from scripts.nightly_extinction import (
     calibrate_night,
     correct_magnitude,
     fit_image_ols,
+    fit_image_robust,
     machine_magnitude,
     select_reference_star_ids,
 )
@@ -196,6 +197,24 @@ class NightlyExtinctionModelTests(unittest.TestCase):
         self.assertEqual(len(result.line.residuals), 30)
         self.assertIsNotNone(result.line.covariance)
 
+    def test_image_robust_fit_resists_one_severe_photometric_outlier(self) -> None:
+        rows = [fitted_measurement(i, 1.0 + 3.0 * i / 29.0) for i in range(30)]
+        outlier = rows[-1]
+        rows[-1] = replace(
+            outlier,
+            count_rate_adu_per_s=10.0
+            ** (-0.4 * (outlier.machine_magnitude + 12.0)),
+        )
+        reference_ids = frozenset(row.star_key for row in rows)
+
+        result = fit_image_robust(rows, reference_ids, CalibrationConfig())
+
+        self.assertTrue(result.accepted)
+        self.assertEqual(result.model, "reference_theil_sen")
+        self.assertAlmostEqual(result.line.intercept, -6.0, places=12)
+        self.assertAlmostEqual(result.line.slope, 0.24, places=12)
+        self.assertEqual(result.line.sample_count, 30)
+
     def test_image_ols_reports_insufficient_count_and_airmass_span(self) -> None:
         count_rows = [
             fitted_measurement(i, 1.0 + 3.0 * i / 28.0) for i in range(29)
@@ -235,7 +254,7 @@ class NightlyExtinctionModelTests(unittest.TestCase):
         )
 
         self.assertIsInstance(result, NightCalibrationResult)
-        self.assertEqual(result.adopted_model, "reference_ols")
+        self.assertEqual(result.adopted_model, "reference_theil_sen")
         coefficient = result.night_coefficients[0]
         self.assertIsInstance(coefficient, NightCoefficient)
         self.assertEqual(coefficient.status, "accepted")
@@ -278,6 +297,29 @@ class NightlyExtinctionModelTests(unittest.TestCase):
             )
         )
 
+    def test_fixed_slope_zero_point_is_robust_to_one_bad_star(self) -> None:
+        rows = synthetic_night(
+            10,
+            slopes=[0.2] * 10,
+            zero_points=[-6.0] * 10,
+        )
+        contaminated = []
+        for row in rows:
+            if row.star_id == "night-star-29":
+                row = replace(
+                    row,
+                    count_rate_adu_per_s=10.0
+                    ** (-0.4 * (row.machine_magnitude + 12.0)),
+                )
+            contaminated.append(row)
+
+        result = calibrate_night(contaminated, CalibrationConfig())
+
+        self.assertEqual(result.adopted_model, "reference_theil_sen")
+        self.assertTrue(result.image_zero_points)
+        for zero_point in result.image_zero_points:
+            self.assertAlmostEqual(zero_point.zero_point_magnitude, -6.0, 12)
+
     def test_unknown_intrinsic_object_is_corrected_from_stellar_solution(self) -> None:
         machine_mag = 7.35
         corrected = correct_magnitude(
@@ -306,17 +348,18 @@ class NightlyExtinctionModelTests(unittest.TestCase):
 
         reference_coefficient = reference_only.night_coefficients[0]
         by_model = {item.model: item for item in with_faint.night_coefficients}
-        self.assertEqual(with_faint.adopted_model, "reference_ols")
+        self.assertEqual(with_faint.adopted_model, "reference_theil_sen")
+        self.assertIn("reference_ols", by_model)
         self.assertIn("bright_weighted", by_model)
         self.assertIn("faint_weighted", by_model)
         self.assertAlmostEqual(
-            by_model["reference_ols"].extinction_mag_per_airmass,
+            by_model["reference_theil_sen"].extinction_mag_per_airmass,
             reference_coefficient.extinction_mag_per_airmass,
             12,
         )
         self.assertNotAlmostEqual(
             by_model["faint_weighted"].extinction_mag_per_airmass,
-            by_model["reference_ols"].extinction_mag_per_airmass,
+            by_model["reference_theil_sen"].extinction_mag_per_airmass,
             3,
         )
         reference_zeros = [
@@ -331,7 +374,9 @@ class NightlyExtinctionModelTests(unittest.TestCase):
         for row in synthetic_night(10):
             image = int(row.source_sha256, 16) - 1
             star = int(row.star_id.rsplit("-", 1)[1])
-            noise = 0.0 if star == 0 else (0.12 if (image + star) % 2 else -0.12)
+            noise = (
+                0.12 if image % 2 else -0.12
+            ) if star == 29 else 0.0
             new_machine_magnitude = row.machine_magnitude + noise
             noisy_rows.append(
                 replace(
@@ -349,6 +394,8 @@ class NightlyExtinctionModelTests(unittest.TestCase):
         self.assertGreaterEqual(min(weights), config.minimum_repeatability_weight)
         stable = next(item for item in result.star_weights if item.star_id == "night-star-00")
         self.assertEqual(stable.weight, config.maximum_repeatability_weight)
+        noisy = next(item for item in result.star_weights if item.star_id == "night-star-29")
+        self.assertLess(noisy.weight, stable.weight)
 
     def test_full_airmass_fit_is_diagnostic_only(self) -> None:
         reference_rows = synthetic_night(10)
@@ -369,16 +416,16 @@ class NightlyExtinctionModelTests(unittest.TestCase):
         by_model = {item.model: item for item in with_high_airmass.night_coefficients}
         self.assertIn("full_airmass_ols", by_model)
         self.assertAlmostEqual(
-            by_model["reference_ols"].extinction_mag_per_airmass,
+            by_model["reference_theil_sen"].extinction_mag_per_airmass,
             reference_only.night_coefficients[0].extinction_mag_per_airmass,
             12,
         )
         self.assertNotAlmostEqual(
             by_model["full_airmass_ols"].extinction_mag_per_airmass,
-            by_model["reference_ols"].extinction_mag_per_airmass,
+            by_model["reference_theil_sen"].extinction_mag_per_airmass,
             3,
         )
-        self.assertEqual(with_high_airmass.adopted_model, "reference_ols")
+        self.assertEqual(with_high_airmass.adopted_model, "reference_theil_sen")
 
 
 if __name__ == "__main__":

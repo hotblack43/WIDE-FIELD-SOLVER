@@ -25,6 +25,7 @@ if str(ROOT) not in sys.path:
 from allsky_download.cadence import observing_night_date
 from allsky_download.registry import SourceRegistry
 from scripts.nightly_extinction import (
+    ADOPTED_MODEL,
     CalibrationConfig,
     ImageFit,
     NightCalibrationResult,
@@ -565,7 +566,13 @@ def _write_diagnostics(
         axes[2].hist(fit_slopes, bins="auto")
     axes[2].set(title="Accepted image-k distribution", xlabel="k [mag / airmass]")
 
-    model_names = ["reference_ols", "bright_weighted", "faint_weighted", "full_airmass_ols"]
+    model_names = [
+        ADOPTED_MODEL,
+        "reference_ols",
+        "bright_weighted",
+        "faint_weighted",
+        "full_airmass_ols",
+    ]
     model_values = [
         [
             item.extinction_mag_per_airmass
@@ -617,7 +624,7 @@ def _write_diagnostics(
     axes[6].axhline(30, color="black", linestyle="--", linewidth=0.8)
     axes[6].set(title="Calibrator counts", xlabel="image/channel", ylabel="stars")
 
-    adopted = [item for item in all_coefficients if item.model == "reference_ols"]
+    adopted = [item for item in all_coefficients if item.model == ADOPTED_MODEL]
     plotted_adopted = [
         item
         for item in adopted
@@ -636,7 +643,7 @@ def _write_diagnostics(
     axes[8].text(
         0.02,
         0.95,
-        f"Adopted model: reference_ols\n"
+        f"Adopted model: {ADOPTED_MODEL}\n"
         f"Accepted night/channels: {calibrated}\n"
         f"Insufficient night/channels: {len(adopted) - calibrated}\n"
         f"Valid measurements: {len(measurements)}",
@@ -766,7 +773,7 @@ def _write_diagnostics(
         )
     band_figure.suptitle(
         "MMTO accepted reference-star extinction by band and observing night\n"
-        "dots: per-image OLS; circles/error bars: nightly median ± scaled MAD"
+        "dots: per-image Theil–Sen; circles/error bars: nightly median ± scaled MAD"
     )
     band_figure.tight_layout(rect=(0.0, 0.10, 1.0, 0.94))
     band_figure.savefig(output / "extinction_by_band_and_night.png", dpi=160)
@@ -1094,14 +1101,16 @@ def write_calibration_outputs(
         "output": str(output.resolve()),
     }
     manifest_payload = {
-        "schema_version": 1,
+        "schema_version": 2,
         "created_utc": datetime.now(UTC).isoformat(),
-        "adopted_model": "reference_ols",
+        "adopted_model": ADOPTED_MODEL,
         "configuration": asdict(config),
         "formulae": {
             "machine_magnitude": "m_machine = -2.5 log10(count_rate_adu_per_s)",
             "image_fit": "m_machine - m_catalogue = Z_image + k_image X",
+            "image_fit_estimator": "Theil-Sen slope with joint-median intercept",
             "nightly_coefficient": "k_night = median_i(k_image)",
+            "fixed_slope_zero_point": "Z_fixed = median_s(delta_m - k_night X)",
             "corrected_magnitude": "m_corrected = m_machine - Z_fixed - k_night X",
         },
         "selected_run_ids": list(data.selected_run_ids),

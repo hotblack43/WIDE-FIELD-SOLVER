@@ -66,9 +66,10 @@ Fit covariance, fixed-slope zero-point uncertainty, planet measurement
 uncertainty, and nightly coefficient scatter remain separate output columns so
 later plots can state exactly which components they combine.
 
-After fixing `k_night`, refit each image's zero point from its stellar
-calibrators while holding the slope fixed. The catalogue-referenced magnitude
-for any measured object `o`, including a planet with no catalogue magnitude, is
+After fixing `k_night`, refit each image's zero point as the median stellar
+offset while holding the slope fixed; use the scaled MAD for its uncertainty.
+The catalogue-referenced magnitude for any measured object `o`, including a
+planet with no catalogue magnitude, is
 
 ```text
 m_corrected[o,i,c] = m_machine[o,i,c] - Z_fixed[i,c]
@@ -129,22 +130,26 @@ admits fainter stars or reduces the repeat-count requirement.
 
 ## Reference and sensitivity fits
 
-Unweighted ordinary least squares on the bright reference population is the
-authoritative first implementation. It saves the intercept, slope, covariance,
-RMS, sample count, airmass range, and every residual.
+Robust Theil--Sen regression on the bright reference population is the
+authoritative implementation. It uses the joint-median intercept and saves the
+intercept, slope, RMS, sample count, airmass range, and every residual. Its
+covariance and formal OLS uncertainties are left empty rather than being
+misrepresented as uncertainties of the robust estimator.
 
-Two non-authoritative sensitivity products assess whether later weighting or a
-deeper sample is beneficial:
+Three non-authoritative sensitivity products assess estimator choice, weighting,
+and whether a deeper sample is beneficial:
 
-1. A repeatability-weighted fit on the same bright population. Per-star scatter
+1. An unweighted OLS fit on the same bright population provides a direct
+   comparison with the robust adopted result.
+2. A repeatability-weighted fit on the same bright population. Per-star scatter
    is estimated from robust, night-centred residuals after the initial image
    fits. Inverse-variance weights have a documented floor and cap so one star
-   cannot dominate. The reference OLS result remains visible alongside it.
-2. A weighted extension admitting catalogue magnitudes from 4.0 through 5.0.
+   cannot dominate.
+3. A weighted extension admitting catalogue magnitudes from 4.0 through 5.0.
    It is diagnostic only. It cannot supply `k_night` or corrected magnitudes in
    this first version.
 
-The comparison reports coefficient shifts, formal uncertainty, residual RMS,
+The comparison reports coefficient shifts, available uncertainty, residual RMS,
 and time-series scatter. Moving the weighted or deeper result into the adopted
 path requires a later explicit decision supported by these diagnostics and new
 regression evidence.
@@ -168,7 +173,7 @@ nonempty directory. The run database remains unchanged. Outputs include:
 - `corrected_stellar_photometry.csv`: raw and corrected channel magnitudes,
   airmass, coefficient/zero-point provenance, and uncertainty components; and
 - PNG/PDF diagnostics showing `k` and `Z` versus UTC through the night,
-  OLS-versus-weighted comparisons, coefficient distributions, residuals versus
+  robust-versus-OLS/weighted comparisons, coefficient distributions, residuals versus
   airmass, residual scatter versus catalogue magnitude, and calibrator counts.
 
 Rows without a valid nightly coefficient or image zero point remain in audit
@@ -211,8 +216,8 @@ produce identical CSV/JSON scientific values.
 
 Unit and integration tests will cover:
 
-- recovery of known per-image `Z` and `k` and the nightly median from synthetic
-  stars;
+- robust recovery of known per-image `Z` and `k` in the presence of a severe
+  stellar outlier, and recovery of the nightly median from synthetic stars;
 - changing image extinction and changing transparency as distinct effects;
 - catalogue/channel colour offsets and the documented residual scatter;
 - channel-specific saturation and ordinary-aperture requirements;
