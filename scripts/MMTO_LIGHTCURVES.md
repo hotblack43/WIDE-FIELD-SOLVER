@@ -1,5 +1,10 @@
 # MMTO machine magnitude versus time
 
+For the one-command workflow that first processes all verified MMTO images
+without a v0.11.0 receipt and then produces stellar light curves, the nightly
+extinction sidecar, and extinction-corrected planetary photometry, see
+[One-command MMTO processing and photometry](../docs/MMTO_PHOTOMETRY_PIPELINE.md).
+
 From the repository root:
 
 ```sh
