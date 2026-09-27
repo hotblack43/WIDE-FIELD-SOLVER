@@ -3,19 +3,30 @@
 
 from __future__ import annotations
 
+import argparse
 import csv
-from dataclasses import dataclass
+from collections import defaultdict
+from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from functools import cache
 import json
 import math
+import os
 from pathlib import Path
+import socket
 import sqlite3
 from urllib.parse import urlparse
 
 from allsky_download.cadence import observing_night_date
 from allsky_download.registry import SourceRegistry
-from scripts.nightly_extinction import StellarMeasurement
+from scripts.nightly_extinction import (
+    CalibrationConfig,
+    NightCalibrationResult,
+    StellarMeasurement,
+    calibrate_night,
+    correct_magnitude,
+    select_reference_star_ids,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -55,6 +66,8 @@ class LoadedCalibrationData:
     audit_rows: tuple[CalibrationAuditRow, ...]
     selected_run_ids: tuple[str, ...]
     manifest_entries: tuple[ManifestEntry, ...]
+    database_path: str = ""
+    manifest_path: str = ""
 
 
 def _utc_time(value: str) -> datetime:
@@ -426,4 +439,637 @@ def load_mmto_calibration_data(
         manifest_entries=tuple(
             manifest_entries[key] for key in sorted(manifest_entries)
         ),
+        database_path=str(Path(database).resolve()),
+        manifest_path=str(Path(manifest).resolve()),
     )
+
+
+def _csv_value(value: object) -> object:
+    return "" if value is None else value
+
+
+def _write_csv(
+    path: Path,
+    fieldnames: tuple[str, ...],
+    rows: list[dict[str, object]],
+) -> None:
+    with path.open("w", newline="", encoding="utf-8") as output:
+        writer = csv.DictWriter(output, fieldnames=fieldnames, extrasaction="raise")
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({key: _csv_value(row.get(key)) for key in fieldnames})
+
+
+def _result_maps(
+    results: dict[str, NightCalibrationResult],
+):
+    adopted_coefficients = {}
+    zero_points = {}
+    image_fits = {}
+    star_weights = {}
+    for result in results.values():
+        for item in result.night_coefficients:
+            if item.model == result.adopted_model:
+                adopted_coefficients[
+                    (item.night, item.catalogue_sha256, item.channel)
+                ] = item
+        for item in result.image_zero_points:
+            zero_points[
+                (
+                    item.night,
+                    item.source_sha256,
+                    item.catalogue_sha256,
+                    item.channel,
+                )
+            ] = item
+        for item in result.image_fits:
+            image_fits[
+                (
+                    item.night,
+                    item.source_sha256,
+                    item.catalogue_sha256,
+                    item.channel,
+                )
+            ] = item
+        for item in result.star_weights:
+            star_weights[
+                (item.night, item.catalogue_sha256, item.star_id, item.channel)
+            ] = item
+    return adopted_coefficients, zero_points, image_fits, star_weights
+
+
+def _write_diagnostics(
+    output: Path,
+    results: dict[str, NightCalibrationResult],
+    measurements: tuple[StellarMeasurement, ...],
+    manifest_by_source: dict[str, ManifestEntry],
+) -> None:
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    all_reference_fits = [
+        fit for result in results.values() for fit in result.image_fits
+    ]
+    all_coefficients = [
+        item for result in results.values() for item in result.night_coefficients
+    ]
+    all_zero_points = [
+        item for result in results.values() for item in result.image_zero_points
+    ]
+    all_weights = [item for result in results.values() for item in result.star_weights]
+    measurement_by_key = {
+        (
+            row.night,
+            row.source_sha256,
+            row.catalogue_sha256,
+            row.star_id,
+            row.channel,
+        ): row
+        for row in measurements
+    }
+
+    figure, axes = plt.subplots(3, 3, figsize=(15, 12), constrained_layout=True)
+    axes = axes.ravel()
+    accepted_fits = [fit for fit in all_reference_fits if fit.accepted]
+    fit_times = [
+        manifest_by_source[fit.source_sha256].observed_utc
+        for fit in accepted_fits
+        if fit.source_sha256 in manifest_by_source
+    ]
+    fit_slopes = [
+        fit.line.slope
+        for fit in accepted_fits
+        if fit.source_sha256 in manifest_by_source
+    ]
+    axes[0].plot(fit_times, fit_slopes, ".", alpha=0.7)
+    axes[0].set(title="Per-image extinction", ylabel="k [mag / airmass]")
+
+    accepted_zero_points = [
+        item for item in all_zero_points if item.status == "accepted"
+    ]
+    axes[1].plot(
+        [manifest_by_source[item.source_sha256].observed_utc for item in accepted_zero_points],
+        [item.zero_point_magnitude for item in accepted_zero_points],
+        ".",
+        alpha=0.7,
+    )
+    axes[1].set(title="Fixed-slope image zero points", ylabel="Z [mag]")
+
+    if fit_slopes:
+        axes[2].hist(fit_slopes, bins="auto")
+    axes[2].set(title="Accepted image-k distribution", xlabel="k [mag / airmass]")
+
+    model_names = ["reference_ols", "bright_weighted", "faint_weighted", "full_airmass_ols"]
+    model_values = [
+        [
+            item.extinction_mag_per_airmass
+            for item in all_coefficients
+            if item.model == model and item.extinction_mag_per_airmass is not None
+        ]
+        for model in model_names
+    ]
+    axes[3].boxplot(model_values, tick_labels=model_names, showfliers=True)
+    axes[3].tick_params(axis="x", rotation=25)
+    axes[3].set(title="Reference versus sensitivities", ylabel="nightly k")
+
+    residual_airmass: list[float] = []
+    residual_values: list[float] = []
+    for fit in accepted_fits:
+        for star_key, residual in zip(fit.star_keys, fit.line.residuals, strict=True):
+            row = measurement_by_key.get(
+                (
+                    fit.night,
+                    fit.source_sha256,
+                    fit.catalogue_sha256,
+                    star_key[1],
+                    fit.channel,
+                )
+            )
+            if row is not None:
+                residual_airmass.append(row.airmass)
+                residual_values.append(residual)
+    axes[4].plot(residual_airmass, residual_values, ".", alpha=0.15)
+    axes[4].axhline(0.0, color="black", linewidth=0.8)
+    axes[4].set(title="Reference residuals", xlabel="saved airmass", ylabel="residual [mag]")
+
+    magnitude_by_star: dict[tuple[str, str], float] = {}
+    for row in measurements:
+        magnitude_by_star.setdefault(row.star_key, row.catalogue_magnitude)
+    axes[5].plot(
+        [magnitude_by_star.get((item.catalogue_sha256, item.star_id)) for item in all_weights],
+        [item.residual_scatter_magnitude for item in all_weights],
+        ".",
+        alpha=0.5,
+    )
+    axes[5].set(title="Repeatability scatter", xlabel="catalogue magnitude", ylabel="scaled MAD [mag]")
+
+    axes[6].plot(
+        range(len(all_reference_fits)),
+        [fit.line.sample_count for fit in all_reference_fits],
+        ".",
+    )
+    axes[6].axhline(30, color="black", linestyle="--", linewidth=0.8)
+    axes[6].set(title="Calibrator counts", xlabel="image/channel", ylabel="stars")
+
+    adopted = [item for item in all_coefficients if item.model == "reference_ols"]
+    plotted_adopted = [
+        item
+        for item in adopted
+        if item.extinction_mag_per_airmass is not None and item.scaled_mad is not None
+    ]
+    axes[7].errorbar(
+        range(len(plotted_adopted)),
+        [item.extinction_mag_per_airmass for item in plotted_adopted],
+        yerr=[item.scaled_mad for item in plotted_adopted],
+        fmt=".",
+    )
+    axes[7].set(title="Nightly median and scaled MAD", xlabel="night/channel", ylabel="k")
+
+    calibrated = sum(item.status == "accepted" for item in adopted)
+    axes[8].axis("off")
+    axes[8].text(
+        0.02,
+        0.95,
+        f"Adopted model: reference_ols\n"
+        f"Accepted night/channels: {calibrated}\n"
+        f"Insufficient night/channels: {len(adopted) - calibrated}\n"
+        f"Valid measurements: {len(measurements)}",
+        va="top",
+        family="monospace",
+    )
+    for axis in axes[:2]:
+        axis.tick_params(axis="x", rotation=25)
+    figure.savefig(output / "extinction_diagnostics.png", dpi=160)
+    figure.savefig(output / "extinction_diagnostics.pdf")
+    plt.close(figure)
+
+
+def write_calibration_outputs(
+    data: LoadedCalibrationData,
+    output: Path,
+    config: CalibrationConfig,
+) -> dict[str, object]:
+    """Write a complete immutable calibration sidecar without touching the DB."""
+
+    output = Path(output)
+    if output.exists() and any(output.iterdir()):
+        raise FileExistsError(f"refusing to overwrite nonempty output directory: {output}")
+    output.mkdir(parents=True, exist_ok=True)
+
+    by_night: dict[str, list[StellarMeasurement]] = defaultdict(list)
+    for row in data.measurements:
+        by_night[row.night].append(row)
+    results = {
+        night: calibrate_night(rows, config)
+        for night, rows in sorted(by_night.items())
+    }
+    adopted_coefficients, zero_points, image_fits, star_weights = _result_maps(
+        results
+    )
+    manifest_by_source = {
+        entry.source_sha256: entry for entry in data.manifest_entries
+    }
+
+    fit_rows: list[dict[str, object]] = []
+    for result in results.values():
+        for fit in (*result.image_fits, *result.sensitivity_image_fits):
+            entry = manifest_by_source.get(fit.source_sha256)
+            fit_rows.append(
+                {
+                    "night": fit.night,
+                    "channel": fit.channel,
+                    "observed_utc": entry.observed_utc.isoformat() if entry else "",
+                    "source_sha256": fit.source_sha256,
+                    "catalogue_sha256": fit.catalogue_sha256,
+                    "model": fit.model,
+                    "status": fit.status,
+                    "accepted": fit.accepted,
+                    "intercept_magnitude": fit.line.intercept,
+                    "extinction_mag_per_airmass": fit.line.slope,
+                    "intercept_uncertainty_magnitude": fit.line.intercept_uncertainty,
+                    "extinction_uncertainty_mag_per_airmass": fit.line.slope_uncertainty,
+                    "residual_rms_magnitude": fit.line.rms,
+                    "star_count": fit.line.sample_count,
+                    "airmass_min": fit.line.airmass_min,
+                    "airmass_max": fit.line.airmass_max,
+                    "airmass_span": fit.line.airmass_span,
+                }
+            )
+    fit_rows.sort(
+        key=lambda row: (
+            row["night"], row["channel"], row["observed_utc"],
+            row["source_sha256"], row["model"],
+        )
+    )
+    _write_csv(
+        output / "image_extinction_fits.csv",
+        (
+            "night", "channel", "observed_utc", "source_sha256",
+            "catalogue_sha256", "model", "status", "accepted",
+            "intercept_magnitude", "extinction_mag_per_airmass",
+            "intercept_uncertainty_magnitude",
+            "extinction_uncertainty_mag_per_airmass", "residual_rms_magnitude",
+            "star_count", "airmass_min", "airmass_max", "airmass_span",
+        ),
+        fit_rows,
+    )
+
+    coefficient_rows = [
+        {
+            "night": item.night,
+            "channel": item.channel,
+            "catalogue_sha256": item.catalogue_sha256,
+            "model": item.model,
+            "status": item.status,
+            "extinction_mag_per_airmass": item.extinction_mag_per_airmass,
+            "scaled_mad_mag_per_airmass": item.scaled_mad,
+            "minimum_mag_per_airmass": item.minimum,
+            "maximum_mag_per_airmass": item.maximum,
+            "accepted_image_count": item.accepted_image_count,
+        }
+        for result in results.values()
+        for item in result.night_coefficients
+    ]
+    coefficient_rows.sort(
+        key=lambda row: (row["night"], row["channel"], row["model"])
+    )
+    _write_csv(
+        output / "nightly_extinction_coefficients.csv",
+        (
+            "night", "channel", "catalogue_sha256", "model", "status",
+            "extinction_mag_per_airmass", "scaled_mad_mag_per_airmass",
+            "minimum_mag_per_airmass", "maximum_mag_per_airmass",
+            "accepted_image_count",
+        ),
+        coefficient_rows,
+    )
+
+    zero_rows: list[dict[str, object]] = []
+    for result in results.values():
+        for item in result.image_zero_points:
+            entry = manifest_by_source.get(item.source_sha256)
+            zero_rows.append(
+                {
+                    "night": item.night,
+                    "channel": item.channel,
+                    "observed_utc": entry.observed_utc.isoformat() if entry else "",
+                    "source_sha256": item.source_sha256,
+                    "catalogue_sha256": item.catalogue_sha256,
+                    "model": item.model,
+                    "status": item.status,
+                    "zero_point_magnitude": item.zero_point_magnitude,
+                    "uncertainty_magnitude": item.uncertainty_magnitude,
+                    "rms_magnitude": item.rms_magnitude,
+                    "star_count": item.sample_count,
+                    "extinction_mag_per_airmass": item.extinction_mag_per_airmass,
+                }
+            )
+    zero_rows.sort(
+        key=lambda row: (
+            row["night"], row["channel"], row["observed_utc"], row["source_sha256"]
+        )
+    )
+    _write_csv(
+        output / "image_zero_points.csv",
+        (
+            "night", "channel", "observed_utc", "source_sha256",
+            "catalogue_sha256", "model", "status", "zero_point_magnitude",
+            "uncertainty_magnitude", "rms_magnitude", "star_count",
+            "extinction_mag_per_airmass",
+        ),
+        zero_rows,
+    )
+
+    measurements_by_key = {
+        (
+            row.source_sha256,
+            row.catalogue_sha256,
+            row.star_id,
+            row.channel,
+        ): row
+        for row in data.measurements
+    }
+    reference_ids_by_group: dict[tuple[str, str, str], frozenset[tuple[str, str]]] = {}
+    group_rows: dict[tuple[str, str, str], list[StellarMeasurement]] = defaultdict(list)
+    for row in data.measurements:
+        group_rows[(row.night, row.catalogue_sha256, row.channel)].append(row)
+    for key, rows in group_rows.items():
+        reference_ids_by_group[key] = select_reference_star_ids(rows, config)
+
+    audit_output: list[dict[str, object]] = []
+    for audit in data.audit_rows:
+        entry = manifest_by_source.get(audit.source_sha256)
+        measurement = measurements_by_key.get(
+            (
+                audit.source_sha256,
+                audit.catalogue_sha256,
+                audit.star_id,
+                audit.channel,
+            )
+        )
+        reference_ids = reference_ids_by_group.get(
+            (audit.night, audit.catalogue_sha256, audit.channel), frozenset()
+        )
+        star_key = (audit.catalogue_sha256, audit.star_id)
+        fit_reasons: list[str] = []
+        if audit.included and measurement is not None:
+            if measurement.catalogue_magnitude >= config.max_catalogue_magnitude:
+                fit_reasons.append("catalogue_magnitude_not_bright")
+            elif star_key not in reference_ids:
+                fit_reasons.append("insufficient_star_observations")
+            if measurement.airmass > config.max_reference_airmass:
+                fit_reasons.append("airmass_above_reference_limit")
+        else:
+            fit_reasons.extend(audit.exclusion_reasons)
+        fit = image_fits.get(
+            (
+                audit.night,
+                audit.source_sha256,
+                audit.catalogue_sha256,
+                audit.channel,
+            )
+        )
+        included_in_fit = bool(
+            fit is not None
+            and fit.accepted
+            and star_key in fit.star_keys
+            and not fit_reasons
+        )
+        residual = None
+        if included_in_fit and fit is not None:
+            residual = fit.line.residuals[fit.star_keys.index(star_key)]
+        weight = star_weights.get(
+            (audit.night, audit.catalogue_sha256, audit.star_id, audit.channel)
+        )
+        audit_output.append(
+            {
+                "run_id": audit.run_id,
+                "night": audit.night,
+                "channel": audit.channel,
+                "observed_utc": entry.observed_utc.isoformat() if entry else "",
+                "source_sha256": audit.source_sha256,
+                "catalogue_sha256": audit.catalogue_sha256,
+                "detection_id": audit.detection_id,
+                "star_id": audit.star_id,
+                "catalogue_magnitude": audit.catalogue_magnitude,
+                "count_rate_adu_per_s": audit.count_rate_adu_per_s,
+                "machine_magnitude": measurement.machine_magnitude if measurement else None,
+                "airmass": audit.airmass,
+                "saturated": audit.saturated,
+                "measurement_method": audit.measurement_method,
+                "loader_included": audit.included,
+                "loader_exclusion_reasons": ";".join(audit.exclusion_reasons),
+                "reference_star": star_key in reference_ids,
+                "included_in_adopted_fit": included_in_fit,
+                "fit_exclusion_reasons": ";".join(fit_reasons),
+                "residual_magnitude": residual,
+                "repeatability_weight": weight.weight if weight else None,
+            }
+        )
+    audit_output.sort(
+        key=lambda row: (
+            row["night"], row["channel"], row["observed_utc"],
+            row["source_sha256"], row["star_id"], row["run_id"],
+        )
+    )
+    _write_csv(
+        output / "calibration_star_measurements.csv",
+        (
+            "run_id", "night", "channel", "observed_utc", "source_sha256",
+            "catalogue_sha256", "detection_id", "star_id",
+            "catalogue_magnitude", "count_rate_adu_per_s", "machine_magnitude",
+            "airmass", "saturated", "measurement_method", "loader_included",
+            "loader_exclusion_reasons", "reference_star",
+            "included_in_adopted_fit", "fit_exclusion_reasons",
+            "residual_magnitude", "repeatability_weight",
+        ),
+        audit_output,
+    )
+
+    corrected_rows: list[dict[str, object]] = []
+    for row in data.measurements:
+        coefficient = adopted_coefficients.get(
+            (row.night, row.catalogue_sha256, row.channel)
+        )
+        zero_point = zero_points.get(
+            (row.night, row.source_sha256, row.catalogue_sha256, row.channel)
+        )
+        corrected = None
+        if coefficient is None or coefficient.extinction_mag_per_airmass is None:
+            status = "missing_nightly_extinction"
+        elif zero_point is None or zero_point.zero_point_magnitude is None:
+            status = zero_point.status if zero_point is not None else "missing_image_zero_point"
+        else:
+            status = "accepted"
+            corrected = correct_magnitude(
+                row.machine_magnitude,
+                zero_point.zero_point_magnitude,
+                coefficient.extinction_mag_per_airmass,
+                row.airmass,
+            )
+        corrected_rows.append(
+            {
+                "night": row.night,
+                "channel": row.channel,
+                "observed_utc": row.observed_utc,
+                "source_sha256": row.source_sha256,
+                "catalogue_sha256": row.catalogue_sha256,
+                "star_id": row.star_id,
+                "catalogue_magnitude": row.catalogue_magnitude,
+                "count_rate_adu_per_s": row.count_rate_adu_per_s,
+                "machine_magnitude": row.machine_magnitude,
+                "airmass": row.airmass,
+                "extinction_mag_per_airmass": (
+                    coefficient.extinction_mag_per_airmass if coefficient else None
+                ),
+                "nightly_scaled_mad_mag_per_airmass": (
+                    coefficient.scaled_mad if coefficient else None
+                ),
+                "zero_point_magnitude": (
+                    zero_point.zero_point_magnitude if zero_point else None
+                ),
+                "zero_point_uncertainty_magnitude": (
+                    zero_point.uncertainty_magnitude if zero_point else None
+                ),
+                "corrected_magnitude": corrected,
+                "status": status,
+            }
+        )
+    corrected_rows.sort(
+        key=lambda row: (
+            row["night"], row["channel"], row["observed_utc"],
+            row["source_sha256"], row["star_id"],
+        )
+    )
+    _write_csv(
+        output / "corrected_stellar_photometry.csv",
+        (
+            "night", "channel", "observed_utc", "source_sha256",
+            "catalogue_sha256", "star_id", "catalogue_magnitude",
+            "count_rate_adu_per_s", "machine_magnitude", "airmass",
+            "extinction_mag_per_airmass", "nightly_scaled_mad_mag_per_airmass",
+            "zero_point_magnitude", "zero_point_uncertainty_magnitude",
+            "corrected_magnitude", "status",
+        ),
+        corrected_rows,
+    )
+
+    _write_diagnostics(output, results, data.measurements, manifest_by_source)
+    adopted = list(adopted_coefficients.values())
+    summary: dict[str, object] = {
+        "calibrated_nights": sum(item.status == "accepted" for item in adopted),
+        "insufficient_nights": sum(item.status != "accepted" for item in adopted),
+        "valid_measurements": len(data.measurements),
+        "audit_rows": len(data.audit_rows),
+        "output": str(output.resolve()),
+    }
+    manifest_payload = {
+        "schema_version": 1,
+        "created_utc": datetime.now(UTC).isoformat(),
+        "adopted_model": "reference_ols",
+        "configuration": asdict(config),
+        "formulae": {
+            "machine_magnitude": "m_machine = -2.5 log10(count_rate_adu_per_s)",
+            "image_fit": "m_machine - m_catalogue = Z_image + k_image X",
+            "nightly_coefficient": "k_night = median_i(k_image)",
+            "corrected_magnitude": "m_corrected = m_machine - Z_fixed - k_night X",
+        },
+        "selected_run_ids": list(data.selected_run_ids),
+        "database": data.database_path,
+        "manifest": data.manifest_path,
+        "catalogue_sha256": sorted(
+            {row.catalogue_sha256 for row in data.measurements}
+        ),
+        "summary": summary,
+    }
+    (output / "calibration_manifest.json").write_text(
+        json.dumps(manifest_payload, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return summary
+
+
+def default_database() -> Path:
+    destination = os.environ.get("WFS_RESULTS_DIR")
+    if not destination:
+        config_root = Path(
+            os.environ.get("XDG_CONFIG_HOME", str(Path.home() / ".config"))
+        )
+        host_config = (
+            config_root
+            / "wide-field-solver"
+            / ("results-dir." + socket.gethostname())
+        )
+        if host_config.is_file():
+            destination = host_config.read_text(encoding="utf-8").splitlines()[0]
+    return Path(destination or ROOT / "results") / "stars.sqlite"
+
+
+def default_manifest(database: Path) -> Path | None:
+    database = database.resolve()
+    candidates = [
+        database.parent / "manifest.sqlite",
+        database.parent / "manifest.csv",
+        database.parent.parent / "raw_allsky_samples" / "manifest.sqlite",
+    ]
+    if database.is_relative_to(ROOT):
+        candidates.insert(0, ROOT / "raw_allsky_samples" / "manifest.sqlite")
+    return next((path for path in candidates if path.is_file()), None)
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--database", type=Path, default=None)
+    parser.add_argument("--manifest", type=Path, default=None)
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=None,
+        help="new sidecar directory; defaults to a timestamp beside the database",
+    )
+    arguments = parser.parse_args(argv)
+    try:
+        database = (arguments.database or default_database()).expanduser().resolve()
+        manifest = arguments.manifest
+        if manifest is None:
+            manifest = default_manifest(database)
+        if manifest is None:
+            raise ValueError(
+                "supply --manifest PATH; no verified MMTO SQLite/CSV manifest was found"
+            )
+        manifest = manifest.expanduser().resolve()
+        output = arguments.output
+        if output is None:
+            stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
+            output = database.parent / "extinction-calibration" / stamp
+        output = output.expanduser().resolve()
+        config = CalibrationConfig()
+        data = load_mmto_calibration_data(database, manifest)
+        summary = write_calibration_outputs(data, output, config)
+    except (FileExistsError, OSError, sqlite3.Error, ValueError) as error:
+        parser.exit(2, f"Error: {error}\n")
+
+    print(f"Database (read-only): {database}")
+    print(f"MMTO manifest: {manifest}")
+    print(
+        "Reference defaults: catalogue magnitude < "
+        f"{config.max_catalogue_magnitude}; observations/star >= "
+        f"{config.min_observations_per_star}; stars/image >= "
+        f"{config.min_stars_per_image}; images/night >= "
+        f"{config.min_images_per_night}"
+    )
+    print(
+        "Calibrated night/channels: "
+        f"{summary['calibrated_nights']}; insufficient: "
+        f"{summary['insufficient_nights']}"
+    )
+    print(f"Valid stellar channel measurements: {summary['valid_measurements']}")
+    print(f"Audit rows: {summary['audit_rows']}")
+    print(f"Output: {output}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

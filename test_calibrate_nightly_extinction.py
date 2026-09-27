@@ -1,18 +1,26 @@
 import csv
 import hashlib
+import io
 import json
 import sqlite3
 import tempfile
 import unittest
-from datetime import datetime, timezone
+from contextlib import redirect_stdout
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from unittest.mock import patch
 
+import scripts.calibrate_nightly_extinction as calibration_cli
 from scripts.calibrate_nightly_extinction import (
+    CalibrationAuditRow,
     LoadedCalibrationData,
     ManifestEntry,
     load_mmto_calibration_data,
+    main,
     read_mmto_manifest,
+    write_calibration_outputs,
 )
+from scripts.nightly_extinction import CalibrationConfig, StellarMeasurement
 
 
 def create_manifest_database(path: Path) -> None:
@@ -144,6 +152,85 @@ def photometry_payload(*, r_rate: float, g_saturated: bool = False) -> dict[str,
         "B_measurement_method": "aperture",
         "B_mag": "-777.0",
     }
+
+
+def synthetic_loaded_data(
+    image_count: int,
+    *,
+    add_faint: bool = False,
+    add_high_airmass: bool = False,
+) -> LoadedCalibrationData:
+    catalogue_sha = "c" * 64
+    measurements: list[StellarMeasurement] = []
+    audit_rows: list[CalibrationAuditRow] = []
+    manifest_entries: list[ManifestEntry] = []
+    for image in range(image_count):
+        source_sha = f"{image + 1:064x}"
+        observed = datetime(2026, 9, 26, 3, tzinfo=timezone.utc) + timedelta(
+            minutes=20 * image
+        )
+        manifest_entries.append(
+            ManifestEntry(
+                source_sha256=source_sha,
+                observed_utc=observed,
+                night="2026-09-25",
+                source_url=f"https://skycam.mmto.arizona.edu/skycam/archive/{image}.fits.bz2",
+                local_path=f"/data/{image}.fits.bz2",
+            )
+        )
+        stars = [
+            (f"bright-{star:02d}", 2.5 + star / 100.0, 1.0 + 3.0 * star / 29.0)
+            for star in range(30)
+        ]
+        if add_faint:
+            stars.append(("faint-star", 4.5, 2.0))
+        if add_high_airmass:
+            stars.append(("high-airmass-star", 3.0, 6.0))
+        for star_id, catalogue_magnitude, airmass in stars:
+            slope = 0.12 + 0.005 * image
+            zero_point = -6.0 + 0.02 * (image % 3)
+            delta_magnitude = zero_point + slope * airmass
+            machine_magnitude = catalogue_magnitude + delta_magnitude
+            count_rate = 10.0 ** (-0.4 * machine_magnitude)
+            measurement = StellarMeasurement(
+                night="2026-09-25",
+                source_sha256=source_sha,
+                catalogue_sha256=catalogue_sha,
+                star_id=star_id,
+                channel="R",
+                catalogue_magnitude=catalogue_magnitude,
+                count_rate_adu_per_s=count_rate,
+                count_rate_uncertainty_adu_per_s=0.1,
+                airmass=airmass,
+                saturated=False,
+                measurement_method="ordinary_aperture",
+                observed_utc=observed.isoformat(),
+            )
+            measurements.append(measurement)
+            audit_rows.append(
+                CalibrationAuditRow(
+                    run_id=f"run-{image}",
+                    source_sha256=source_sha,
+                    catalogue_sha256=catalogue_sha,
+                    night="2026-09-25",
+                    star_id=star_id,
+                    detection_id=f"detection-{star_id}",
+                    channel="R",
+                    catalogue_magnitude=catalogue_magnitude,
+                    count_rate_adu_per_s=count_rate,
+                    airmass=airmass,
+                    saturated=False,
+                    measurement_method="ordinary_aperture",
+                    included=True,
+                    exclusion_reasons=(),
+                )
+            )
+    return LoadedCalibrationData(
+        measurements=tuple(measurements),
+        audit_rows=tuple(audit_rows),
+        selected_run_ids=tuple(f"run-{image}" for image in range(image_count)),
+        manifest_entries=tuple(manifest_entries),
+    )
 
 
 class ManifestLoadingTests(unittest.TestCase):
@@ -391,6 +478,209 @@ class CalibrationDatabaseLoadingTests(unittest.TestCase):
                 for row in loaded.audit_rows
             )
         )
+
+
+class CalibrationOutputTests(unittest.TestCase):
+    def test_writer_creates_complete_sidecar_and_diagnostics(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary) / "sidecar"
+            summary = write_calibration_outputs(
+                synthetic_loaded_data(10), output, CalibrationConfig()
+            )
+
+            expected = {
+                "calibration_manifest.json",
+                "image_extinction_fits.csv",
+                "nightly_extinction_coefficients.csv",
+                "calibration_star_measurements.csv",
+                "image_zero_points.csv",
+                "corrected_stellar_photometry.csv",
+                "extinction_diagnostics.png",
+                "extinction_diagnostics.pdf",
+            }
+            self.assertEqual({path.name for path in output.iterdir()}, expected)
+            self.assertEqual(summary["calibrated_nights"], 1)
+            manifest = json.loads(
+                (output / "calibration_manifest.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(
+                manifest["formulae"]["machine_magnitude"],
+                "m_machine = -2.5 log10(count_rate_adu_per_s)",
+            )
+            self.assertEqual(
+                manifest["formulae"]["corrected_magnitude"],
+                "m_corrected = m_machine - Z_fixed - k_night X",
+            )
+            with (output / "image_zero_points.csv").open(
+                newline="", encoding="utf-8"
+            ) as source:
+                self.assertEqual(
+                    next(csv.reader(source)),
+                    [
+                        "night",
+                        "channel",
+                        "observed_utc",
+                        "source_sha256",
+                        "catalogue_sha256",
+                        "model",
+                        "status",
+                        "zero_point_magnitude",
+                        "uncertainty_magnitude",
+                        "rms_magnitude",
+                        "star_count",
+                        "extinction_mag_per_airmass",
+                    ],
+                )
+
+    def test_insufficient_night_keeps_audit_rows_without_corrected_values(self) -> None:
+        data = synthetic_loaded_data(9)
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary) / "sidecar"
+            summary = write_calibration_outputs(data, output, CalibrationConfig())
+            with (output / "calibration_star_measurements.csv").open(
+                newline="", encoding="utf-8"
+            ) as source:
+                audit = list(csv.DictReader(source))
+            with (output / "corrected_stellar_photometry.csv").open(
+                newline="", encoding="utf-8"
+            ) as source:
+                corrected = list(csv.DictReader(source))
+
+        self.assertEqual(len(audit), len(data.audit_rows))
+        self.assertEqual(summary["insufficient_nights"], 1)
+        self.assertTrue(corrected)
+        self.assertTrue(
+            all(
+                row["status"] == "missing_nightly_extinction"
+                and row["corrected_magnitude"] == ""
+                for row in corrected
+            )
+        )
+
+    def test_faint_and_high_airmass_rows_are_audited_not_adopted(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary) / "sidecar"
+            write_calibration_outputs(
+                synthetic_loaded_data(
+                    10, add_faint=True, add_high_airmass=True
+                ),
+                output,
+                CalibrationConfig(),
+            )
+            with (output / "calibration_star_measurements.csv").open(
+                newline="", encoding="utf-8"
+            ) as source:
+                rows = list(csv.DictReader(source))
+
+        faint = [row for row in rows if row["star_id"] == "faint-star"]
+        high = [row for row in rows if row["star_id"] == "high-airmass-star"]
+        self.assertTrue(faint and high)
+        self.assertTrue(
+            all("catalogue_magnitude_not_bright" in row["fit_exclusion_reasons"] for row in faint)
+        )
+        self.assertTrue(
+            all("airmass_above_reference_limit" in row["fit_exclusion_reasons"] for row in high)
+        )
+        self.assertTrue(all(row["included_in_adopted_fit"] == "False" for row in faint + high))
+
+    def test_nonempty_output_is_never_overwritten(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary) / "sidecar"
+            output.mkdir()
+            sentinel = output / "keep.txt"
+            sentinel.write_text("original", encoding="utf-8")
+
+            with self.assertRaisesRegex(FileExistsError, "nonempty"):
+                write_calibration_outputs(
+                    synthetic_loaded_data(10), output, CalibrationConfig()
+                )
+
+            self.assertEqual(sentinel.read_text(encoding="utf-8"), "original")
+            self.assertEqual(list(output.iterdir()), [sentinel])
+
+
+class CalibrationCliTests(unittest.TestCase):
+    def test_cli_uses_repo_sqlite_manifest_default_and_timestamped_output(self) -> None:
+        data = synthetic_loaded_data(10)
+        database = calibration_cli.ROOT / "results" / "stars.sqlite"
+        expected_manifest = (
+            calibration_cli.ROOT / "raw_allsky_samples" / "manifest.sqlite"
+        )
+        summary = {
+            "calibrated_nights": 1,
+            "insufficient_nights": 0,
+            "valid_measurements": len(data.measurements),
+            "audit_rows": len(data.audit_rows),
+            "output": "unused",
+        }
+        stdout = io.StringIO()
+        with (
+            patch.object(calibration_cli, "default_database", return_value=database),
+            patch.object(
+                calibration_cli,
+                "load_mmto_calibration_data",
+                return_value=data,
+            ) as load_mock,
+            patch.object(
+                calibration_cli,
+                "write_calibration_outputs",
+                return_value=summary,
+            ) as write_mock,
+            redirect_stdout(stdout),
+        ):
+            result = main([])
+
+        self.assertEqual(result, 0)
+        load_mock.assert_called_once_with(database.resolve(), expected_manifest.resolve())
+        output = write_mock.call_args.args[1]
+        self.assertEqual(output.parent, database.parent / "extinction-calibration")
+        self.assertRegex(output.name, r"^\d{8}T\d{12}Z$")
+        self.assertIn("Reference defaults:", stdout.getvalue())
+        self.assertIn("Calibrated night/channels: 1; insufficient: 0", stdout.getvalue())
+
+    def test_cli_forwards_explicit_database_manifest_and_output(self) -> None:
+        data = synthetic_loaded_data(9)
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            database = root / "custom.sqlite"
+            manifest = root / "custom-manifest.sqlite"
+            output = root / "custom-output"
+            summary = {
+                "calibrated_nights": 0,
+                "insufficient_nights": 1,
+                "valid_measurements": len(data.measurements),
+                "audit_rows": len(data.audit_rows),
+                "output": str(output),
+            }
+            stdout = io.StringIO()
+            with (
+                patch.object(
+                    calibration_cli,
+                    "load_mmto_calibration_data",
+                    return_value=data,
+                ) as load_mock,
+                patch.object(
+                    calibration_cli,
+                    "write_calibration_outputs",
+                    return_value=summary,
+                ) as write_mock,
+                redirect_stdout(stdout),
+            ):
+                result = main(
+                    [
+                        "--database",
+                        str(database),
+                        "--manifest",
+                        str(manifest),
+                        "--output",
+                        str(output),
+                    ]
+                )
+
+        self.assertEqual(result, 0)
+        load_mock.assert_called_once_with(database.resolve(), manifest.resolve())
+        self.assertEqual(write_mock.call_args.args[1], output.resolve())
+        self.assertIn("Calibrated night/channels: 0; insufficient: 1", stdout.getvalue())
 
 
 if __name__ == "__main__":
