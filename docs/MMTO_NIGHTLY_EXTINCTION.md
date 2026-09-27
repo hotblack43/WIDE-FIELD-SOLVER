@@ -111,15 +111,30 @@ The calibrated join is exact in source SHA-256, catalogue SHA-256, observing
 night, and channel. The plotter uses only an accepted `reference_ols` nightly
 coefficient and its corresponding fixed-slope image zero point. Missing joins,
 invalid planet airmass, or unreproducible saved aperture fluxes are written to
-`planet_nightly_calibration_audit.csv` and omitted. There is no fallback to a
+`planet_extinction_correction_audit.csv` and omitted. There is no fallback to a
 legacy same-image coefficient or raw magnitude.
 
-Each R/G/B directory contains the nightly stellar-calibrated, distance-corrected
+Each R/G/B directory contains the extinction-corrected, distance-corrected
 PNG/PDF, the plotted measurement CSV, the full calibration audit, and a JSON
 summary. The plotted CSV retains machine magnitude, stellar calibration terms,
 planet airmass, corrected magnitude, distance correction, uncertainty
 components, and sidecar path. Planetary distance normalization is applied after
 the stellar atmospheric correction and remains a separately named quantity.
+
+For extinction-corrected plots, the plotter re-associates the saved detections
+downstream at the trusted downloader-manifest UTC carried by the sidecar. It
+uses the immutable stellar-only camera solution and saved image-derived zenith;
+it does not refit the camera or write the association to `stars.sqlite`. This
+metadata-conditioned identification is deliberately separate from the blind
+planetary epoch result. A blind `selected_planet_match` belongs to its fitted
+historical epoch and is never attached to the image's metadata timestamp.
+
+The exact manifest time is used when available. The MMTO use case only requires
+the metadata clock to be right within a few hours, but using its corrected UTC
+avoids adding an unnecessary timing approximation. Every plotted identity is
+stored as `metadata_time_match`; the writer also verifies that its UTC agrees
+within 60 seconds with the sidecar UTC. Identity or time-provenance failures are
+explicit audit exclusions.
 
 ## Current data audit (2026-09-27 snapshot)
 
@@ -140,11 +155,17 @@ although 21 September and the B data on 25 September retain appreciable
 scatter. These are flags for scientific inspection, not grounds for automatic
 clipping or changing the adopted estimator.
 
-The corresponding planet batch in
-`results/planet-plots-all-20260927-nightly/` contains 248 R, 196 G, and 239 B
-calibrated plotted measurements. Every plotted row has complete source,
-catalogue, nightly coefficient, image zero-point, corrected-magnitude, and
-sidecar provenance fields. The audit excludes unmatched images rather than
-falling back to raw magnitudes. The source database SHA-256 remained
+Inspection of the first planet batch exposed an epoch-provenance error: its
+September points used blind planet identities fitted at unrelated historical
+epochs, then attached 2026 timestamps and distances. Those plots are not valid
+planet photometry. The corrected metadata-time pass processes all 298 images
+with accepted G sidecar rows: 255 images contain at least one associated planet,
+43 have no source match, and there are 398 matched detections. Of these, 316 have
+usable unsaturated ordinary-aperture G photometry: Saturn 200, Mars 63, Uranus
+47, Vesta 5, and Jupiter 1. No Venus detection is present. The source database
+also yields 394 usable R points and 388 usable B points. The final plots and
+tables are in
+`results/planet-plots-extinction-corrected-20260927-final/{R,G,B}/`. The source
+database SHA-256 remained
 `cc4a81f8897eba1d111438e7b4d79fdf92a5884101bc1a87e5ae1813dabb89db`
 before and after sidecar generation and plotting.

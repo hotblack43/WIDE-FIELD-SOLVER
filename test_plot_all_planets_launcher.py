@@ -52,12 +52,12 @@ class PlotAllPlanetsLauncherTests(unittest.TestCase):
             check=False,
         )
 
-    def test_runs_all_three_products_for_all_three_channels(self):
+    def test_runs_extinction_corrected_product_for_all_three_channels(self):
         result = self.run_launcher()
 
         self.assertEqual(result.returncode, 0, result.stdout)
         invocations = self.uv_log.read_text(encoding="utf-8").splitlines()
-        self.assertEqual(len(invocations), 9)
+        self.assertEqual(len(invocations), 3)
         self.assertTrue(all(
             f"run --project {ROOT} --frozen" in line
             for line in invocations
@@ -67,25 +67,14 @@ class PlotAllPlanetsLauncherTests(unittest.TestCase):
                 line for line in invocations
                 if f"--channel {channel}" in line
             ]
-            self.assertEqual(len(channel_runs), 3)
+            self.assertEqual(len(channel_runs), 1)
             self.assertTrue(all(
                 f"--output {self.output / channel}" in line
                 for line in channel_runs
             ))
-            self.assertEqual(
-                sum("--distance-corrected" in line for line in channel_runs),
-                1,
-            )
-            self.assertEqual(
-                sum(
-                    "--nightly-stellar-calibrated-distance-corrected" in line
-                    for line in channel_runs
-                ),
-                1,
-            )
-            nightly_run = next(
-                line for line in channel_runs
-                if "--nightly-stellar-calibrated-distance-corrected" in line
+            nightly_run = channel_runs[0]
+            self.assertIn(
+                "--extinction-corrected-distance-corrected", nightly_run
             )
             self.assertIn(
                 f"--nightly-calibration {self.nightly_calibration}",

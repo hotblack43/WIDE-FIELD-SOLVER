@@ -171,6 +171,23 @@ class PlanetPhotometryModuleTests(unittest.TestCase):
         self.assertAlmostEqual(result["flux_uncertainty_adu"],
                                5.634414935390579, places=12)
 
+    def test_planet_photometry_fails_closed_without_measurement_method(self):
+        import scripts.plot_planet_photometry as planet_plot
+
+        rate, magnitude, reason = planet_plot._quality(
+            {
+                "exposure_seconds": "20",
+                "saturation_known": "True",
+                "G_saturated": "False",
+                "G_count_rate_adu_per_s": "100",
+            },
+            "G",
+        )
+
+        self.assertEqual(rate, 100.0)
+        self.assertIsNone(magnitude)
+        self.assertEqual(reason, "G_measurement_not_aperture")
+
     def test_horizons_parser_retains_exact_jd_and_both_distances(self):
         import scripts.plot_planet_photometry as planet_plot
 
@@ -360,6 +377,7 @@ class PlanetPhotometryLoadingTests(unittest.TestCase):
         extinction=0.25,
         rms=0.2,
         fitted_count=40,
+        identity_status="metadata_time_match",
     ):
         fit = {
             "intercept_mag": intercept,
@@ -387,11 +405,15 @@ class PlanetPhotometryLoadingTests(unittest.TestCase):
                 (run_id,),
             ).fetchone()
             payload = json.loads(saved[1])
-            payload["metadata_planet_association"]["matches"] = [{
+            matches = [{
                 "planet": planet,
                 "detection_id": int(detection_id),
                 "measured_altitude_deg": altitude_deg,
             }]
+            if identity_status == "selected_planet_match":
+                payload["matches"] = matches
+            else:
+                payload["metadata_planet_association"]["matches"] = matches
             connection.execute(
                 "UPDATE products SET content=? WHERE rowid=?",
                 (json.dumps(payload), saved[0]),
@@ -857,6 +879,9 @@ class PlanetPhotometryLoadingTests(unittest.TestCase):
         self.assertEqual(set(calibrations), {key})
         self.assertEqual(calibrations[key]["extinction_mag_per_airmass"], 0.2)
         self.assertEqual(calibrations[key]["zero_point_magnitude"], -6.0)
+        self.assertEqual(
+            calibrations[key]["observed_utc"], "2026-09-20T01:00:00Z"
+        )
 
         write_nightly_sidecar(sidecar, duplicate_zero_point=True)
         with self.assertRaisesRegex(ValueError, "duplicate image zero point"):
@@ -867,7 +892,7 @@ class PlanetPhotometryLoadingTests(unittest.TestCase):
 
         writer = getattr(
             planet_plot,
-            "write_nightly_stellar_calibrated_distance_outputs",
+            "write_extinction_corrected_distance_outputs",
             None,
         )
         self.assertTrue(callable(writer))
@@ -915,7 +940,7 @@ class PlanetPhotometryLoadingTests(unittest.TestCase):
             uncertainty_lookup=uncertainties,
         )
 
-        with (output / "planet_nightly_stellar_calibrated_distance_measurements.csv").open(
+        with (output / "planet_extinction_corrected_distance_measurements.csv").open(
             newline="", encoding="utf-8"
         ) as stream:
             exported = list(csv.DictReader(stream))
@@ -923,23 +948,30 @@ class PlanetPhotometryLoadingTests(unittest.TestCase):
         mars = exported[0]
         expected = -5.0 - (-6.0) - 0.2 * rows[0]["planet_airmass"]
         self.assertAlmostEqual(
-            float(mars["nightly_stellar_calibrated_magnitude"]), expected, 12
+            float(mars["extinction_corrected_magnitude"]), expected, 12
         )
         self.assertNotAlmostEqual(
-            float(mars["nightly_stellar_calibrated_magnitude"]),
+            float(mars["extinction_corrected_magnitude"]),
             -5.0 - (-20.0 + 0.9 * rows[0]["planet_airmass"]),
             6,
         )
-        self.assertEqual(mars["nightly_calibration_status"], "available")
+        self.assertEqual(mars["extinction_correction_status"], "available")
         self.assertEqual(mars["nightly_extinction_night"], "2026-09-19")
         self.assertEqual(summary["plotted_counts"]["measurements"], 1)
+        self.assertEqual(
+            summary["quantity"],
+            "extinction-corrected, distance-corrected magnitude",
+        )
+        self.assertTrue(
+            (output / "planet_extinction_corrected_distance_magnitude_vs_time.png").is_file()
+        )
 
     def test_missing_sidecar_match_has_no_legacy_or_raw_fallback(self):
         import scripts.plot_planet_photometry as planet_plot
 
         writer = getattr(
             planet_plot,
-            "write_nightly_stellar_calibrated_distance_outputs",
+            "write_extinction_corrected_distance_outputs",
             None,
         )
         self.assertTrue(callable(writer))
@@ -967,26 +999,320 @@ class PlanetPhotometryLoadingTests(unittest.TestCase):
             uncertainty_lookup={},
         )
 
-        with (output / "planet_nightly_stellar_calibrated_distance_measurements.csv").open(
+        with (output / "planet_extinction_corrected_distance_measurements.csv").open(
             newline="", encoding="utf-8"
         ) as stream:
             self.assertEqual(list(csv.DictReader(stream)), [])
-        with (output / "planet_nightly_calibration_audit.csv").open(
+        with (output / "planet_extinction_correction_audit.csv").open(
             newline="", encoding="utf-8"
         ) as stream:
             audited = list(csv.DictReader(stream))
-        self.assertEqual(audited[0]["nightly_calibration_status"], "missing_sidecar_match")
-        self.assertEqual(audited[0]["nightly_stellar_calibrated_magnitude"], "")
+        self.assertEqual(audited[0]["extinction_correction_status"], "missing_sidecar_match")
+        self.assertEqual(audited[0]["extinction_corrected_magnitude"], "")
         self.assertEqual(
             summary["excluded_calibrated_reasons"], {"missing_sidecar_match": 1}
         )
 
-    def test_distance_correction_is_applied_after_nightly_stellar_calibration(self):
+    def test_extinction_corrected_plot_rejects_blind_epoch_identity(self):
+        import scripts.plot_planet_photometry as planet_plot
+
+        source_sha = "a" * 64
+        self.add_run(
+            "run", source_sha, "2026-09-20T01:01:00Z",
+            observation="2026-09-20T01:00:00 UTC",
+        )
+        self.add_planet(
+            "run", 1, "Venus", status="selected_planet_match", rate=100.0
+        )
+        self.add_stellar_calibration(
+            "run", planet="Venus", identity_status="selected_planet_match"
+        )
+        rows, audit = load_planet_measurements(self.database)
+        sidecar = Path(self.temporary.name) / "blind-identity-sidecar"
+        write_nightly_sidecar(sidecar, source_sha256=source_sha)
+        output = Path(self.temporary.name) / "blind-identity-output"
+
+        summary = planet_plot.write_extinction_corrected_distance_outputs(
+            rows,
+            audit,
+            output,
+            database=self.database,
+            nightly_calibration=sidecar,
+            channel="G",
+            distance_lookup={
+                ("Venus", "2026-09-20T01:00:00Z"): {
+                    "sun_planet_distance_au": 1.0,
+                    "earth_planet_distance_au": 1.0,
+                    "distance_ephemeris_source": "test ephemeris",
+                }
+            },
+            uncertainty_lookup={
+                ("run", "1"): {
+                    "machine_magnitude_uncertainty": 0.1,
+                    "uncertainty_status": "available",
+                    "uncertainty_source": "test background",
+                }
+            },
+        )
+
+        with (output / "planet_extinction_correction_audit.csv").open(
+            newline="", encoding="utf-8"
+        ) as stream:
+            audited = next(csv.DictReader(stream))
+        self.assertEqual(summary["plotted_counts"]["measurements"], 0)
+        self.assertEqual(
+            audited["extinction_correction_exclusion_reason"],
+            "blind_epoch_identity_not_observation_time",
+        )
+
+    def test_metadata_time_loader_reassociates_saved_detections_at_sidecar_utc(self):
+        import scripts.plot_planet_photometry as planet_plot
+
+        source_sha = "a" * 64
+        self.add_run(
+            "run", source_sha, "2026-09-20T02:01:00Z",
+            observation="1909-12-05T18:41:15 UTC",
+            source_path="/raw_allsky_samples/mmto/MMTO.fits",
+        )
+        self.add_planet(
+            "run", 9, "Venus", status="selected_planet_match", rate=10.0
+        )
+        with closing(sqlite3.connect(self.database)) as connection, connection:
+            connection.execute(
+                "INSERT INTO products VALUES (?,?,?)",
+                (
+                    "run", "stellar_only_result.json",
+                    json.dumps({
+                        "camera": {"shape": [100, 120]},
+                        "fit": {"rms_arcmin": 5.5},
+                    }),
+                ),
+            )
+            connection.execute(
+                "INSERT INTO products VALUES (?,?,?)",
+                (
+                    "run", "photometric_zenith.json",
+                    json.dumps({"zenith_unit_vector": [0.0, 0.0, 1.0]}),
+                ),
+            )
+            detection = {
+                "detection_id": "3", "x_px": "51.0", "y_px": "42.0",
+                "flux_above_background": "2000.0", "saturated": "False",
+                "source_class": "compact",
+            }
+            connection.execute(
+                "INSERT INTO measurements VALUES (?,?,?,?,?,?)",
+                (
+                    "run", "dots/star_candidates.csv", 1, "", "3",
+                    json.dumps(detection),
+                ),
+            )
+            photometry = {
+                **detection,
+                "saturation_known": "True",
+                "exposure_seconds": "20.0",
+                "exposure_source": "fits:PRIMARY:EXPOSURE",
+                "G_flux": "4000.0",
+                "G_count_rate_adu_per_s": "200.0",
+                "G_saturated": "False",
+                "G_measurement_method": "aperture",
+            }
+            connection.execute(
+                "INSERT INTO measurements VALUES (?,?,?,?,?,?)",
+                (
+                    "run", "source_photometry.csv", 1, "", "3",
+                    json.dumps(photometry),
+                ),
+            )
+        sidecar = Path(self.temporary.name) / "metadata-time-sidecar"
+        write_nightly_sidecar(sidecar, source_sha256=source_sha)
+        calls = []
+
+        def associate(
+            camera_record, detections, zenith, observed_utc,
+            positional_sigma_arcmin,
+        ):
+            calls.append((
+                camera_record, detections, zenith, observed_utc,
+                positional_sigma_arcmin,
+            ))
+            return {
+                "status": "metadata_time_associated",
+                "time_utc": observed_utc,
+                "epoch_tdb": "2026-09-20T01:01:09.184 TDB",
+                "epoch_source": "test manifest UTC",
+                "gate_arcmin": 30.0,
+                "positional_sigma_arcmin": positional_sigma_arcmin,
+                "method": "test exact metadata ephemeris",
+                "matches": [{
+                    "planet": "Saturn", "detection_id": 3,
+                    "measured_altitude_deg": 45.0,
+                    "unused_brightness_rank": 1,
+                    "source_class": "compact",
+                    "jd_tdb": 2461303.5424674,
+                    "measured_x_px": 51.0,
+                    "measured_y_px": 42.0,
+                    "predicted_x_px": 51.2,
+                    "predicted_y_px": 42.1,
+                    "separation_px": 0.2236,
+                    "separation_arcmin": 1.2,
+                    "catalogue_residual_px": None,
+                    "catalogue_residual_arcmin": None,
+                }],
+                "predicted_without_source": [{"planet": "Neptune"}],
+            }
+
+        rows, audit = planet_plot.load_mmto_metadata_planet_measurements(
+            self.database,
+            sidecar,
+            channel="G",
+            association_provider=associate,
+        )
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["planet"], "Saturn")
+        self.assertEqual(rows[0]["identity_status"], "metadata_time_match")
+        self.assertEqual(rows[0]["observation_time_utc"], "2026-09-20T01:00:00Z")
+        self.assertEqual(rows[0]["count_rate_adu_per_s"], 200.0)
+        self.assertAlmostEqual(rows[0]["planet_measured_altitude_deg"], 45.0)
+        self.assertNotIn("Venus", audit["planet_counts"])
+        self.assertEqual(audit["metadata_time_predicted_without_source"], 1)
+        self.assertEqual(calls[0][0], {"shape": [100, 120]})
+        self.assertEqual(calls[0][2], [0.0, 0.0, 1.0])
+        self.assertEqual(calls[0][3], "2026-09-20T01:00:00Z")
+        self.assertEqual(calls[0][4], 5.5)
+        self.assertEqual(rows[0]["metadata_association_time_utc"], calls[0][3])
+        self.assertEqual(rows[0]["metadata_association_status"],
+                         "metadata_time_associated")
+        self.assertEqual(rows[0]["metadata_association_method"],
+                         "test exact metadata ephemeris")
+        self.assertEqual(rows[0]["association_positional_sigma_arcmin"], 5.5)
+        self.assertEqual(rows[0]["association_separation_arcmin"], 1.2)
+
+    def test_extinction_audit_retains_unusable_metadata_matches(self):
+        import scripts.plot_planet_photometry as planet_plot
+
+        source_sha = "a" * 64
+        self.add_run(
+            "run", source_sha, "2026-09-20T01:01:00Z",
+            observation="2026-09-20T01:00:00 UTC",
+        )
+        self.add_planet("run", 1, "Mars", rate=100.0)
+        self.add_stellar_calibration("run", planet="Mars", detection_id="1")
+        rows, audit = load_planet_measurements(self.database)
+        saturated = {
+            **rows[0],
+            "planet": "Saturn",
+            "detection_id": "2",
+            "photometry_usable": False,
+            "machine_magnitude": None,
+            "exclusion_reason": "G_saturated",
+        }
+        invalid_altitude = {
+            **rows[0],
+            "planet": "Uranus",
+            "detection_id": "3",
+            "photometry_usable": False,
+            "machine_magnitude": None,
+            "planet_measured_altitude_deg": None,
+            "planet_airmass": None,
+            "exclusion_reason": "planet_altitude_invalid",
+        }
+        sidecar = Path(self.temporary.name) / "complete-audit-sidecar"
+        write_nightly_sidecar(sidecar, source_sha256=source_sha)
+        output = Path(self.temporary.name) / "complete-audit-output"
+
+        planet_plot.write_extinction_corrected_distance_outputs(
+            [rows[0], saturated, invalid_altitude],
+            audit,
+            output,
+            database=self.database,
+            nightly_calibration=sidecar,
+            channel="G",
+            distance_lookup={
+                ("Mars", "2026-09-20T01:00:00Z"): {
+                    "sun_planet_distance_au": 1.0,
+                    "earth_planet_distance_au": 1.0,
+                    "distance_ephemeris_source": "test ephemeris",
+                }
+            },
+            uncertainty_lookup={
+                ("run", "1"): {
+                    "machine_magnitude_uncertainty": 0.1,
+                    "uncertainty_status": "available",
+                    "uncertainty_source": "test background",
+                }
+            },
+        )
+
+        with (output / "planet_extinction_correction_audit.csv").open(
+            newline="", encoding="utf-8"
+        ) as stream:
+            audited = {row["planet"]: row for row in csv.DictReader(stream)}
+        self.assertEqual(set(audited), {"Mars", "Saturn", "Uranus"})
+        self.assertEqual(
+            audited["Saturn"]["extinction_correction_exclusion_reason"],
+            "G_saturated",
+        )
+        self.assertEqual(
+            audited["Uranus"]["extinction_correction_exclusion_reason"],
+            "planet_altitude_invalid",
+        )
+
+    def test_extinction_corrected_plot_rejects_identity_at_wrong_utc(self):
+        import scripts.plot_planet_photometry as planet_plot
+
+        source_sha = "a" * 64
+        self.add_run(
+            "run", source_sha, "2026-09-20T02:01:00Z",
+            observation="2026-09-20T02:00:00 UTC",
+        )
+        self.add_planet("run", 1, "Venus", rate=100.0)
+        self.add_stellar_calibration("run", planet="Venus")
+        rows, audit = load_planet_measurements(self.database)
+        sidecar = Path(self.temporary.name) / "wrong-utc-sidecar"
+        write_nightly_sidecar(sidecar, source_sha256=source_sha)
+        output = Path(self.temporary.name) / "wrong-utc-output"
+
+        summary = planet_plot.write_extinction_corrected_distance_outputs(
+            rows,
+            audit,
+            output,
+            database=self.database,
+            nightly_calibration=sidecar,
+            channel="G",
+            distance_lookup={
+                ("Venus", "2026-09-20T02:00:00Z"): {
+                    "sun_planet_distance_au": 1.0,
+                    "earth_planet_distance_au": 1.0,
+                    "distance_ephemeris_source": "test ephemeris",
+                }
+            },
+            uncertainty_lookup={
+                ("run", "1"): {
+                    "machine_magnitude_uncertainty": 0.1,
+                    "uncertainty_status": "available",
+                    "uncertainty_source": "test background",
+                }
+            },
+        )
+
+        with (output / "planet_extinction_correction_audit.csv").open(
+            newline="", encoding="utf-8"
+        ) as stream:
+            audited = next(csv.DictReader(stream))
+        self.assertEqual(summary["plotted_counts"]["measurements"], 0)
+        self.assertEqual(
+            audited["extinction_correction_exclusion_reason"],
+            "identity_time_disagrees_with_manifest_utc",
+        )
+
+    def test_distance_correction_is_applied_after_extinction_correction(self):
         import scripts.plot_planet_photometry as planet_plot
 
         writer = getattr(
             planet_plot,
-            "write_nightly_stellar_calibrated_distance_outputs",
+            "write_extinction_corrected_distance_outputs",
             None,
         )
         self.assertTrue(callable(writer))
@@ -1029,16 +1355,16 @@ class PlanetPhotometryLoadingTests(unittest.TestCase):
             uncertainty_lookup=uncertainties,
         )
 
-        with (output / "planet_nightly_stellar_calibrated_distance_measurements.csv").open(
+        with (output / "planet_extinction_corrected_distance_measurements.csv").open(
             newline="", encoding="utf-8"
         ) as stream:
             exported = next(csv.DictReader(stream))
-        stellar = float(exported["nightly_stellar_calibrated_magnitude"])
+        stellar = float(exported["extinction_corrected_magnitude"])
         expected_distance = planet_plot._distance_corrected_magnitude(
             stellar, 2.0, 3.0
         )
         self.assertAlmostEqual(
-            float(exported["nightly_stellar_calibrated_distance_magnitude"]),
+            float(exported["extinction_corrected_distance_magnitude"]),
             expected_distance,
             12,
         )
@@ -1243,21 +1569,28 @@ class PlanetPhotometryLoadingTests(unittest.TestCase):
         sidecar.mkdir()
         summary = {"plotted_counts": {"measurements": 0}}
 
+        metadata_rows = ([{"planet": "Saturn"}], {"detected_planet_rows": 1})
         with mock.patch.object(
             planet_plot,
-            "write_nightly_stellar_calibrated_distance_outputs",
+            "load_mmto_metadata_planet_measurements",
+            return_value=metadata_rows,
+        ) as loader, mock.patch.object(
+            planet_plot,
+            "write_extinction_corrected_distance_outputs",
             return_value=summary,
         ) as writer:
             status = planet_plot.main([
                 "--database", str(self.database),
                 "--output", str(output),
                 "--channel", "G",
-                "--nightly-stellar-calibrated-distance-corrected",
+                "--extinction-corrected-distance-corrected",
                 "--nightly-calibration", str(sidecar),
             ])
 
         self.assertEqual(status, 0)
+        loader.assert_called_once_with(self.database, sidecar, channel="G")
         writer.assert_called_once()
+        self.assertEqual(writer.call_args.args[:2], metadata_rows)
         self.assertEqual(
             writer.call_args.kwargs["nightly_calibration"], sidecar
         )

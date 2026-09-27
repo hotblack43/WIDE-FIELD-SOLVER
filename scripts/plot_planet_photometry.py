@@ -7,12 +7,15 @@ from collections import Counter
 from contextlib import closing
 import csv
 from datetime import datetime, timedelta, timezone
+from functools import lru_cache
 import hashlib
+import importlib.util
 import json
 import math
 from pathlib import Path
 import re
 import sqlite3
+import sys
 import xml.etree.ElementTree as ET
 from zoneinfo import ZoneInfo
 
@@ -82,20 +85,37 @@ STELLAR_CALIBRATED_DISTANCE_FIELDS = [
     "stellar_fit_uncertainty_mag",
     "total_magnitude_uncertainty",
 ]
-NIGHTLY_STELLAR_CALIBRATED_DISTANCE_FIELDS = [
+EXTINCTION_CORRECTED_DISTANCE_FIELDS = [
     *DISTANCE_CORRECTED_FIELDS,
+    "stellar_only_fit_rms_arcmin",
+    "metadata_association_status",
+    "metadata_association_time_utc",
+    "metadata_association_epoch_tdb",
+    "metadata_association_epoch_source",
+    "metadata_association_method",
+    "metadata_association_jd_tdb",
+    "association_gate_arcmin",
+    "association_positional_sigma_arcmin",
+    "association_measured_x_px",
+    "association_measured_y_px",
+    "association_predicted_x_px",
+    "association_predicted_y_px",
+    "association_separation_px",
+    "association_separation_arcmin",
+    "association_catalogue_residual_px",
+    "association_catalogue_residual_arcmin",
     "nightly_extinction_night",
     "nightly_extinction_mag_per_airmass",
     "nightly_extinction_scaled_mad",
     "nightly_zero_point_mag",
     "nightly_zero_point_uncertainty_mag",
-    "nightly_stellar_calibrated_magnitude",
-    "nightly_stellar_calibrated_distance_magnitude",
-    "nightly_calibration_status",
-    "nightly_calibration_source",
+    "extinction_corrected_magnitude",
+    "extinction_corrected_distance_magnitude",
+    "extinction_correction_status",
+    "extinction_correction_source",
     "nightly_extinction_uncertainty_mag",
     "total_magnitude_uncertainty",
-    "nightly_calibrated_exclusion_reason",
+    "extinction_correction_exclusion_reason",
 ]
 
 
@@ -189,11 +209,13 @@ def load_nightly_image_calibrations(directory):
             zero_point = _finite(row.get("zero_point_magnitude"))
             zero_uncertainty = _finite(row.get("uncertainty_magnitude"))
             saved_extinction = _finite(row.get("extinction_mag_per_airmass"))
+            observed_utc = _normalise_utc(row.get("observed_utc"))
             if (
                 zero_point is None
                 or zero_uncertainty is None
                 or zero_uncertainty < 0.0
                 or saved_extinction is None
+                or observed_utc is None
                 or not math.isclose(
                     saved_extinction,
                     coefficient["extinction_mag_per_airmass"],
@@ -207,11 +229,406 @@ def load_nightly_image_calibrations(directory):
                 )
             calibrations[key] = {
                 **coefficient,
+                "observed_utc": observed_utc,
                 "zero_point_magnitude": zero_point,
                 "zero_point_uncertainty_magnitude": zero_uncertainty,
-                "nightly_calibration_source": str(directory),
+                "extinction_correction_source": str(directory),
             }
     return calibrations
+
+
+def _load_module_from_path(name, path):
+    """Load one preserved-runtime module under an isolated private name."""
+    spec = importlib.util.spec_from_file_location(name, path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"cannot load preserved module {path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    try:
+        spec.loader.exec_module(module)
+    except Exception:
+        sys.modules.pop(name, None)
+        raise
+    return module
+
+
+@lru_cache(maxsize=1)
+def _v11_metadata_planet_tools():
+    """Return the frozen v11 camera, association, and ephemeris functions."""
+    version = ROOT / "v11"
+    modules_before = set(sys.modules)
+    barghini = _load_module_from_path(
+        "_mmto_v11_barghini_model", version / "barghini_model.py"
+    )
+    previous_barghini = sys.modules.get("barghini_model")
+    sys.modules["barghini_model"] = barghini
+    sys.path.insert(0, str(version))
+    try:
+        camera_module = _load_module_from_path(
+            "_mmto_v11_point_star_barghini", version / "point_star_barghini.py"
+        )
+    finally:
+        try:
+            sys.path.remove(str(version))
+        except ValueError:
+            pass
+        if previous_barghini is None:
+            sys.modules.pop("barghini_model", None)
+        else:
+            sys.modules["barghini_model"] = previous_barghini
+        for module_name in set(sys.modules) - modules_before:
+            loaded = sys.modules.get(module_name)
+            loaded_path = getattr(loaded, "__file__", None)
+            if (
+                loaded_path
+                and Path(loaded_path).resolve().is_relative_to(version.resolve())
+                and not module_name.startswith("_mmto_v11_")
+            ):
+                sys.modules.pop(module_name, None)
+    planet_module = _load_module_from_path(
+        "_mmto_v11_point_star_planets", version / "point_star_planets.py"
+    )
+    ephemeris_module = _load_module_from_path(
+        "_mmto_v11_point_star_planet_ephemeris",
+        version / "point_star_planet_ephemeris.py",
+    )
+    return (
+        camera_module.BarghiniCamera,
+        planet_module.associate_planets_at_metadata_time,
+        ephemeris_module.PLANETS,
+        ephemeris_module.planet_vectors,
+    )
+
+
+def _associate_saved_mmto_planets(
+    camera_record,
+    detections,
+    zenith_unit_vector,
+    observed_utc,
+    positional_sigma_arcmin,
+):
+    """Associate saved detections at downstream MMTO manifest time."""
+    from astropy.time import Time
+
+    camera_class, associate, planet_names, vector_function = (
+        _v11_metadata_planet_tools()
+    )
+    camera = camera_class.from_serialised(camera_record)
+    observed = datetime.fromisoformat(observed_utc.replace("Z", "+00:00"))
+    metadata = {
+        "status": "selected",
+        "jd_tdb": float(Time(observed).tdb.jd),
+        "time_utc": observed_utc,
+        "source": "MMTO downloader manifest observed_utc (downstream only)",
+    }
+    return associate(
+        camera,
+        detections,
+        planet_names,
+        vector_function,
+        metadata,
+        positional_sigma_arcmin=positional_sigma_arcmin,
+        zenith_unit_vector=zenith_unit_vector,
+    )
+
+
+def _measurement_rows(connection, run_id, product):
+    rows = []
+    for row_number, star_id, detection_id, payload in connection.execute(
+        """SELECT row_number,star_id,detection_id,values_json
+           FROM measurements WHERE run_id=? AND product=? ORDER BY row_number""",
+        (run_id, product),
+    ):
+        try:
+            values = json.loads(payload)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            continue
+        if not isinstance(values, dict):
+            continue
+        values = dict(values)
+        values.setdefault("detection_id", str(detection_id or ""))
+        values["_row_number"] = row_number
+        values["_star_id"] = str(star_id or "")
+        rows.append(values)
+    return rows
+
+
+def load_mmto_metadata_planet_measurements(
+    database,
+    nightly_calibration,
+    channel="G",
+    *,
+    association_provider=None,
+):
+    """Re-identify planets at MMTO manifest UTC from immutable saved products.
+
+    This is a downstream, metadata-conditioned association.  It never changes
+    the blind solution or writes to the run database.
+    """
+    if channel not in {"R", "G", "B"}:
+        raise ValueError("channel must be R, G or B")
+    calibrations = load_nightly_image_calibrations(nightly_calibration)
+    selected_calibrations = {}
+    for key, calibration in calibrations.items():
+        source_sha256, catalogue_sha256, night, saved_channel = key
+        if saved_channel != channel:
+            continue
+        pair = source_sha256, catalogue_sha256
+        if pair in selected_calibrations:
+            raise ValueError(
+                "multiple accepted sidecar rows for source/catalogue/channel "
+                + "/".join((*pair, channel))
+            )
+        selected_calibrations[pair] = (night, calibration)
+
+    associate = association_provider or _associate_saved_mmto_planets
+    audit = Counter()
+    rows = []
+    uri = Path(database).resolve().as_uri() + "?mode=ro"
+    with closing(sqlite3.connect(uri, uri=True, timeout=30)) as connection:
+        connection.execute("PRAGMA query_only=ON")
+        connection.execute("BEGIN")
+        latest = {}
+        for run in connection.execute(
+            """SELECT run_id,recorded_at_utc,source_path,source_sha256,
+                      catalogue_sha256,exit_code
+               FROM runs ORDER BY recorded_at_utc,run_id"""
+        ):
+            if int(run[5]) != 0:
+                continue
+            pair = str(run[3] or ""), str(run[4] or "")
+            if pair in selected_calibrations:
+                latest[pair] = run
+        audit["accepted_sidecar_images"] = len(selected_calibrations)
+        audit["selected_latest_successful_runs"] = len(latest)
+        audit["accepted_sidecar_images_without_successful_run"] = (
+            len(selected_calibrations) - len(latest)
+        )
+
+        for pair in sorted(latest):
+            run_id, recorded, source_path, source_sha256, catalogue_sha256, _ = (
+                latest[pair]
+            )
+            _, calibration = selected_calibrations[pair]
+
+            def product(name):
+                saved = connection.execute(
+                    "SELECT content FROM products WHERE run_id=? AND product=?",
+                    (run_id, name),
+                ).fetchone()
+                return saved[0] if saved else None
+
+            camera_payload = product("stellar_only_result.json")
+            zenith_payload = product(
+                "stellar_only_products/photometric_zenith.json"
+            )
+            coordinate_product = "stellar_only_products/star_coordinates.csv"
+            if zenith_payload is None:
+                zenith_payload = product("photometric_zenith.json")
+                coordinate_product = "star_coordinates.csv"
+                audit["root_auxiliary_product_fallback_images"] += 1
+            if camera_payload is None or zenith_payload is None:
+                audit["images_missing_fixed_geometry"] += 1
+                continue
+            try:
+                fixed_result = json.loads(camera_payload)
+                camera_record = fixed_result["camera"]
+                stellar_fit_rms = _finite(
+                    (fixed_result.get("fit") or {}).get("rms_arcmin")
+                )
+                zenith = json.loads(zenith_payload)["zenith_unit_vector"]
+            except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+                audit["images_with_invalid_fixed_geometry"] += 1
+                continue
+            if stellar_fit_rms is None or stellar_fit_rms < 0.0:
+                audit["images_with_invalid_stellar_fit_rms"] += 1
+                continue
+            positional_sigma = max(stellar_fit_rms, 3.0)
+
+            detections = _measurement_rows(
+                connection, run_id, "dots/star_candidates.csv"
+            )
+            coordinates = {
+                str(item.get("detection_id", "")): item
+                for item in _measurement_rows(
+                    connection, run_id, coordinate_product
+                )
+            }
+            for detection in detections:
+                coordinate = coordinates.get(str(detection["detection_id"]))
+                if coordinate is None:
+                    continue
+                detection["catalogue_star_id"] = (
+                    coordinate.get("star_id") or coordinate.get("_star_id")
+                )
+                detection["catalogue_residual_px"] = coordinate.get(
+                    "residual_px"
+                )
+                detection["catalogue_residual_arcmin"] = coordinate.get(
+                    "residual_arcmin"
+                )
+            photometry = {
+                str(item.get("detection_id", "")): item
+                for item in _measurement_rows(
+                    connection, run_id, "source_photometry.csv"
+                )
+            }
+            try:
+                association = associate(
+                    camera_record,
+                    detections,
+                    zenith,
+                    calibration["observed_utc"],
+                    positional_sigma,
+                )
+            except (ImportError, KeyError, TypeError, ValueError):
+                audit["images_with_association_error"] += 1
+                continue
+            status = str(association.get("status", "unspecified"))
+            association_time = _normalise_utc(association.get("time_utc"))
+            audit[f"association_{status}_images"] += 1
+            audit["metadata_time_predicted_without_source"] += len(
+                association.get("predicted_without_source") or []
+            )
+            camera_label, camera_provenance = _camera_identity(source_path)
+            for match in association.get("matches") or []:
+                audit["detected_planet_rows"] += 1
+                detection_id = str(match.get("detection_id", ""))
+                values = photometry.get(detection_id)
+                if values is None:
+                    values = {}
+                    rate, magnitude, reason = (
+                        None,
+                        None,
+                        "missing_source_photometry",
+                    )
+                else:
+                    exposure_seconds = _finite(values.get("exposure_seconds"))
+                    rate, magnitude, reason = _quality(
+                        values, channel, exposure_seconds=exposure_seconds
+                    )
+                exposure_seconds = _finite(values.get("exposure_seconds"))
+                altitude = _finite(match.get("measured_altitude_deg"))
+                airmass = _kasten_young_airmass(altitude)
+                if altitude is None or airmass is None:
+                    magnitude = None
+                    reason = "planet_altitude_invalid"
+                usable = not reason
+                audit[
+                    "usable_photometry_rows"
+                    if usable
+                    else "unusable_photometry_rows"
+                ] += 1
+                if reason:
+                    audit[f"excluded_{reason}"] += 1
+                planet = str(match.get("planet", ""))
+                rows.append({
+                    "run_id": run_id,
+                    "recorded_at_utc": recorded,
+                    "source_path": source_path,
+                    "source_sha256": source_sha256 or "",
+                    "catalogue_sha256": catalogue_sha256 or "",
+                    "observation_time_utc": association_time or "",
+                    "camera_label": camera_label,
+                    "camera_provenance": camera_provenance,
+                    "planet_type": (
+                        "minor_planet"
+                        if planet.casefold() in {"ceres", "vesta"}
+                        else "major_planet"
+                    ),
+                    "planet": planet,
+                    "identity_status": "metadata_time_match",
+                    "candidate_rank": match.get("unused_brightness_rank", ""),
+                    "detection_id": detection_id,
+                    "source_class": (
+                        match.get("source_class")
+                        or values.get("source_class", "")
+                    ),
+                    "channel": channel,
+                    "exposure_seconds": exposure_seconds,
+                    "exposure_source": values.get("exposure_source", ""),
+                    "count_rate_adu_per_s": rate,
+                    "machine_magnitude": magnitude,
+                    "planet_measured_altitude_deg": altitude,
+                    "planet_airmass": airmass,
+                    "stellar_intercept_mag": None,
+                    "stellar_extinction_mag_per_airmass": None,
+                    "stellar_calibration_offset_mag": None,
+                    "stellar_fit_rms_mag": None,
+                    "stellar_fit_count": None,
+                    "stellar_fit_status": "",
+                    "stellar_catalogue_passband": "",
+                    "stellar_calibration_status": (
+                        "not_used_extinction_sidecar_applied_downstream"
+                    ),
+                    "stellar_calibration_source": "",
+                    "photometry_usable": usable,
+                    "exclusion_reason": reason,
+                    "saturation_known": values.get("saturation_known", ""),
+                    "channel_saturated": values.get(
+                        f"{channel}_saturated", ""
+                    ),
+                    "measurement_method": values.get(
+                        f"{channel}_measurement_method", ""
+                    ),
+                    "row_number": values.get("_row_number", ""),
+                    "stellar_only_fit_rms_arcmin": stellar_fit_rms,
+                    "metadata_association_status": status,
+                    "metadata_association_time_utc": association_time or "",
+                    "metadata_association_epoch_tdb": association.get(
+                        "epoch_tdb", ""
+                    ),
+                    "metadata_association_epoch_source": association.get(
+                        "epoch_source", ""
+                    ),
+                    "metadata_association_method": association.get(
+                        "method", ""
+                    ),
+                    "metadata_association_jd_tdb": match.get("jd_tdb", ""),
+                    "association_gate_arcmin": association.get(
+                        "gate_arcmin", ""
+                    ),
+                    "association_positional_sigma_arcmin": association.get(
+                        "positional_sigma_arcmin", positional_sigma
+                    ),
+                    "association_measured_x_px": match.get(
+                        "measured_x_px", ""
+                    ),
+                    "association_measured_y_px": match.get(
+                        "measured_y_px", ""
+                    ),
+                    "association_predicted_x_px": match.get(
+                        "predicted_x_px", ""
+                    ),
+                    "association_predicted_y_px": match.get(
+                        "predicted_y_px", ""
+                    ),
+                    "association_separation_px": match.get(
+                        "separation_px", ""
+                    ),
+                    "association_separation_arcmin": match.get(
+                        "separation_arcmin", ""
+                    ),
+                    "association_catalogue_residual_px": match.get(
+                        "catalogue_residual_px", ""
+                    ),
+                    "association_catalogue_residual_arcmin": match.get(
+                        "catalogue_residual_arcmin", ""
+                    ),
+                })
+        connection.rollback()
+    rows.sort(
+        key=lambda row: (
+            row["observation_time_utc"],
+            row["planet"],
+            str(row["detection_id"]),
+        )
+    )
+    audit["planet_counts"] = dict(Counter(row["planet"] for row in rows))
+    audit["usable_planet_counts"] = dict(
+        Counter(row["planet"] for row in rows if row["photometry_usable"])
+    )
+    return rows, dict(audit)
 
 
 def _distance_corrected_magnitude(machine_magnitude, sun_planet_au, earth_planet_au):
@@ -671,7 +1088,7 @@ def _quality(values, channel, exposure_seconds=None):
     flux = _finite(values.get(f"{channel}_flux"))
     saturation_known = str(values.get("saturation_known", "")).casefold() == "true"
     saturated = str(values.get(f"{channel}_saturated", values.get("saturated", ""))).casefold()
-    method = values.get(f"{channel}_measurement_method", "aperture")
+    method = values.get(f"{channel}_measurement_method", "")
     if seconds is None or seconds <= 0:
         return rate, None, "missing_or_nonpositive_exposure"
     if not saturation_known:
@@ -1880,35 +2297,35 @@ def write_stellar_calibrated_distance_outputs(
     return summary
 
 
-def _build_nightly_stellar_calibrated_distance_figure(
+def _build_extinction_corrected_distance_figure(
     usable, camera_markers, planet_colours, *, channel
 ):
-    """Build the nightly star-calibrated and distance-normalized planet plot."""
+    """Build the extinction-corrected and distance-normalized planet plot."""
     return _build_distance_corrected_figure(
         usable,
         camera_markers,
         planet_colours,
         channel=channel,
-        magnitude_field="nightly_stellar_calibrated_distance_magnitude",
+        magnitude_field="extinction_corrected_distance_magnitude",
         uncertainty_field="total_magnitude_uncertainty",
         title=(
-            "Detected planets: nightly stellar-calibrated, "
+            "Detected planets: extinction-corrected, "
             "distance-corrected magnitude versus time"
         ),
         ylabel=(
-            f"{channel} nightly stellar-calibrated magnitude at "
+            f"{channel} extinction-corrected magnitude at "
             "r☉₋ₚ = r⊕₋ₚ = 1 AU"
         ),
-        empty_message="No complete nightly stellar-calibrated planet photometry",
+        empty_message="No complete extinction-corrected planet photometry",
         explanation=(
-            "Nightly stellar calibration: m − Z_fixed − k_night × planet airmass.\n"
+            "Extinction correction: m − Z_fixed − k_night × planet airmass.\n"
             "Distance correction is then −5 log₁₀(r☉₋ₚ r⊕₋ₚ), distances in AU.\n"
             "Bars combine aperture, fixed-Z, and nightly k-stability components."
         ),
     )
 
 
-def write_nightly_stellar_calibrated_distance_outputs(
+def write_extinction_corrected_distance_outputs(
     rows,
     audit,
     output,
@@ -1920,7 +2337,7 @@ def write_nightly_stellar_calibrated_distance_outputs(
     distance_lookup=None,
     uncertainty_lookup=None,
 ):
-    """Apply only the explicit nightly stellar sidecar, then planet distances."""
+    """Apply only the explicit nightly extinction sidecar, then distances."""
     if skip_earliest_observations < 0:
         raise ValueError("skip_earliest_observations must be nonnegative")
     output = Path(output)
@@ -1936,6 +2353,11 @@ def write_nightly_stellar_calibrated_distance_outputs(
         if (row["source_sha256"] or row["source_path"])
         not in omitted_observations
     ]
+    audit_candidates = [
+        row for row in rows
+        if (row["source_sha256"] or row["source_path"])
+        not in omitted_observations
+    ]
     if distance_lookup is None:
         distance_lookup = _horizons_distance_lookup(selected)
     if uncertainty_lookup is None:
@@ -1945,7 +2367,7 @@ def write_nightly_stellar_calibrated_distance_outputs(
 
     calibrated = []
     calibration_audit = []
-    for original in selected:
+    for original in audit_candidates:
         row = dict(original)
         row.update({
             "nightly_extinction_night": None,
@@ -1953,16 +2375,25 @@ def write_nightly_stellar_calibrated_distance_outputs(
             "nightly_extinction_scaled_mad": None,
             "nightly_zero_point_mag": None,
             "nightly_zero_point_uncertainty_mag": None,
-            "nightly_stellar_calibrated_magnitude": None,
-            "nightly_stellar_calibrated_distance_magnitude": None,
-            "nightly_calibration_status": "",
-            "nightly_calibration_source": str(
+            "extinction_corrected_magnitude": None,
+            "extinction_corrected_distance_magnitude": None,
+            "extinction_correction_status": "",
+            "extinction_correction_source": str(
                 Path(nightly_calibration).expanduser().resolve()
             ),
             "nightly_extinction_uncertainty_mag": None,
             "total_magnitude_uncertainty": None,
-            "nightly_calibrated_exclusion_reason": "",
+            "extinction_correction_exclusion_reason": "",
         })
+        if row.get("identity_status") != "metadata_time_match":
+            row["extinction_correction_status"] = (
+                "blind_epoch_identity_not_observation_time"
+            )
+            row["extinction_correction_exclusion_reason"] = (
+                "blind_epoch_identity_not_observation_time"
+            )
+            calibration_audit.append(row)
+            continue
         night = _mmto_observing_night(row.get("observation_time_utc"))
         key = (
             row.get("source_sha256", ""),
@@ -1972,21 +2403,49 @@ def write_nightly_stellar_calibrated_distance_outputs(
         )
         calibration = calibrations.get(key)
         if calibration is None:
-            row["nightly_calibration_status"] = "missing_sidecar_match"
-            row["nightly_calibrated_exclusion_reason"] = "missing_sidecar_match"
+            row["extinction_correction_status"] = "missing_sidecar_match"
+            row["extinction_correction_exclusion_reason"] = "missing_sidecar_match"
+            calibration_audit.append(row)
+            continue
+        identity_time = _normalise_utc(
+            row.get("metadata_association_time_utc")
+            or row.get("observation_time_utc")
+        )
+        calibration_time = calibration["observed_utc"]
+        if identity_time is None or abs(
+            (
+                datetime.fromisoformat(identity_time.replace("Z", "+00:00"))
+                - datetime.fromisoformat(
+                    calibration_time.replace("Z", "+00:00")
+                )
+            ).total_seconds()
+        ) > 60.0:
+            row["extinction_correction_status"] = (
+                "identity_time_disagrees_with_manifest_utc"
+            )
+            row["extinction_correction_exclusion_reason"] = (
+                "identity_time_disagrees_with_manifest_utc"
+            )
+            calibration_audit.append(row)
+            continue
+        row["observation_time_utc"] = calibration_time
+        if not row.get("photometry_usable"):
+            reason = row.get("exclusion_reason") or "source_photometry_unusable"
+            row["extinction_correction_status"] = "source_photometry_unusable"
+            row["extinction_correction_exclusion_reason"] = reason
             calibration_audit.append(row)
             continue
         airmass = _finite(row.get("planet_airmass"))
         if airmass is None or airmass <= 0.0:
-            row["nightly_calibration_status"] = "planet_airmass_unavailable"
-            row["nightly_calibrated_exclusion_reason"] = "planet_airmass_unavailable"
+            row["extinction_correction_status"] = "planet_airmass_unavailable"
+            row["extinction_correction_exclusion_reason"] = "planet_airmass_unavailable"
             calibration_audit.append(row)
             continue
         extinction = calibration["extinction_mag_per_airmass"]
         scaled_mad = calibration["extinction_scaled_mad"]
         zero_point = calibration["zero_point_magnitude"]
         zero_uncertainty = calibration["zero_point_uncertainty_magnitude"]
-        nightly_magnitude = (
+        extinction_corrected_magnitude = (
             float(row["machine_magnitude"])
             - zero_point
             - extinction * airmass
@@ -1997,17 +2456,17 @@ def write_nightly_stellar_calibrated_distance_outputs(
             "nightly_extinction_scaled_mad": scaled_mad,
             "nightly_zero_point_mag": zero_point,
             "nightly_zero_point_uncertainty_mag": zero_uncertainty,
-            "nightly_stellar_calibrated_magnitude": nightly_magnitude,
-            "nightly_calibration_status": "available",
-            "nightly_calibration_source": calibration[
-                "nightly_calibration_source"
+            "extinction_corrected_magnitude": extinction_corrected_magnitude,
+            "extinction_correction_status": "available",
+            "extinction_correction_source": calibration[
+                "extinction_correction_source"
             ],
         })
         distance = distance_lookup.get(
             (row["planet"], row["observation_time_utc"])
         )
         if distance is None:
-            row["nightly_calibrated_exclusion_reason"] = (
+            row["extinction_correction_exclusion_reason"] = (
                 "distance_ephemeris_unavailable"
             )
             calibration_audit.append(row)
@@ -2021,19 +2480,19 @@ def write_nightly_stellar_calibrated_distance_outputs(
             row.get("machine_magnitude_uncertainty")
         )
         if measurement_uncertainty is None or measurement_uncertainty <= 0.0:
-            row["nightly_calibrated_exclusion_reason"] = (
+            row["extinction_correction_exclusion_reason"] = (
                 row.get("uncertainty_status")
                 or "photometric_uncertainty_unavailable"
             )
             calibration_audit.append(row)
             continue
         distance_corrected = _distance_corrected_magnitude(
-            nightly_magnitude,
+            extinction_corrected_magnitude,
             row["sun_planet_distance_au"],
             row["earth_planet_distance_au"],
         )
         if distance_corrected is None:
-            row["nightly_calibrated_exclusion_reason"] = (
+            row["extinction_correction_exclusion_reason"] = (
                 "distance_correction_failed"
             )
             calibration_audit.append(row)
@@ -2050,27 +2509,27 @@ def write_nightly_stellar_calibrated_distance_outputs(
             row["sun_planet_distance_au"],
             row["earth_planet_distance_au"],
         )
-        row["nightly_stellar_calibrated_distance_magnitude"] = distance_corrected
-        row["distance_correction_mag"] = nightly_magnitude - distance_corrected
+        row["extinction_corrected_distance_magnitude"] = distance_corrected
+        row["distance_correction_mag"] = extinction_corrected_magnitude - distance_corrected
         calibrated.append(row)
         calibration_audit.append(row)
 
     with (
-        output / "planet_nightly_stellar_calibrated_distance_measurements.csv"
+        output / "planet_extinction_corrected_distance_measurements.csv"
     ).open("w", newline="", encoding="utf-8") as stream:
         writer = csv.DictWriter(
             stream,
-            fieldnames=NIGHTLY_STELLAR_CALIBRATED_DISTANCE_FIELDS,
+            fieldnames=EXTINCTION_CORRECTED_DISTANCE_FIELDS,
             extrasaction="ignore",
         )
         writer.writeheader()
         writer.writerows(calibrated)
-    with (output / "planet_nightly_calibration_audit.csv").open(
+    with (output / "planet_extinction_correction_audit.csv").open(
         "w", newline="", encoding="utf-8"
     ) as stream:
         writer = csv.DictWriter(
             stream,
-            fieldnames=NIGHTLY_STELLAR_CALIBRATED_DISTANCE_FIELDS,
+            fieldnames=EXTINCTION_CORRECTED_DISTANCE_FIELDS,
             extrasaction="ignore",
         )
         writer.writeheader()
@@ -2090,7 +2549,7 @@ def write_nightly_stellar_calibrated_distance_outputs(
             Path(nightly_calibration).expanduser().resolve()
         ),
         "channel": channel,
-        "quantity": "nightly stellar-calibrated distance-corrected magnitude",
+        "quantity": "extinction-corrected, distance-corrected magnitude",
         "formula": (
             "m_calibrated = m_machine - Z_fixed - k_night * planet_airmass; "
             "m_calibrated_1_1 = m_calibrated "
@@ -2101,6 +2560,11 @@ def write_nightly_stellar_calibrated_distance_outputs(
             "catalogue SHA-256, Arizona observing night, and channel are used; "
             "there is no legacy or raw fallback."
         ),
+        "planet_identity_policy": (
+            "Planets are associated downstream at the MMTO manifest UTC from "
+            "saved detections, the fixed stellar-only camera, and the saved "
+            "image-derived zenith. Blind fitted-epoch identities are not used."
+        ),
         "uncertainty": (
             "Quadrature sum of empirical aperture uncertainty, fixed-image "
             "zero-point uncertainty, and planet airmass times the nightly scaled MAD."
@@ -2108,7 +2572,7 @@ def write_nightly_stellar_calibrated_distance_outputs(
         "plot_selection": {
             "skip_earliest_observations": skip_earliest_observations,
             "observations_omitted": len(omitted_observations),
-            "measurements_omitted": len(complete) - len(selected),
+            "measurements_omitted": len(rows) - len(audit_candidates),
         },
         "plotted_counts": {
             "measurements": len(calibrated),
@@ -2122,25 +2586,25 @@ def write_nightly_stellar_calibrated_distance_outputs(
             len(calibration_audit) - len(calibrated)
         ),
         "excluded_calibrated_reasons": dict(Counter(
-            row.get("nightly_calibrated_exclusion_reason", "unspecified")
+            row.get("extinction_correction_exclusion_reason", "unspecified")
             for row in calibration_audit
-            if row.get("nightly_calibrated_exclusion_reason")
+            if row.get("extinction_correction_exclusion_reason")
         )),
         "source_detection_audit": audit,
     }
-    (output / "nightly_stellar_calibrated_distance_summary.json").write_text(
+    (output / "extinction_corrected_distance_summary.json").write_text(
         json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
-    figure, _ = _build_nightly_stellar_calibrated_distance_figure(
+    figure, _ = _build_extinction_corrected_distance_figure(
         calibrated, camera_markers, planet_colours, channel=channel
     )
     import matplotlib.pyplot as plt
     figure.savefig(
-        output / "planet_nightly_stellar_calibrated_distance_magnitude_vs_time.png",
+        output / "planet_extinction_corrected_distance_magnitude_vs_time.png",
         dpi=180,
     )
     figure.savefig(
-        output / "planet_nightly_stellar_calibrated_distance_magnitude_vs_time.pdf"
+        output / "planet_extinction_corrected_distance_magnitude_vs_time.pdf"
     )
     plt.close(figure)
     return summary
@@ -2171,7 +2635,8 @@ def main(argv=None):
         ),
     )
     output_mode.add_argument(
-        "--nightly-stellar-calibrated-distance-corrected",
+        "--extinction-corrected-distance-corrected",
+        dest="extinction_corrected_distance_corrected",
         action="store_true",
         help=(
             "apply the exact nightly reference_ols sidecar zero point and "
@@ -2194,24 +2659,30 @@ def main(argv=None):
     if args.skip_earliest_observations < 0:
         parser.error("--skip-earliest-observations must be nonnegative")
     if (
-        args.nightly_stellar_calibrated_distance_corrected
+        args.extinction_corrected_distance_corrected
         and args.nightly_calibration is None
     ):
         parser.error(
-            "--nightly-stellar-calibrated-distance-corrected requires "
+            "--extinction-corrected-distance-corrected requires "
             "--nightly-calibration DIR"
         )
-    rows, audit = load_planet_measurements(args.database, args.channel)
     writer_arguments = {}
-    if args.nightly_stellar_calibrated_distance_corrected:
-        writer = write_nightly_stellar_calibrated_distance_outputs
+    if args.extinction_corrected_distance_corrected:
+        rows, audit = load_mmto_metadata_planet_measurements(
+            args.database,
+            args.nightly_calibration,
+            channel=args.channel,
+        )
+        writer = write_extinction_corrected_distance_outputs
         writer_arguments["nightly_calibration"] = args.nightly_calibration
-    elif args.stellar_calibrated_distance_corrected:
-        writer = write_stellar_calibrated_distance_outputs
-    elif args.distance_corrected:
-        writer = write_distance_corrected_outputs
     else:
-        writer = write_outputs
+        rows, audit = load_planet_measurements(args.database, args.channel)
+        if args.stellar_calibrated_distance_corrected:
+            writer = write_stellar_calibrated_distance_outputs
+        elif args.distance_corrected:
+            writer = write_distance_corrected_outputs
+        else:
+            writer = write_outputs
     summary = writer(
         rows, audit, args.output, database=args.database, channel=args.channel,
         skip_earliest_observations=args.skip_earliest_observations,
