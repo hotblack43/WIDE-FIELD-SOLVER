@@ -15,12 +15,18 @@ import os
 from pathlib import Path
 import socket
 import sqlite3
+import sys
 from urllib.parse import urlparse
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from allsky_download.cadence import observing_night_date
 from allsky_download.registry import SourceRegistry
 from scripts.nightly_extinction import (
     CalibrationConfig,
+    ImageFit,
     NightCalibrationResult,
     StellarMeasurement,
     calibrate_night,
@@ -28,8 +34,6 @@ from scripts.nightly_extinction import (
     select_reference_star_ids,
 )
 
-
-ROOT = Path(__file__).resolve().parents[1]
 UTC = timezone.utc
 
 
@@ -644,6 +648,130 @@ def _write_diagnostics(
     figure.savefig(output / "extinction_diagnostics.png", dpi=160)
     figure.savefig(output / "extinction_diagnostics.pdf")
     plt.close(figure)
+
+    channels = ("R", "G", "B")
+    accepted_by_band_night_catalogue: dict[
+        tuple[str, str, str], list[ImageFit]
+    ] = defaultdict(list)
+    for fit in accepted_fits:
+        if fit.channel in channels and fit.source_sha256 in manifest_by_source:
+            accepted_by_band_night_catalogue[
+                (fit.channel, fit.night, fit.catalogue_sha256)
+            ].append(fit)
+    nights = sorted(
+        {night for _, night, _ in accepted_by_band_night_catalogue}
+    )
+    catalogues = sorted(
+        {catalogue for _, _, catalogue in accepted_by_band_night_catalogue}
+    )
+    colour_map = plt.get_cmap("turbo", max(len(nights), 1))
+    colours = {night: colour_map(index) for index, night in enumerate(nights)}
+    adopted_by_band_night = {
+        (item.channel, item.night, item.catalogue_sha256): item
+        for item in adopted
+        if item.status == "accepted"
+        and item.extinction_mag_per_airmass is not None
+    }
+
+    band_figure, band_axes = plt.subplots(2, 3, figsize=(18, 10))
+    for column, channel in enumerate(channels):
+        time_axis = band_axes[0, column]
+        histogram_axis = band_axes[1, column]
+        band_slopes: list[float] = []
+        for night in nights:
+            colour = colours[night]
+            night_slopes: list[float] = []
+            for catalogue_sha256 in catalogues:
+                fits = sorted(
+                    accepted_by_band_night_catalogue.get(
+                        (channel, night, catalogue_sha256), ()
+                    ),
+                    key=lambda fit: manifest_by_source[
+                        fit.source_sha256
+                    ].observed_utc,
+                )
+                if not fits:
+                    continue
+                times = [
+                    manifest_by_source[fit.source_sha256].observed_utc
+                    for fit in fits
+                ]
+                slopes = [fit.line.slope for fit in fits]
+                night_slopes.extend(slopes)
+                time_axis.plot(times, slopes, ".", color=colour, alpha=0.65)
+                coefficient = adopted_by_band_night.get(
+                    (channel, night, catalogue_sha256)
+                )
+                if coefficient is not None:
+                    median_time = datetime.fromtimestamp(
+                        sum(item.timestamp() for item in times) / len(times), tz=UTC
+                    )
+                    time_axis.errorbar(
+                        [median_time],
+                        [coefficient.extinction_mag_per_airmass],
+                        yerr=[coefficient.scaled_mad or 0.0],
+                        fmt="o",
+                        color=colour,
+                        markeredgecolor="black",
+                        markeredgewidth=0.5,
+                        capsize=3,
+                    )
+                    time_axis.hlines(
+                        coefficient.extinction_mag_per_airmass,
+                        times[0],
+                        times[-1],
+                        color=colour,
+                        linewidth=1.2,
+                    )
+            if night_slopes:
+                band_slopes.extend(night_slopes)
+                histogram_axis.hist(
+                    night_slopes,
+                    bins="auto",
+                    histtype="step",
+                    color=colour,
+                    linewidth=1.2,
+                    label=night,
+                )
+        time_axis.axhline(0.0, color="0.35", linewidth=0.7)
+        time_axis.set(
+            title=f"{channel}: per-image k and nightly median ± scaled MAD",
+            ylabel="k [mag / airmass]",
+        )
+        time_axis.tick_params(axis="x", rotation=30)
+        histogram_axis.set(
+            title=f"{channel}: per-night image-k histograms",
+            xlabel="k [mag / airmass]",
+            ylabel="images",
+        )
+        if band_slopes:
+            histogram_axis.axvline(
+                sorted(band_slopes)[len(band_slopes) // 2],
+                color="black",
+                linestyle="--",
+                linewidth=0.8,
+                label="all-image median" if column == 2 else None,
+            )
+    legend_entries: dict[str, object] = {}
+    for axis in band_axes[1]:
+        handles, labels = axis.get_legend_handles_labels()
+        legend_entries.update(zip(labels, handles, strict=True))
+    if legend_entries:
+        band_figure.legend(
+            legend_entries.values(),
+            legend_entries.keys(),
+            loc="lower center",
+            ncol=min(7, len(legend_entries)),
+            fontsize="small",
+        )
+    band_figure.suptitle(
+        "MMTO accepted reference-star extinction by band and observing night\n"
+        "dots: per-image OLS; circles/error bars: nightly median ± scaled MAD"
+    )
+    band_figure.tight_layout(rect=(0.0, 0.10, 1.0, 0.94))
+    band_figure.savefig(output / "extinction_by_band_and_night.png", dpi=160)
+    band_figure.savefig(output / "extinction_by_band_and_night.pdf")
+    plt.close(band_figure)
 
 
 def write_calibration_outputs(

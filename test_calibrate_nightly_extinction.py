@@ -497,6 +497,8 @@ class CalibrationOutputTests(unittest.TestCase):
                 "corrected_stellar_photometry.csv",
                 "extinction_diagnostics.png",
                 "extinction_diagnostics.pdf",
+                "extinction_by_band_and_night.png",
+                "extinction_by_band_and_night.pdf",
             }
             self.assertEqual({path.name for path in output.iterdir()}, expected)
             self.assertEqual(summary["calibrated_nights"], 1)

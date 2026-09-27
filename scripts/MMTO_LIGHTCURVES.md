@@ -76,6 +76,28 @@ counts; `measurements.csv` contains each plotted measurement and its provenance.
   colour response and aperture effects can produce trends; no extinction,
   differential comparison-star or flat-field correction is applied. Points are not connected across missing data.
 
+## Separate nightly extinction sidecar
+
+Keep this raw-light-curve command unchanged when inspecting instrumental
+repeatability. To derive stellar nightly extinction coefficients and
+catalogue-referenced magnitudes, run the separate read-only sidecar workflow:
+
+```sh
+./calibrate_mmto_extinction.sh \
+  --database results/stars.sqlite \
+  --manifest raw_allsky_samples/manifest.sqlite \
+  --output results/nightly-extinction/NEW-UNIQUE-NAME
+```
+
+It fits R, G, and B independently using bright, unsaturated catalogue stars,
+adopts the per-night median of accepted per-image extinction slopes, and writes
+both overall diagnostics and dedicated per-band/night time plots and
+histograms. It never writes calibration values into the database. Planet plots
+can consume the sidecar explicitly with `./plot_ALL_planets.sh
+--nightly-calibration DIR`; they do not use planet brightness to determine the
+calibration and do not fall back to raw magnitude when a calibration is absent.
+See [the full nightly-extinction method and operator guide](../docs/MMTO_NIGHTLY_EXTINCTION.md).
+
 Dependencies are supplied by the existing locked v8a environment. To run the
 Python script directly:
 

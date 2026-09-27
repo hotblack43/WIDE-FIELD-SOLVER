@@ -3,12 +3,14 @@ from __future__ import annotations
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
 
 
 ROOT = Path(__file__).resolve().parent
 LAUNCHER = ROOT / "calibrate_mmto_extinction.sh"
+SCRIPT = ROOT / "scripts" / "calibrate_nightly_extinction.py"
 
 
 class CalibrateMmtoExtinctionLauncherTests(unittest.TestCase):
@@ -96,6 +98,19 @@ class CalibrateMmtoExtinctionLauncherTests(unittest.TestCase):
             f"run --project {ROOT} --frozen python "
             f"{ROOT / 'scripts' / 'calibrate_nightly_extinction.py'}",
         )
+
+    def test_direct_script_execution_can_import_repository_packages(self) -> None:
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT), "--help"],
+            cwd=self.work,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertIn("--manifest", result.stdout)
 
 
 if __name__ == "__main__":

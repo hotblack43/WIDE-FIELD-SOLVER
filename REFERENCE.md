@@ -159,6 +159,14 @@ per-star-median relation. The plot and JSON audit state the number excluded, so
 isolated failed measurements do not obscure the main relation or disappear from
 the numerical record.
 
+Accumulated MMTO stellar photometry can also be processed with the separate,
+read-only [nightly extinction calibration](docs/MMTO_NIGHTLY_EXTINCTION.md).
+It produces per-image and nightly R/G/B extinction diagnostics, including
+per-band time plots and histograms, then supplies catalogue-referenced
+magnitudes to the planet plotter without using a planet's intrinsic brightness.
+The products are sidecars: they are not stored back into `stars.sqlite` and
+missing calibration is audited rather than replaced by raw machine magnitude.
+
 For v5, [bright-planet absence checks](v5/docs/PLANET_NONDETECTIONS.md) explain
 how missing Mercury, Venus, Mars, Jupiter or Saturn can count against an epoch,
 and when the image is too uncertain to judge.
