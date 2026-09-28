@@ -1,12 +1,16 @@
 """Guard count-rate magnitudes, UTC provenance, reruns and star selection."""
 from contextlib import closing
 import csv
+from datetime import datetime, timezone
 import json
 from pathlib import Path
 import sqlite3
 import tempfile
 import unittest
 
+from allsky_download.http import DownloadedFile
+from allsky_download.manifest import Manifest
+from allsky_download.model import Candidate
 from scripts.plot_star_lightcurves import load_measurements, select_stars
 
 
@@ -55,6 +59,60 @@ class LightcurveTests(unittest.TestCase):
                          ['2026-01-17T02:00:00Z','2026-01-17T02:10:00Z'])
         self.assertEqual([r['machine_magnitude'] for r in rows],[-5.0,-5.0])
         self.assertEqual(audit['selected_runs'],2)
+
+    def test_downloader_sqlite_manifest_supplies_observation_time(self):
+        sqlite_manifest = self.root/'manifest.sqlite'
+        downloaded = self.root/'archive'/'image1.fits'
+        downloaded.parent.mkdir()
+        downloaded.write_bytes(b'image')
+        candidate = Candidate(
+            source_id='mmto',
+            camera_id='mmto-skycam',
+            observed_at=datetime(2026, 1, 17, 2, 0, tzinfo=timezone.utc),
+            observed_raw='2026-01-17T02:00:00Z',
+            url='https://skycam.mmto.arizona.edu/skycam/archive/night/image1',
+            filename='image1.fits',
+            size_bytes=5,
+        )
+        with Manifest(sqlite_manifest) as manifest:
+            manifest.record_attempt(candidate)
+            manifest.record_success(
+                candidate,
+                DownloadedFile(downloaded, 5, 'image1'),
+                self.root,
+            )
+            invalid_candidate = Candidate(
+                source_id='mmto',
+                camera_id='mmto-skycam',
+                observed_at=datetime(2026, 1, 17, 2, 10, tzinfo=timezone.utc),
+                observed_raw='2026-01-17T02:10:00Z',
+                url='https://skycam.mmto.arizona.edu/skycam/archive/night/image2',
+                filename='image2.fits',
+                size_bytes=5,
+            )
+            invalid_downloaded = downloaded.with_name('image2.fits')
+            invalid_downloaded.write_bytes(b'image')
+            manifest.record_attempt(invalid_candidate)
+            manifest.record_success(
+                invalid_candidate,
+                DownloadedFile(invalid_downloaded, 5, 'image2'),
+                self.root,
+            )
+        with sqlite3.connect(sqlite_manifest) as database:
+            database.execute(
+                "UPDATE downloads SET validation_status='invalid' WHERE sha256='image2'"
+            )
+        self.add('01','image1')
+        self.add('02','image2')
+
+        try:
+            rows, audit = load_measurements(self.db,sqlite_manifest,'G')
+        except UnicodeDecodeError as exc:
+            self.fail(f'SQLite manifest was decoded as CSV text: {exc}')
+
+        self.assertEqual([row['utc_mid'] for row in rows], ['2026-01-17T02:00:00Z'])
+        self.assertEqual(audit['selected_runs'], 1)
+        self.assertEqual(audit['runs_without_manifest_time'], 1)
 
     def test_latest_successful_rerun_replaces_old_measurement_before_quality_cut(self):
         self.add('01','image1')
@@ -206,13 +264,24 @@ class TrendOutputTests(unittest.TestCase):
             fitted=np.polynomial.chebyshev.chebval(0,fit['coefficients'])
             self.assertAlmostEqual(fitted,float(row['fitted_magnitude']))
             self.assertAlmostEqual(float(row['machine_magnitude'])-fitted,float(row['residual_mag']))
-        self.assertTrue((output/'lightcurves.png').stat().st_size>1000)
         self.assertTrue((output/'lightcurves.pdf').stat().st_size>1000)
-        self.assertTrue((output/'sd_vs_magnitude.png').stat().st_size>1000)
+        self.assertTrue((output/'sd_vs_magnitude.pdf').stat().st_size>1000)
+        self.assertFalse((output/'lightcurves.png').exists())
+        self.assertFalse((output/'sd_vs_magnitude.png').exists())
         with (output/'sd_vs_magnitude.csv').open() as f:
             scatter=list(csv.DictReader(f))
         self.assertEqual(len(scatter),1)
         self.assertAlmostEqual(float(scatter[0]['residual_sd_mag']),fit['residual_sd_mag'])
+        self.assertAlmostEqual(float(scatter[0]['cv_rmse_mag']),fit['cv_rmse_mag'])
+        report=json.loads((output/'summary.json').read_text())
+        ensemble=report['sd_vs_magnitude']
+        self.assertEqual(ensemble['ordinate'],'leave-one-out cross-validated RMSE (mag)')
+        self.assertEqual(ensemble['colour_encoding'],'UTC date of first usable measurement')
+        self.assertEqual(ensemble['marker_encoding'],'selected polynomial degree')
+        self.assertEqual(
+            ensemble['catalogue_passbands'],
+            'Gaia G; Tycho VT or Hipparcos V for bright supplement rows',
+        )
 
 
 class EnsembleScatterTests(unittest.TestCase):
@@ -239,7 +308,7 @@ class EnsembleScatterTests(unittest.TestCase):
             for name in ('run1','run2'):
                 out=root/name
                 out.mkdir()
-                (out/'lightcurves.png').write_bytes(name.encode())
+                (out/'lightcurves.pdf').write_bytes(name.encode())
                 update_latest(out)
-            self.assertEqual((root/'latest/lightcurves.png').read_bytes(),b'run2')
-            self.assertEqual((root/'run1/lightcurves.png').read_bytes(),b'run1')
+            self.assertEqual((root/'latest/lightcurves.pdf').read_bytes(),b'run2')
+            self.assertEqual((root/'run1/lightcurves.pdf').read_bytes(),b'run1')

@@ -8,21 +8,23 @@ extinction sidecar, and extinction-corrected planetary photometry, see
 From the repository root:
 
 ```sh
-./plot_mmto_lightcurves.sh
+./plot_mmto_lightcurves.sh --manifest raw_allsky_samples/manifest.sqlite
 ```
 
 This makes four vertically stacked panels, one star per panel, using completed
 MMTO runs currently in the SQLite database. The batch may keep running. Repeat
-the command later to include newly completed images. It writes `lightcurves.png`,
-`lightcurves.pdf`, `measurements.csv`, `residuals.csv`, `summary.json`, plus
-`sd_vs_magnitude.png`, `.pdf` and `.csv` into a new timestamped
+the command later to include newly completed images. It writes `lightcurves.pdf`,
+`measurements.csv`, `residuals.csv`, `summary.json`, plus
+`sd_vs_magnitude.pdf` and `.csv` into a new timestamped
 folder beside the database, under `lightcurves/`. It never writes to the database
 or changes the active v8 solver.
 
 The default database uses `WFS_RESULTS_DIR`, then the launcher's host-specific
 user setting, then repository-local `results/stars.sqlite`. No work-only path
 is built into the code. The downloader's `manifest.csv` is found beside the
-database or one directory above. Explicit locations work on either computer:
+database or one directory above. The current downloader's `manifest.sqlite` is
+also supported and is passed explicitly by `go_mmto_photometry.sh`; legacy CSV
+support remains for older archives. Explicit locations work on either computer:
 
 ```sh
 ./plot_mmto_lightcurves.sh \
@@ -33,8 +35,8 @@ database or one directory above. Explicit locations work on either computer:
 Choose one star using a catalogue ID or a saved/cached alias:
 
 ```sh
-./plot_mmto_lightcurves.sh --star 'HD 219134'
-./plot_mmto_lightcurves.sh --star 'HIP 114622' --channel R
+./plot_mmto_lightcurves.sh --manifest raw_allsky_samples/manifest.sqlite --star 'HD 219134'
+./plot_mmto_lightcurves.sh --manifest raw_allsky_samples/manifest.sqlite --star 'HIP 114622' --channel R
 ```
 
 A star must actually have usable stored MMTO measurements and the requested
@@ -50,8 +52,10 @@ calibrated camera magnitudes. Seed 42 makes the sample reproducible for the same
 database snapshot. Change the sample or cuts, for example:
 
 ```sh
-./plot_mmto_lightcurves.sh --seed 7 --count 4 --min-points 15 --max-mag 5.5
-./plot_mmto_lightcurves.sh --star 'HD 219134' --channel G --output /tmp/hd219134-lightcurve
+./plot_mmto_lightcurves.sh --manifest raw_allsky_samples/manifest.sqlite \
+  --seed 7 --count 4 --min-points 15 --max-mag 5.5
+./plot_mmto_lightcurves.sh --manifest raw_allsky_samples/manifest.sqlite \
+  --star 'HD 219134' --channel G --output /tmp/hd219134-lightcurve
 ```
 
 The output directory must be new, to preserve earlier plots. If fewer stars meet
@@ -152,27 +156,34 @@ https://astroquery.readthedocs.io/en/latest/simbad/simbad.html.
 
 ## Output paths and ensemble scatter
 
-`lightcurves.png` itself contains the orange polynomial fits and each residual
+`lightcurves.pdf` itself contains the orange polynomial fits and each residual
 SD after the catalogue magnitude. Old timestamped folders retain their original
 figures. Each successful default run also updates the relative `latest` shortcut:
 
 ```text
-RESULTS_DIRECTORY/lightcurves/latest/lightcurves.png
-RESULTS_DIRECTORY/lightcurves/latest/sd_vs_magnitude.png
+RESULTS_DIRECTORY/lightcurves/latest/lightcurves.pdf
+RESULTS_DIRECTORY/lightcurves/latest/sd_vs_magnitude.pdf
 ```
 
-Both full PNG paths and these shortcuts are printed by the command. Explicit
+Both full PDF paths and these shortcuts are printed by the command. Explicit
 `--output` keeps its own files and does not change the default shortcut.
 
-`sd_vs_magnitude.png` plots polynomial-residual SD against stored catalogue
-magnitude for **all** MMTO stars passing `--min-mag`, `--max-mag`, `--min-points`
-and `--coverage`. The sample is independent of the four random panels and uses
-the same time data, quality cuts, polynomial-selection rule and SD definition.
-At least two measurements are required to define an SD, even with
-`--min-points 1`. One row per star/catalogue series is saved in `sd_vs_magnitude.csv`, including
-count, selected polynomial degree, residual SD and degrees-of-freedom-corrected
-standard error. The four panel stars are highlighted if they meet these cuts.
-No network name queries are made for the full ensemble.
+`sd_vs_magnitude.pdf` retains its established filename but plots leave-one-out
+cross-validated RMSE against stored catalogue magnitude for **all** MMTO stars
+passing `--min-mag`, `--max-mag`, `--min-points` and `--coverage`. This ordinate
+replaced in-sample residual SD because polynomial degree is selected by the same
+cross-validation calculation and residual SD can give an optimistic precision
+impression. Colour identifies the UTC date of the first usable measurement;
+marker shape identifies the selected polynomial degree. The x-axis explicitly
+distinguishes Gaia G from Tycho VT or Hipparcos V supplement magnitudes.
+
+The sample is independent of the four random panels and uses the same time data,
+quality cuts and polynomial-selection rule. At least two measurements are
+required, even with `--min-points 1`. One row per star/catalogue series is saved
+in `sd_vs_magnitude.csv`, including count, selected degree, residual SD,
+degrees-of-freedom-corrected standard error and cross-validated RMSE. The four
+panel stars are highlighted if they meet these cuts. No network name queries are
+made for the full ensemble.
 
 Figure audience: professional astronomers. Do not add magnitude-direction
 explanations such as “brighter is higher”, or tutorials about magnitude

@@ -723,7 +723,6 @@ def _write_diagnostics(
     )
     for axis in axes[:2]:
         axis.tick_params(axis="x", rotation=25)
-    figure.savefig(output / "extinction_diagnostics.png", dpi=160)
     figure.savefig(output / "extinction_diagnostics.pdf")
     plt.close(figure)
 
@@ -846,7 +845,6 @@ def _write_diagnostics(
         "dots: per-image Theil–Sen; circles/error bars: nightly median ± scaled MAD"
     )
     band_figure.tight_layout(rect=(0.0, 0.10, 1.0, 0.94))
-    band_figure.savefig(output / "extinction_by_band_and_night.png", dpi=160)
     band_figure.savefig(output / "extinction_by_band_and_night.pdf")
     plt.close(band_figure)
 

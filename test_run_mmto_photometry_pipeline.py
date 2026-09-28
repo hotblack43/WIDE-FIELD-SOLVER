@@ -186,6 +186,53 @@ output.mkdir(parents=True)
         ):
             write_executable(self.repo / name, stage_source)
 
+    def test_completion_lists_pdf_and_png_figures_with_absolute_paths(self) -> None:
+        create_manifest(self.archive / "manifest.sqlite", [])
+        stage_source = """#!/usr/bin/env python3
+from pathlib import Path
+import sys
+arguments = sys.argv[1:]
+output = Path(arguments[arguments.index('--output') + 1])
+output.mkdir(parents=True)
+for filename in ('figure.pdf', 'preview.png', 'report.csv', 'summary.json'):
+    (output / filename).write_text(filename + '\\n', encoding='utf-8')
+"""
+        for name in (
+            "plot_mmto_lightcurves.sh",
+            "calibrate_mmto_extinction.sh",
+            "plot_ALL_planets.sh",
+        ):
+            write_executable(self.repo / name, stage_source)
+        captured = io.StringIO()
+
+        with patch("sys.stdout", captured):
+            status = main(
+                [
+                    "--archive", str(self.archive),
+                    "--results-dir", str(self.results),
+                    "--output", str(self.output),
+                    "--repo-root", str(self.repo),
+                    "--lock-file", str(self.root / "pipeline.lock"),
+                ]
+            )
+
+        expected = "\n".join(
+            [
+                "FIGURES (6)",
+                str(self.output / "nightly-extinction" / "figure.pdf"),
+                str(self.output / "nightly-extinction" / "preview.png"),
+                str(self.output / "planet-photometry" / "figure.pdf"),
+                str(self.output / "planet-photometry" / "preview.png"),
+                str(self.output / "stellar-lightcurves" / "figure.pdf"),
+                str(self.output / "stellar-lightcurves" / "preview.png"),
+            ]
+        )
+        self.assertEqual(status, 0)
+        self.assertIn(expected, captured.getvalue())
+        self.assertNotIn(str(self.output / "pipeline.log"), captured.getvalue())
+        self.assertNotIn("report.csv", captured.getvalue())
+        self.assertNotIn("summary.json", captured.getvalue())
+
     def test_recorded_solver_failure_does_not_prevent_photometry_suite(self) -> None:
         images = [
             ("2026-08-01T01:00:00Z", "mmto/good.fits", "good image"),

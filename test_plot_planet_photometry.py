@@ -654,8 +654,8 @@ class PlanetPhotometryLoadingTests(unittest.TestCase):
             audited = list(csv.DictReader(stream))
         self.assertEqual([row["planet"] for row in audited], ["Mars", "Saturn"])
         self.assertEqual(audited[1]["exclusion_reason"], "G_saturated")
-        self.assertGreater((output / "planet_machine_magnitude_vs_time.png").stat().st_size, 1000)
         self.assertGreater((output / "planet_machine_magnitude_vs_time.pdf").stat().st_size, 1000)
+        self.assertFalse((output / "planet_machine_magnitude_vs_time.png").exists())
         self.assertGreater((output / "exposure_metadata_audit.csv").stat().st_size, 100)
         saved = json.loads((output / "summary.json").read_text())
         self.assertEqual(saved["audit"]["detected_planet_rows"], 2)
@@ -762,7 +762,10 @@ class PlanetPhotometryLoadingTests(unittest.TestCase):
         self.assertEqual(summary["plotted_counts"]["measurements"], 1)
         self.assertEqual(summary["excluded_incomplete_corrected_rows"], 1)
         self.assertTrue(
-            (output / "planet_distance_corrected_magnitude_vs_time.png").is_file()
+            (output / "planet_distance_corrected_magnitude_vs_time.pdf").is_file()
+        )
+        self.assertFalse(
+            (output / "planet_distance_corrected_magnitude_vs_time.png").exists()
         )
 
     def test_stellar_calibrated_output_applies_same_run_fit_and_total_uncertainty(self):
@@ -843,10 +846,10 @@ class PlanetPhotometryLoadingTests(unittest.TestCase):
             {"planet_altitude_unavailable": 1},
         )
         self.assertTrue(
-            (output / "planet_stellar_calibrated_distance_magnitude_vs_time.png").is_file()
-        )
-        self.assertTrue(
             (output / "planet_stellar_calibrated_distance_magnitude_vs_time.pdf").is_file()
+        )
+        self.assertFalse(
+            (output / "planet_stellar_calibrated_distance_magnitude_vs_time.png").exists()
         )
 
         plot_rows = [{
@@ -963,7 +966,10 @@ class PlanetPhotometryLoadingTests(unittest.TestCase):
             "extinction-corrected, distance-corrected magnitude",
         )
         self.assertTrue(
-            (output / "planet_extinction_corrected_distance_magnitude_vs_time.png").is_file()
+            (output / "planet_extinction_corrected_distance_magnitude_vs_time.pdf").is_file()
+        )
+        self.assertFalse(
+            (output / "planet_extinction_corrected_distance_magnitude_vs_time.png").exists()
         )
 
     def test_missing_sidecar_match_has_no_legacy_or_raw_fallback(self):

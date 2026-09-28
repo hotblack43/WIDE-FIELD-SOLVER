@@ -1916,7 +1916,6 @@ def write_outputs(
         usable, camera_markers, planet_colours, channel=channel
     )
     import matplotlib.pyplot as plt
-    fig.savefig(output / "planet_machine_magnitude_vs_time.png", dpi=180)
     fig.savefig(output / "planet_machine_magnitude_vs_time.pdf")
     plt.close(fig)
     return summary
@@ -2085,9 +2084,6 @@ def write_distance_corrected_outputs(
         corrected, camera_markers, planet_colours, channel=channel
     )
     import matplotlib.pyplot as plt
-    figure.savefig(
-        output / "planet_distance_corrected_magnitude_vs_time.png", dpi=180
-    )
     figure.savefig(output / "planet_distance_corrected_magnitude_vs_time.pdf")
     plt.close(figure)
     return summary
@@ -2287,10 +2283,6 @@ def write_stellar_calibrated_distance_outputs(
         calibrated, camera_markers, planet_colours, channel=channel
     )
     import matplotlib.pyplot as plt
-    figure.savefig(
-        output / "planet_stellar_calibrated_distance_magnitude_vs_time.png",
-        dpi=180,
-    )
     figure.savefig(
         output / "planet_stellar_calibrated_distance_magnitude_vs_time.pdf"
     )
@@ -2600,10 +2592,6 @@ def write_extinction_corrected_distance_outputs(
         calibrated, camera_markers, planet_colours, channel=channel
     )
     import matplotlib.pyplot as plt
-    figure.savefig(
-        output / "planet_extinction_corrected_distance_magnitude_vs_time.png",
-        dpi=180,
-    )
     figure.savefig(
         output / "planet_extinction_corrected_distance_magnitude_vs_time.pdf"
     )

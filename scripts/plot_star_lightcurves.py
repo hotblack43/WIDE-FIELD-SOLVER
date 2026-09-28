@@ -44,18 +44,36 @@ def utc_time(value):
 
 def read_times(manifest):
     times = {}
-    with Path(manifest).open(newline='', encoding='utf-8') as f:
-        for row in csv.DictReader(f):
-            url = urlparse(row.get('source_url', ''))
-            if url.hostname != 'skycam.mmto.arizona.edu' or not url.path.startswith('/skycam/archive/'):
-                continue
-            digest, value = row.get('sha256'), row.get('utc_mid')
-            if not digest or not value:
-                continue
-            timestamp = utc_time(value).isoformat().replace('+00:00', 'Z')
-            if digest in times and times[digest] != timestamp:
-                raise ValueError(f'Conflicting manifest UTC times for image hash {digest}')
-            times[digest] = timestamp
+    path = Path(manifest)
+    with path.open('rb') as stream:
+        is_sqlite = stream.read(16) == b'SQLite format 3\x00'
+    if is_sqlite:
+        with closing(sqlite3.connect(path.resolve().as_uri()+'?mode=ro', uri=True)) as db:
+            rows = db.execute(
+                """SELECT sha256, observed_utc, remote_url FROM downloads
+                   WHERE source_id='mmto'
+                     AND camera_id='mmto-skycam'
+                     AND download_status='downloaded'
+                     AND validation_status='verified'
+                     AND sha256 IS NOT NULL
+                     AND sha256!=''"""
+            ).fetchall()
+    else:
+        with path.open(newline='', encoding='utf-8') as stream:
+            rows = [
+                (row.get('sha256'), row.get('utc_mid'), row.get('source_url', ''))
+                for row in csv.DictReader(stream)
+            ]
+    for digest, value, source_url in rows:
+        url = urlparse(source_url or '')
+        if url.hostname != 'skycam.mmto.arizona.edu' or not url.path.startswith('/skycam/archive/'):
+            continue
+        if not digest or not value:
+            continue
+        timestamp = utc_time(value).isoformat().replace('+00:00', 'Z')
+        if digest in times and times[digest] != timestamp:
+            raise ValueError(f'Conflicting manifest UTC times for image hash {digest}')
+        times[digest] = timestamp
     if not times:
         raise ValueError('Manifest contains no MMTO archive image hashes with UTC mid-exposure times')
     return times
@@ -314,6 +332,7 @@ def scatter_statistics(groups, max_degree=6):
 
 def write_scatter_plot(groups, output, args, lightcurve_summary):
     import matplotlib.pyplot as plt
+    from matplotlib.lines import Line2D
 
     points = scatter_statistics(groups,args.max_degree)
     fields = ['star_id','catalogue_sha256','display_name','catalogue_magnitude','channel',
@@ -328,33 +347,56 @@ def write_scatter_plot(groups, output, args, lightcurve_summary):
         writer=csv.DictWriter(f,fieldnames=fields)
         writer.writeheader()
         writer.writerows(points)
-    fig,ax=plt.subplots(figsize=(9,6))
-    ax.scatter([p['catalogue_magnitude'] for p in points],[p['residual_sd_mag'] for p in points],
-               s=23,alpha=.65,color='#356e9b',label=f'Qualifying MMTO stars (n={len(points)})')
-    highlighted = False
+    cohorts=sorted({p['first_utc'][:10] for p in points})
+    degrees=sorted({p['polynomial_degree'] for p in points})
+    cohort_palette=('#356e9b','#7a5195','#2a9d8f','#8c6d31','#5f9ed1',
+                    '#17becf','#bcbd22','#e377c2','#7f7f7f')
+    cohort_colours={cohort:cohort_palette[index%len(cohort_palette)]
+                    for index,cohort in enumerate(cohorts)}
+    marker_sequence=('o','s','^','D','P','X','v','<','>')
+    degree_markers={degree:marker_sequence[index%len(marker_sequence)]
+                    for index,degree in enumerate(degrees)}
+    fig,ax=plt.subplots(figsize=(10.5,6))
+    for point in points:
+        cohort=point['first_utc'][:10]
+        ax.scatter([point['catalogue_magnitude']],[point['cv_rmse_mag']],s=34,alpha=.75,
+                   color=cohort_colours[cohort],marker=degree_markers[point['polynomial_degree']],
+                   edgecolors='none')
     for point in points:
         if (point['catalogue_sha256'],point['star_id']) not in selected:
             continue
-        x,y=point['catalogue_magnitude'],point['residual_sd_mag']
+        x,y=point['catalogue_magnitude'],point['cv_rmse_mag']
         ax.scatter([x],[y],s=75,facecolors='none',edgecolors='#c45c16',linewidths=1.5,
-                   label='Light-curve panels' if not highlighted else None,zorder=4)
-        highlighted=True
+                   zorder=4)
         name=point['display_name']
         if name and not name.startswith('Gaia DR3 '):
             ax.annotate(name,(x,y),xytext=(5,6),textcoords='offset points',fontsize=9)
     if not points:
         ax.text(.5,.5,'No stars meet the ensemble selection cuts',transform=ax.transAxes,ha='center')
-    ax.set_xlabel('Catalogue magnitude')
-    ax.set_ylabel(f'{args.channel} residual SD (mag)')
+    ax.set_xlabel('Stored catalogue magnitude (Gaia G; Tycho VT/Hipparcos V supplement)')
+    ax.set_ylabel(f'Instrumental {args.channel} LOOCV RMSE (mag)')
     ax.set_ylim(bottom=0)
-    ax.set_title('MMTO residual scatter after polynomial detrending')
+    ax.set_title('MMTO cross-validated light-curve prediction error')
     ax.grid(alpha=.22)
-    ax.legend(fontsize=9)
-    fig.text(.5,.015,f'LOOCV degree selection (0–{args.max_degree}); sample residual SD (N−1). '
-             f'Catalogue mag {args.min_mag:g}–{args.max_mag:g}; '
+    if points:
+        cohort_handles=[Line2D([],[],linestyle='none',marker='o',markersize=6,
+                               markerfacecolor=cohort_colours[cohort],markeredgecolor='none',
+                               label=cohort) for cohort in cohorts]
+        cohort_legend=ax.legend(handles=cohort_handles,title='First usable UTC date',fontsize=8,
+                                title_fontsize=8,loc='upper left',bbox_to_anchor=(1.01,1))
+        ax.add_artist(cohort_legend)
+        degree_handles=[Line2D([],[],linestyle='none',marker=degree_markers[degree],markersize=6,
+                               markerfacecolor='#666666',markeredgecolor='none',label=f'Degree {degree}')
+                        for degree in degrees]
+        degree_handles.append(Line2D([],[],linestyle='none',marker='o',markersize=8,
+                                     markerfacecolor='none',markeredgecolor='#c45c16',
+                                     markeredgewidth=1.5,label='Light-curve panel'))
+        ax.legend(handles=degree_handles,title='Selected model',fontsize=8,title_fontsize=8,
+                  loc='lower left',bbox_to_anchor=(1.01,0))
+    fig.text(.4,.015,f'Qualifying stars n={len(points)}; LOOCV polynomial degree selection (0–{args.max_degree}); '
+             f'catalogue mag {args.min_mag:g}–{args.max_mag:g}; '
              f'N ≥ {max(2,args.min_points)}; coverage ≥ {args.coverage:.0%}.',ha='center',fontsize=9)
-    fig.tight_layout(rect=(0,.04,1,1))
-    fig.savefig(output/'sd_vs_magnitude.png',dpi=160)
+    fig.tight_layout(rect=(0,.04,.82,1))
     fig.savefig(output/'sd_vs_magnitude.pdf')
     plt.close(fig)
     return len(points)
@@ -445,7 +487,6 @@ def write_outputs(selected, output, audit, args, scatter_groups=None):
              'Residual SD: N−1; no clipping.',
              ha='center',fontsize=9)
     fig.tight_layout(rect=(0,0.055,1,0.965))
-    fig.savefig(output/'lightcurves.png',dpi=160)
     fig.savefig(output/'lightcurves.pdf')
     plt.close(fig)
     scatter_count=write_scatter_plot(scatter_groups if scatter_groups is not None else selected,
@@ -459,6 +500,11 @@ def write_outputs(selected, output, audit, args, scatter_groups=None):
                                  coverage=args.coverage,seed=args.seed,requested_stars=args.star),
                   audit=audit,stars=summary,
                   sd_vs_magnitude=dict(star_count=scatter_count,table='sd_vs_magnitude.csv',
+                                       ordinate='leave-one-out cross-validated RMSE (mag)',
+                                       colour_encoding='UTC date of first usable measurement',
+                                       marker_encoding='selected polynomial degree',
+                                       catalogue_passbands=(
+                                           'Gaia G; Tycho VT or Hipparcos V for bright supplement rows'),
                                        population='all qualifying MMTO series; independent of random panel selection'))
     (output/'summary.json').write_text(json.dumps(record,indent=2)+'\n')
     return summary
@@ -467,7 +513,8 @@ def write_outputs(selected, output, audit, args, scatter_groups=None):
 def main(argv=None):
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--database',type=Path,default=None)
-    p.add_argument('--manifest',type=Path,help='MMTO downloader manifest with source_url, sha256 and utc_mid')
+    p.add_argument('--manifest',type=Path,
+                   help='MMTO downloader SQLite manifest, or legacy CSV with source_url, sha256 and utc_mid')
     p.add_argument('--output',type=Path,help='New output directory (default: beside database/lightcurves/TIMESTAMP)')
     p.add_argument('--star',action='append',default=[],help='Exact saved name, alias or catalogue ID; repeat for several stars')
     p.add_argument('--channel',choices=['R','G','B','L','G1','G2'],default='G')
@@ -513,11 +560,11 @@ def main(argv=None):
               f"degree {star['polynomial_fit']['degree']}; residual SD {star['polynomial_fit']['residual_sd_mag']} mag")
     print('Audit:',json.dumps(audit,sort_keys=True))
     print('Output:',output)
-    print('Light curves PNG:',output/'lightcurves.png')
-    print('SD versus magnitude PNG:',output/'sd_vs_magnitude.png')
+    print('Light curves PDF:',output/'lightcurves.pdf')
+    print('SD versus magnitude PDF:',output/'sd_vs_magnitude.pdf')
     if latest:
-        print('Latest light curves:',latest/'lightcurves.png')
-        print('Latest SD versus magnitude:',latest/'sd_vs_magnitude.png')
+        print('Latest light curves:',latest/'lightcurves.pdf')
+        print('Latest SD versus magnitude:',latest/'sd_vs_magnitude.pdf')
 
 
 if __name__ == '__main__':

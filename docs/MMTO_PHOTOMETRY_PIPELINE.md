@@ -79,7 +79,8 @@ The stages run in that order. `stellar-lightcurves/` contains the instrumental
 stellar repeatability products. `nightly-extinction/` is the read-only,
 stellar-only extinction sidecar. `planet-photometry/` contains the R/G/B
 extinction-corrected and distance-corrected planetary photometry derived from
-that exact sidecar.
+that exact sidecar. Figure products are written once as PDF; duplicate PNG
+renderings are not generated.
 
 Choose a new explicit output directory when required:
 
@@ -96,4 +97,7 @@ magnitudes remain sidecar products; they are never added to `stars.sqlite`.
 
 `pipeline_summary.json` records selection and processing counts, each stage's
 exit status, paths, timestamps, and any operational failure. `pipeline.log`
-contains the invoked commands and their combined output.
+contains the invoked commands and their combined output. After successful
+completion the launcher prints `FIGURES (N)` followed by the absolute path of
+every PDF or PNG actually present below that run directory. CSV, JSON, log and
+working files are deliberately omitted from this operator-facing figure list.

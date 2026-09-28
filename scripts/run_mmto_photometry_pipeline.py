@@ -27,6 +27,7 @@ from allsky_download.processing import OperationalFailure, validated_input
 
 V11_VERSION = "0.11.0"
 UTC = timezone.utc
+FIGURE_SUFFIXES = frozenset({".pdf", ".png"})
 
 
 class PipelineBusyError(OperationalFailure):
@@ -187,6 +188,17 @@ def _message(message: str, log: TextIO) -> None:
     print(message, flush=True)
     log.write(message + "\n")
     log.flush()
+
+
+def _list_figures(output: Path, log: TextIO) -> None:
+    paths = sorted(
+        path
+        for path in output.rglob("*")
+        if path.is_file() and path.suffix.lower() in FIGURE_SUFFIXES
+    )
+    _message(f"FIGURES ({len(paths)})", log)
+    for path in paths:
+        _message(str(path), log)
 
 
 def _run_command(command: list[str], log: TextIO, *, cwd: Path) -> int:
@@ -407,6 +419,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 summary["finished_utc"] = _utc_now()
                 _write_summary(output, summary)
                 _message(f"MMTO pipeline complete: {output}", log)
+                _list_figures(output, log)
         return 0
     except (OSError, ValueError, sqlite3.Error, OperationalFailure) as exc:
         if "output" in locals() and isinstance(output, Path) and output.is_dir():

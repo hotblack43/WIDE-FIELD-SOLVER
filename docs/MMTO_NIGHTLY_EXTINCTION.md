@@ -83,9 +83,8 @@ The sidecar contains:
   residual audit trail;
 - `corrected_stellar_photometry.csv`: raw and corrected stellar magnitudes with
   coefficient and zero-point provenance;
-- `extinction_diagnostics.png` and `.pdf`: the overall fit-quality dashboard;
-  and
-- `extinction_by_band_and_night.png` and `.pdf`: separate R/G/B time plots of
+- `extinction_diagnostics.pdf`: the overall fit-quality dashboard; and
+- `extinction_by_band_and_night.pdf`: separate R/G/B time plots of
   every accepted per-image `k`, with nightly median and scaled-MAD error bars,
   plus an aligned curve of nightly scaled MAD for each band.
 
@@ -119,7 +118,7 @@ invalid planet airmass, or unreproducible saved aperture fluxes are written to
 legacy same-image coefficient or raw magnitude.
 
 Each R/G/B directory contains the extinction-corrected, distance-corrected
-PNG/PDF, the plotted measurement CSV, the full calibration audit, and a JSON
+PDF, the plotted measurement CSV, the full calibration audit, and a JSON
 summary. The plotted CSV retains machine magnitude, stellar calibration terms,
 planet airmass, corrected magnitude, distance correction, uncertainty
 components, and sidecar path. Planetary distance normalization is applied after
