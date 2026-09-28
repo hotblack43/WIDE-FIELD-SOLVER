@@ -27,6 +27,17 @@ uv run --frozen python -m unittest discover -v
 Keep `uv.lock` committed. Document numerical changes and their reasons. Leave
 the historical comparison with solve-field factual and bounded by its tests.
 
+## End with inspection targets
+
+Every final response after repository work must end by telling the user what to
+inspect. Give the actual path of each primary user-facing output, with figures
+first, and a short description of what to look for in each one. Prefer the few
+most informative products over an undifferentiated file dump, but include every
+figure when the task produced or changed a figure set. Do not substitute test
+counts, commit hashes, or output-directory names for concrete inspection paths.
+If a new rendering exists only in a temporary location, say so explicitly and
+give that path; never imply that a preserved historical product was overwritten.
+
 ## Read the scientific goal first
 
 Read [GOAL.md](GOAL.md) before changes and check `docs/FEATURE_STATUS.md` when
