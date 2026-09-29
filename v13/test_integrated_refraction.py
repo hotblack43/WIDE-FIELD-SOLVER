@@ -122,6 +122,21 @@ class IntegratedRefractionCameraTests(unittest.TestCase):
         self.assertEqual(rejected.refraction.refraction_a_arcsec, 0.0)
         self.assertEqual(rejected.refraction.refraction_b_arcsec, 0.0)
 
+    def test_supplied_failed_candidate_cannot_be_adopted(self):
+        truth = self.truth_camera()
+        sky = truth.to_sky(self.xy)
+        candidate, _ = fit_camera(
+            self.base, self.xy, sky, max_nfev=900, fit_refraction=True
+        )
+        selected, evidence = select_integrated_refraction(
+            self.base, self.xy, sky, candidate=candidate,
+            candidate_info={"success": False, "cost": 0.0},
+            folds=3, max_nfev=250,
+        )
+        self.assertFalse(evidence["adopted"])
+        self.assertFalse(evidence["physical_checks"]["fit_success"])
+        self.assertTrue(selected.refraction.is_zero)
+
 
 if __name__ == "__main__":
     unittest.main()

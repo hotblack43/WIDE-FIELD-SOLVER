@@ -14,9 +14,10 @@ MANIFEST = PACKAGE / "SOURCE_MANIFEST.json"
 
 CHANGES = [
     "Fork the complete v12 runtime into an independent v13 development package.",
-    "Compare nested radius-dependent Barghini terms using information criteria and spatial validation.",
-    "Measure association yield for already-detected edge sources and fixed-identity planet residuals.",
-    "Increase the spatially distributed sky-plot label limit to 40.",
+    "Jointly fit atmospheric refraction and the Barghini camera with radial soft-L1 least squares.",
+    "Refit the coupled model during epoch trials and propagate selected corrections to saved coordinates and FITS export.",
+    "Select refraction with deterministic angular-block robust validation and exact-zero fallback.",
+    "Replay exact saved associations across MMTO, APICAM, Subaru and historical full-fisheye families.",
 ]
 
 

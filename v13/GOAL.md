@@ -37,13 +37,13 @@ colours; account for passband differences when interpreting extinction and colou
 
 Estimate physical zenith from the image's stellar photometry. For each trial
 zenith, calculate preliminary airmasses for a fixed set of usable point sources.
-Use ordinary least squares (OLS) to regress instrumental (machine) magnitude
+Use robust soft-L1 least squares to regress instrumental (machine) magnitude
 minus catalogue magnitude against those airmasses. Fit zero point and extinction
-slope as nuisance parameters, then vary zenith to minimise the residual sum of
-squares on that fixed sample. OLS is the specified reference method; any robust
-alternative must be identified explicitly and compared with it, not silently
-substituted. The minimum identifies the best candidate under the photometric
-model; it does not alone establish that the physical zenith has been recovered.
+slope as nuisance parameters, then vary zenith to minimise the robust objective
+on that fixed sample. Ordinary least squares is not an accepted reference or
+fallback. Record the robust loss and scale explicitly. The minimum identifies
+the best candidate under the photometric model; it does not alone establish that
+the physical zenith has been recovered.
 Incorrect zenith mixes true altitudes and can produce azimuth-dependent scatter,
 including on opposite sides of the sky.
 Extinction is used as a constraint; obtaining a calibrated extinction coefficient
@@ -106,9 +106,10 @@ name or printing its long numeric identifier on the image.
 ## Preserve working behavior and honest status
 
 Keep the historical v0.1.0 tag, example input, frozen catalogue and reference
-products. Develop new behavior under a distinct version/branch and preserve
-checkpoints. Never relax regression thresholds to hide failures. Runtime code
-and data remain local to this independent point-source repository.
+products. Develop new behavior under a distinct versioned directory and preserve
+checkpoints; do not use development branches. Never relax regression thresholds
+to hide failures. Runtime code and data remain local to this independent
+point-source repository.
 
 All detected stars remain eligible for association and astrometric fitting;
 there is no default withheld-star split. Keep large/saturated detections even

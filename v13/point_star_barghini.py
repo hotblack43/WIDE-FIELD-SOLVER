@@ -324,8 +324,18 @@ def _zero_refraction_camera(camera, status='zero'):
         IntegratedRefraction.zero(status))
 
 
+def angular_block_ids(xy, shape, folds):
+    """Return deterministic angular validation sectors around detector centre."""
+    xy = np.asarray(xy, dtype=float)
+    if xy.ndim != 2 or xy.shape[1] != 2 or folds < 2:
+        raise ValueError('Angular blocks need Nx2 pixels and at least two folds')
+    centre = (np.asarray(shape[::-1], dtype=float)-1.)/2.
+    phase = (np.arctan2(xy[:, 1]-centre[1], xy[:, 0]-centre[0])+2.*np.pi) % (2.*np.pi)
+    return np.minimum((phase/(2.*np.pi)*folds).astype(int), folds-1)
+
+
 def select_integrated_refraction(camera, xy, sky, *, candidate=None, folds=4,
-                                 max_nfev=600):
+                                 max_nfev=600, candidate_info=None):
     """Choose coupled refraction only after deterministic blocked robust validation."""
     xy = np.asarray(xy, dtype=float)
     sky = np.asarray(sky, dtype=float)
@@ -345,7 +355,8 @@ def select_integrated_refraction(camera, xy, sky, *, candidate=None, folds=4,
         candidate, candidate_info = fit_camera(
             camera, xy, sky, max_nfev=max_nfev, fit_refraction=True)
     else:
-        candidate_info = {'success': True, 'supplied_candidate': True}
+        candidate_info = dict(candidate_info or {'success': True})
+        candidate_info['supplied_candidate'] = True
 
     vacuum = sky @ candidate.reference_rotation
     zenith_distance = np.rad2deg(np.arccos(np.clip(
@@ -360,9 +371,7 @@ def select_integrated_refraction(camera, xy, sky, *, candidate=None, folds=4,
     }
     physical_checks['sufficient_zenith_span'] = physical_checks['zenith_distance_span_deg'] >= 20.
 
-    centre = (np.asarray(camera.shape[::-1], dtype=float)-1.)/2.
-    phase = (np.arctan2(xy[:, 1]-centre[1], xy[:, 0]-centre[0])+2.*np.pi) % (2.*np.pi)
-    block = np.minimum((phase/(2.*np.pi)*folds).astype(int), folds-1)
+    block = angular_block_ids(xy, camera.shape, folds)
     fold_rows = []
     if all(physical_checks.values()):
         for fold in range(folds):
@@ -812,7 +821,7 @@ def run(image_path, output, catalog_path, *, label_count=40, names_cache=None, o
         write_epoch_products(output, stellar_epoch)
     camera, refraction_selection = select_integrated_refraction(
         camera, xy[train[train_i]], sky[train_j], candidate=camera,
-        folds=4, max_nfev=600)
+        folds=4, max_nfev=600, candidate_info=final_fit)
     selected_i, selected_j = associate(
         camera, xy[train], sky,
         resolved_association_gate_arcmin(

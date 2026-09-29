@@ -12,6 +12,7 @@ from scipy.ndimage import (
     gaussian_filter,
     label,
 )
+from scipy.optimize import least_squares
 
 
 def _luminance(image):
@@ -68,10 +69,17 @@ def centred_full_horizon(valid_mask):
     fill = float(mask.sum()/(bbox_width*bbox_height))
     boundary = mask & ~binary_erosion(mask)
     by, bx = np.nonzero(boundary)
-    design = np.column_stack([2.*bx, 2.*by, np.ones(len(bx))])
-    circle_x, circle_y, constant = np.linalg.lstsq(
-        design, bx.astype(float)**2+by.astype(float)**2, rcond=None)[0]
-    circle_radius = float(np.sqrt(max(0., constant+circle_x**2+circle_y**2)))
+    circle_fit = least_squares(
+        lambda parameters: np.hypot(
+            bx-parameters[0], by-parameters[1]) - parameters[2],
+        np.array([bbox_centre[0], bbox_centre[1],
+                  .25*(bbox_width+bbox_height)]),
+        bounds=([-w, -h, 1.], [2.*w, 2.*h, 2.*max(h, w)]),
+        loss='soft_l1',
+        f_scale=max(1., .002*min(h, w)),
+        x_scale='jac',
+    )
+    circle_x, circle_y, circle_radius = map(float, circle_fit.x)
     circle_distance = np.hypot(bx-circle_x, by-circle_y)
     circle_residual = (circle_distance-circle_radius)/max(circle_radius, 1e-12)
     circle_rms = float(np.sqrt(np.mean(circle_residual**2)))

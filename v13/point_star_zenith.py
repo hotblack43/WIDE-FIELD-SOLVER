@@ -4,7 +4,7 @@ No site, date, horizon labels or astrometric-refraction zenith enters this fit.
 Extinction and zero point are nuisance regression parameters for trial airmasses.
 """
 import numpy as np
-from scipy.optimize import minimize
+from scipy.optimize import least_squares, minimize
 
 
 def zenith_supports_visibility(status, source):
@@ -81,19 +81,24 @@ def fit_photometric_zenith(rays, dimming, radial_squared, *, loss_scale_mag=.1,
 
     def regression(x, with_radial):
         design = np.column_stack([np.ones(nstars), x] + ([radial] if with_radial else []))
-        weights = np.ones(nstars)
-        for _ in range(12):
-            coefs = np.linalg.lstsq(design*np.sqrt(weights)[:, None], y*np.sqrt(weights), rcond=None)[0]
-            if coefs[1] < 0:
-                other = [0, 2] if with_radial else [0]
-                coefs[:] = 0
-                coefs[other] = np.linalg.lstsq(design[:, other]*np.sqrt(weights)[:, None],
-                                               y*np.sqrt(weights), rcond=None)[0]
-            residual = design@coefs-y
-            updated = 1/np.sqrt(1+(residual/loss_scale_mag)**2)
-            if np.max(np.abs(updated-weights)) < 1e-7:
-                break
-            weights = updated
+        initial = np.zeros(design.shape[1])
+        initial[0] = np.median(y)
+        initial[1] = .1
+        lower = np.full(design.shape[1], -np.inf)
+        lower[1] = 0.
+        fit = least_squares(
+            lambda coefs: design@coefs-y,
+            initial,
+            bounds=(lower, np.full(design.shape[1], np.inf)),
+            loss='soft_l1',
+            f_scale=loss_scale_mag,
+            x_scale='jac',
+            ftol=1e-11,
+            xtol=1e-11,
+            gtol=1e-11,
+        )
+        coefs = fit.x
+        residual = design@coefs-y
         return coefs, residual
 
     def fixed_zenith_fit(vector):

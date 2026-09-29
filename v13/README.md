@@ -1,4 +1,4 @@
-# Wide-Field Solver v0.11.0
+# Wide-Field Solver v0.13.0
 
 ## Overview
 
@@ -16,11 +16,11 @@ work.
 ## Quick start
 
 The release requires Bash and uses [uv](https://docs.astral.sh/uv/) to install
-its pinned Python environment. From the unpacked release directory, run:
+its pinned Python environment. From the repository root, run:
 
 ```sh
-uv sync --project v11 --frozen
-./demo.sh --output results/mmto-demo
+uv sync --project v13 --frozen
+./v13/demo.sh --output v13/results/mmto-demo-v13
 ```
 
 The first command may require an Internet connection to obtain Python packages.
@@ -31,8 +31,7 @@ request.
 ## Built-in MMTO example
 
 The demonstration analyses a native three-colour FITS observation from the MMT
-Observatory all-sky camera. It overwrites its named output directory when run
-again, so repeated checks do not accumulate temporary result trees. A successful
+Observatory all-sky camera. Use a fresh output name for every run. A successful
 run prints its output location and verifies the result against conservative
 scientific thresholds recorded with the example.
 
@@ -43,11 +42,11 @@ licence.
 
 ## Solve your own image
 
-Pass one or more input files to the v0.11 launcher:
+Pass one or more input files to the v0.13 launcher:
 
 ```sh
-./go11.sh /full/path/to/image.fits.bz2
-./go11.sh first.fits second.cr2 --results-dir /full/path/to/results
+./go13.sh /full/path/to/image.fits.bz2
+./go13.sh first.fits second.cr2 --results-dir /full/path/to/results
 ```
 
 By default, output goes to `results/` beside the release. Use `--results-dir`
@@ -60,7 +59,7 @@ attempted.
 Supported inputs include compressed and uncompressed FITS, Canon CR2, and
 native-depth PNG and TIFF images. Colour FITS may contain RGB or `R/G1/G2/B`
 planes in common plane-first, plane-last or named-extension layouts. Use
-`./go11.sh --help` for FITS HDU, channel-order, saturation and observation-time
+`./go13.sh --help` for FITS HDU, channel-order, saturation and observation-time
 options.
 
 ## Outputs
@@ -79,8 +78,10 @@ are labelled and retained rather than silently discarded.
 
 The stellar camera fit is blind: time and site metadata are withheld until the
 measured stellar solution is fixed. Catalogue association and robust fitting are
-performed in angular sky coordinates using the Barghini model, and saved
-coordinates receive the same fitted corrections. Plots show measured centroids
+performed in angular sky coordinates using the refraction-aware Barghini model,
+and saved coordinates receive the same selected correction. Unsupported
+refraction candidates become exact zero rather than being forced into the
+result. Plots show measured centroids
 and model predictions without cosmetic displacement.
 
 Planet validation is a separate stage. If trustworthy observation-time metadata

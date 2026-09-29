@@ -1,5 +1,17 @@
 # Point-source feature status, version 0.13.0
 
+**Integrated refraction (29 September 2026):** v13 jointly refits physical
+zenith, `A/B` atmospheric refraction and the eight Barghini parameters inside
+every mature camera and epoch trial. The selected state is authoritative for
+saved sky coordinates and eligible FITS export. Radial soft-L1 fitting and
+deterministic angular-block validation are robust throughout; rejected candidates
+become exact zero refraction. Synthetic injection tests recover supported signals.
+An eight-image, four-family full-fisheye replay adopted none: every candidate hit
+a coefficient boundary and/or left the supported horizon domain, so no
+unsupported real-image correction was promoted. See
+[INTEGRATED_REFRACTION.md](INTEGRATED_REFRACTION.md) and the retained comparison
+products under `results/integrated-refraction-v13-final3-20260929/`.
+
 **Nested radial-model study (24 September 2026):** v12 can compare the current
 eight-parameter camera with one to five normalized odd radial terms across
 saved solutions. Gaussian fixed-association fits supply AICc/BIC; deterministic
@@ -36,8 +48,8 @@ V11 adds actual common-camera stellar/planetary epoch profiles, full-range
 metadata-independent discovery, positive relative-brightness evidence and joint
 coordinate/export authority. See [V11_JOINT_EPOCH.md](V11_JOINT_EPOCH.md) for exact
 adoption rules, numerical changes, tests and remaining limitations. Historical
-sections below describe inherited checkpoints, not promises that missing
-refraction/OLS/precision dating capabilities are complete. "Boundary-truncated"
+sections below describe inherited checkpoints, not promises that historically
+missing coupled-photometry or precision-dating capabilities are complete. "Boundary-truncated"
 uncertainty is a finite constraint, not absence of timing information.
 
 **Fisheye centre-zenith default (investigator request, 19 September 2026):**
@@ -101,11 +113,11 @@ must not describe a proposal as working merely because related products exist.
 | Stellar epoch fitted with all associations; final camera saved | Added in 0.3.0 | All-star robust profile; conditional or provisional date status. If six proper-motion reassociation profiles do not settle, v6 now records `not_converged` and retains the last camera with the exact membership used to fit it rather than failing or pairing a camera with unfitted membership |
 | RGB instrumental photometry | Extended in v0.8.0 | Aperture counts, exposure-normalized count rates, per-channel saturation and separate wing models are retained for all detections and identified sources |
 | RGB-versus-catalogue report diagnostics | Extended in v0.10.0 | Third PDF page compares camera R/G/B instrumental magnitudes with Gaia RP/G/BP for finite unsaturated Gaia matches. Its displayed line uses soft-L1 robust least squares with a fixed 0.1-mag loss scale and reports MAD residual scatter; no OLS line or fallback is shown. Passband mismatch and lack of calibration are explicit. Regression: `test_point_star_report.py`; report-only numerical change |
-| Extinction as nuisance regression in blind zenith search | Added in 0.3.0 using robust regression | Fixed membership; no site/time-derived airmass; G plot uses the exact fitted line. The OLS reference specified in GOAL.md and its comparison remain unimplemented |
+| Extinction as nuisance regression in blind zenith search | Robust-only in v13 | Fixed membership; no site/time-derived airmass; G plot uses the exact fitted soft-L1 line. Ordinary least squares is not a reference or fallback |
 | Zenith estimated by minimising photometric regression scatter | Added in 0.3.0; conditional component | Synthetic recovery and degeneracy tests; real example remains unresolved under the radial-response check |
 | Fisheye centre-zenith default | Changed by explicit investigator request in v11 | Exact detector centre is assumed unless extinction passes the stringent override checks above. Full-horizon detection remains a separate diagnostic, not a prerequisite; older versions retain their original policy. This default assumes an upright, appropriately centred fisheye and is not evidence that arbitrary crops or tilted cameras point at zenith |
-| Zenith fitted through astrometric refraction residuals | Implemented downstream diagnostic | Different objective from photometric zenith; does not establish that photometric proposal works |
-| Joint photometric zenith/extinction and astrometric epoch constraint | **Not implemented** | Not part of the 0.3.0 proper-motion bugfix; must be designed and tested explicitly |
+| Zenith fitted through astrometric refraction residuals | Integrated in v13 | Zenith and A/B refraction are co-fitted with the Barghini camera in mature solve and epoch trials; blocked validation selects the exact-zero nested fallback on unsupported data |
+| Joint photometric zenith/extinction and astrometric epoch constraint | **Not implemented** | V13 couples astrometric refraction and epoch, but does not yet propagate the photometric-zenith uncertainty into that joint fit |
 | Metadata-conditioned planetary analysis | Default in v7 | After stellar astrometry, refraction and photometric zenith are fixed, v7 selects an explicit time, FITS `DATE-OBS`/`MJD-OBS`/`JD`, EXIF original/digitized/image time, or a recognized filename time in that priority order. It runs the complete modern planet pipeline inside ±1 day, records every parsed candidate and disagreement, and saves fitted-minus-metadata timing error. This measures conditional local accuracy, not global blind identifiability |
 | Blind planetary epoch | Preserved opt-in and fallback | `--blind-planets` forces the inherited past-only 1850-to-run-time positional search. The same search runs automatically when no usable metadata time exists. Measured/predicted horizon checks and alternatives are retained; single-planet results remain ambiguous |
 | Coherent planet-constellation Gaia reassignment | Added in v6 | Two independently eligible planets may recruit a third or later detected planet only inside the ordinary gate and only when the joint epoch refit beats its saved Gaia residual; all compatible one-to-one alternatives are tested, while isolated and two-body gates are unchanged |
@@ -201,7 +213,8 @@ replacing the former 10-degree boundary. The existing finite airmass expression
 includes zero altitude; only sub-microdegree numerical roundoff is tolerated.
 The fit still reports a horizon-boundary candidate as provisional and never
 silently drops low stars to obtain a solution. Robust regression is unchanged;
-OLS comparison and a blind planetary epoch search remain unfinished.
+The former ordinary-least-squares comparison is superseded by the v13
+robust-only requirement. A blind planetary epoch search remains unfinished.
 
 Synthetic checks cover near-horizon recovery, horizon airmass, saturation in
 astrometric exports, photometric exclusions and exact red-X projection. The
@@ -259,7 +272,8 @@ near 2026-09-14T23:01TDB has 0.240 px residual, but another Saturn pass in 1938 
 more closely. This establishes candidate recovery and exposes the association
 conflict; it does not establish a unique planetary epoch or confirm planet identity.
 Historical statements above about a disabled search describe releases before 0.4.2.
-OLS reference regression and joint astrometric/refraction fitting remain unfinished.
+The historical ordinary-least-squares reference is superseded in v13. Joint
+astrometric/refraction fitting is implemented there with exact-zero fallback.
 
 The console prints the complete candidate epoch list, also saved as
 `planet_epoch_candidates.txt`. `planet_epoch_candidates.png` shows all retained
