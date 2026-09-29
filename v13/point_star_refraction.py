@@ -12,6 +12,56 @@ ARCSEC_TO_RAD = math.radians(1.0 / 3600.0)
 
 
 @dataclass(frozen=True)
+class IntegratedRefraction:
+    """Atmospheric state carried by the authoritative Barghini camera."""
+
+    status: str
+    zenith_camera: np.ndarray
+    refraction_a_arcsec: float
+    refraction_b_arcsec: float
+
+    def __post_init__(self) -> None:
+        zenith = np.asarray(self.zenith_camera, dtype=np.float64)
+        if zenith.shape != (3,) or not np.isfinite(zenith).all():
+            raise ValueError("Integrated refraction zenith must be a finite 3-vector")
+        norm = float(np.linalg.norm(zenith))
+        if norm <= 0.0:
+            raise ValueError("Integrated refraction zenith must be non-zero")
+        if not np.isfinite([self.refraction_a_arcsec, self.refraction_b_arcsec]).all():
+            raise ValueError("Integrated refraction coefficients must be finite")
+        object.__setattr__(self, "zenith_camera", zenith / norm)
+
+    @classmethod
+    def zero(cls, status: str = "zero") -> "IntegratedRefraction":
+        return cls(status, np.array([0.0, 0.0, 1.0]), 0.0, 0.0)
+
+    @classmethod
+    def from_dict(cls, record: dict[str, object] | None) -> "IntegratedRefraction":
+        if not record:
+            return cls.zero("legacy_zero")
+        return cls(
+            status=str(record["status"]),
+            zenith_camera=np.asarray(record["zenith_camera_unit_vector"], dtype=float),
+            refraction_a_arcsec=float(record["refraction_a_arcsec"]),
+            refraction_b_arcsec=float(record["refraction_b_arcsec"]),
+        )
+
+    @property
+    def is_zero(self) -> bool:
+        return self.refraction_a_arcsec == 0.0 and self.refraction_b_arcsec == 0.0
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "status": self.status,
+            "model": "R(z) = A*tan(z) + B*tan(z)^3 towards the fitted zenith",
+            "zenith_camera_unit_vector": self.zenith_camera.tolist(),
+            "refraction_a_arcsec": self.refraction_a_arcsec,
+            "refraction_b_arcsec": self.refraction_b_arcsec,
+            "authoritative_camera_state": True,
+        }
+
+
+@dataclass(frozen=True)
 class AtmosphericRefractionFit:
     status: str
     zenith_camera: np.ndarray

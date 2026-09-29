@@ -8,7 +8,7 @@ no observing location or timestamp seeds that search.
 """
 import argparse
 import csv
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import hashlib
 import json
 import math
@@ -25,6 +25,13 @@ from barghini_model import (
 from point_star_detection import write_products
 from point_star_image import load_recorded_image, load_scientific_image
 from point_star_plotting import save_png
+from point_star_refraction import (
+    IntegratedRefraction,
+    apply_refraction,
+    remove_refraction,
+    zenith_angles,
+    zenith_from_angles,
+)
 from point_star_time_bounds import capture_time_ceiling, limit_epoch_range
 
 
@@ -104,6 +111,7 @@ class BarghiniCamera:
     reference_rotation: np.ndarray
     p: np.ndarray
     detector_parity: int = 1
+    refraction: IntegratedRefraction = field(default_factory=IntegratedRefraction.zero)
 
     def __post_init__(self):
         if self.detector_parity not in (-1, 1):
@@ -128,7 +136,8 @@ class BarghiniCamera:
             raise ValueError(f'Unknown detector parity: {parity_name!r}')
         parity = 1 if parity_name == 'normal' else -1
         return cls(tuple(record['shape']), np.asarray(record['reference_rotation']),
-                   np.asarray(record['normalised_parameters']), parity)
+                   np.asarray(record['normalised_parameters']), parity,
+                   IntegratedRefraction.from_dict(record.get('integrated_refraction')))
 
     @property
     def physical(self):
@@ -136,14 +145,35 @@ class BarghiniCamera:
         return BarghiniParameters(p[0], *list(p[1:5]*scale),
                                   np.exp(p[5])/scale, p[6], p[7]/scale)
 
-    def to_sky(self, xy):
+    def apparent_rays(self, xy):
+        """Map detector positions to observed camera rays before derefraction."""
         a, z = detector_to_horizontal(*np.asarray(xy).T, self.physical)
         ray = np.c_[np.sin(z)*np.cos(a), np.sin(z)*np.sin(a), np.cos(z)]
         ray[:, 1] *= self.detector_parity
+        return ray
+
+    def to_sky(self, xy):
+        ray = self.apparent_rays(xy)
+        if not self.refraction.is_zero:
+            ray = remove_refraction(
+                ray,
+                self.refraction.zenith_camera,
+                self.refraction.refraction_a_arcsec,
+                self.refraction.refraction_b_arcsec,
+            )
         return ray @ self.reference_rotation.T
 
     def project(self, sky):
         ray = np.asarray(sky) @ self.reference_rotation
+        if not self.refraction.is_zero:
+            ray, valid = apply_refraction(
+                ray,
+                self.refraction.zenith_camera,
+                self.refraction.refraction_a_arcsec,
+                self.refraction.refraction_b_arcsec,
+            )
+            if not np.all(valid):
+                raise ValueError('Sky direction lies outside the supported refraction domain')
         ray[:, 1] *= self.detector_parity
         a = np.arctan2(ray[:, 1], ray[:, 0])
         z = np.arctan2(np.linalg.norm(ray[:, :2], axis=1), ray[:, 2])
@@ -167,10 +197,11 @@ class BarghiniCamera:
                     reference_rotation=self.reference_rotation.tolist(), shape=list(self.shape),
                     detector_parity=('normal' if self.detector_parity == 1 else 'mirrored'),
                     reference_Z='fixed celestial direction from current blind bootstrap; not local zenith',
+                    integrated_refraction=self.refraction.as_dict(),
                     monotonic_on_detector=self.is_monotonic())
 
 
-def fit_camera(camera, xy, sky, max_nfev=300):
+def fit_camera(camera, xy, sky, max_nfev=300, *, fit_refraction=False):
     scale = camera.scale
     h, w = camera.shape
     lower = [-np.pi, -.5, -.5, -.5, -.5, -2., -.8, .01]
@@ -178,7 +209,7 @@ def fit_camera(camera, xy, sky, max_nfev=300):
 
     def residual(p):
         model = BarghiniCamera(camera.shape, camera.reference_rotation, p,
-                               camera.detector_parity)
+                               camera.detector_parity, camera.refraction)
         angular = tangent_residuals_arcmin(model.to_sky(xy), sky)
         robust_angular = radial_soft_l1_residuals(
             angular, ASTROMETRIC_LOSS_SCALE_ARCMIN)
@@ -186,12 +217,75 @@ def fit_camera(camera, xy, sky, max_nfev=300):
         monotonic_penalty = np.maximum(1e-9-scaled_slopes, 0)*ARCMIN_PER_RADIAN*1e6
         return np.r_[robust_angular.ravel(), monotonic_penalty]
 
-    opt = least_squares(residual, camera.p, bounds=(lower, upper),
-                        loss='linear', x_scale='jac',
-                        max_nfev=max_nfev, ftol=1e-10, xtol=1e-10, gtol=1e-10)
-    fitted = BarghiniCamera(camera.shape, camera.reference_rotation, opt.x,
-                            camera.detector_parity)
-    return fitted, dict(success=bool(opt.success), nfev=opt.nfev, cost=float(opt.cost))
+    if not fit_refraction:
+        opt = least_squares(residual, camera.p, bounds=(lower, upper),
+                            loss='linear', x_scale='jac',
+                            max_nfev=max_nfev, ftol=1e-10, xtol=1e-10, gtol=1e-10)
+        fitted = BarghiniCamera(camera.shape, camera.reference_rotation, opt.x,
+                                camera.detector_parity, camera.refraction)
+        return fitted, dict(success=bool(opt.success), nfev=opt.nfev, cost=float(opt.cost),
+                            robust_loss='radial_soft_l1_per_star')
+
+    xy = np.asarray(xy, dtype=float)
+    sky = np.asarray(sky, dtype=float)
+    vacuum_camera = sky @ camera.reference_rotation
+    mean_direction = np.sum(vacuum_camera, axis=0)
+    mean_direction /= np.linalg.norm(mean_direction)
+    seed_zeniths = [camera.refraction.zenith_camera, mean_direction,
+                    np.array([0., 0., 1.]), np.array([1., 0., 0.]),
+                    np.array([-1., 0., 0.]), np.array([0., 1., 0.]),
+                    np.array([0., -1., 0.])]
+    refraction_lower = np.r_[lower, -np.pi, 0., 0., -2.]
+    refraction_upper = np.r_[upper, np.pi, np.pi, 180., 2.]
+
+    def joint_residual(parameters):
+        refraction = IntegratedRefraction(
+            'candidate', zenith_from_angles(parameters[8], parameters[9]),
+            parameters[10], parameters[11])
+        model = BarghiniCamera(camera.shape, camera.reference_rotation, parameters[:8],
+                               camera.detector_parity, refraction)
+        predicted_apparent, _ = apply_refraction(
+            vacuum_camera, refraction.zenith_camera,
+            refraction.refraction_a_arcsec, refraction.refraction_b_arcsec)
+        angular = tangent_residuals_arcmin(predicted_apparent, model.apparent_rays(xy))
+        robust_angular = radial_soft_l1_residuals(
+            angular, ASTROMETRIC_LOSS_SCALE_ARCMIN)
+        scaled_slopes = model.radial_slopes()*scale
+        monotonic_penalty = np.maximum(1e-9-scaled_slopes, 0)*ARCMIN_PER_RADIAN*1e6
+        zenith_distance = np.arccos(np.clip(
+            vacuum_camera @ refraction.zenith_camera, -1., 1.))
+        horizon_arcmin = np.maximum(
+            zenith_distance-np.deg2rad(88.), 0.)*ARCMIN_PER_RADIAN
+        robust_horizon = radial_soft_l1_residuals(
+            np.column_stack([horizon_arcmin, np.zeros_like(horizon_arcmin)]),
+            ASTROMETRIC_LOSS_SCALE_ARCMIN)
+        return np.r_[robust_angular.ravel(), monotonic_penalty,
+                     robust_horizon.ravel()]
+
+    best = None
+    seeds = []
+    for index, zenith in enumerate(seed_zeniths):
+        azimuth, inclination = zenith_angles(zenith)
+        coefficient_a = camera.refraction.refraction_a_arcsec
+        coefficient_b = camera.refraction.refraction_b_arcsec
+        if camera.refraction.is_zero and index:
+            coefficient_a = 45.
+            coefficient_b = 0.
+        seeds.append(np.r_[camera.p, azimuth, inclination, coefficient_a, coefficient_b])
+    for initial in seeds:
+        opt = least_squares(
+            joint_residual, initial, bounds=(refraction_lower, refraction_upper),
+            loss='linear', x_scale='jac', max_nfev=max_nfev,
+            ftol=1e-10, xtol=1e-10, gtol=1e-10)
+        if best is None or opt.cost < best.cost:
+            best = opt
+    refraction = IntegratedRefraction(
+        'candidate', zenith_from_angles(best.x[8], best.x[9]), best.x[10], best.x[11])
+    fitted = BarghiniCamera(camera.shape, camera.reference_rotation, best.x[:8],
+                            camera.detector_parity, refraction)
+    return fitted, dict(success=bool(best.success), nfev=best.nfev,
+                        cost=float(best.cost), robust_loss='radial_soft_l1_per_star',
+                        fit_refraction=True, seed_count=len(seeds))
 
 
 def bootstrap(xy, shape):
