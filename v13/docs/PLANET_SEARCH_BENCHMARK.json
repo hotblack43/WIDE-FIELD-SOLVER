@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "machine": {
+    "platform": "Linux-7.0.0-31-generic-x86_64-with-glibc2.39",
+    "processor": "x86_64",
+    "cpu_count": 16
+  },
+  "repetitions": 3,
+  "v6_workers": 4,
+  "timing": {
+    "v5_seconds": [
+      68.60333266798989,
+      76.77441935199022,
+      76.79955259300186
+    ],
+    "v6_seconds": [
+      24.83840567500738,
+      25.52968406700529,
+      24.160062962997472
+    ],
+    "v5_median_seconds": 76.77441935199022,
+    "v6_median_seconds": 24.83840567500738,
+    "speedup_ratio": 3.0909560120938564
+  },
+  "science": {
+    "equivalent": true,
+    "reasons": [],
+    "max_epoch_difference_seconds": 0.1388847827911377,
+    "max_rms_difference_px": 2.5587088003931058e-11,
+    "candidate_count_v5": 138,
+    "candidate_count_v6": 138
+  }
+}

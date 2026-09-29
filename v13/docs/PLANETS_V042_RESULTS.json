@@ -1,0 +1,741 @@
+{
+  "source_sha256": "f2990800eebdc902adba9853e4b9352d8ddb20cf0b71498b4bdce46b25b02e58",
+  "planet_status": "planet_epoch_ambiguous",
+  "search_start_tdb": "1849-12-31T00:00:00.000 TDB",
+  "search_end_tdb": "2150-01-02T00:00:00.000 TDB",
+  "candidate_counts_by_planet": {
+    "Mercury": 90,
+    "Mars": 5,
+    "Saturn": 8
+  },
+  "source_candidates": [
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2398335.743528093,
+      "epoch_tdb": "1854-04-27T05:50:40.827 TDB",
+      "separation_px": 1.3222563713468287
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2398695.494806818,
+      "epoch_tdb": "1855-04-21T23:52:31.309 TDB",
+      "separation_px": 0.8830160053244339
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2400527.252116714,
+      "epoch_tdb": "1860-04-26T18:03:02.884 TDB",
+      "separation_px": 0.6962476450574372
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2400890.6089826804,
+      "epoch_tdb": "1861-04-25T02:36:56.104 TDB",
+      "separation_px": 0.6763830355634285
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2403084.5002226294,
+      "epoch_tdb": "1867-04-28T00:00:19.235 TDB",
+      "separation_px": 1.329530198878675
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2403444.8320431174,
+      "epoch_tdb": "1868-04-22T07:58:08.525 TDB",
+      "separation_px": 0.4303512625912147
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2405639.717625726,
+      "epoch_tdb": "1874-04-26T05:13:22.863 TDB",
+      "separation_px": 0.9888374680777857
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2405998.6835525734,
+      "epoch_tdb": "1875-04-20T04:24:18.942 TDB",
+      "separation_px": 1.7380272074734069
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2407833.040021064,
+      "epoch_tdb": "1880-04-27T12:57:37.820 TDB",
+      "separation_px": 1.1074517639714587
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2408194.12722064,
+      "epoch_tdb": "1881-04-23T15:03:11.863 TDB",
+      "separation_px": 0.0025635252432307824
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2410388.730833652,
+      "epoch_tdb": "1887-04-27T05:32:24.028 TDB",
+      "separation_px": 1.233891822503696
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2410748.087853361,
+      "epoch_tdb": "1888-04-20T14:06:30.530 TDB",
+      "separation_px": 1.2548378839859902
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2412581.2505555814,
+      "epoch_tdb": "1893-04-27T18:00:48.002 TDB",
+      "separation_px": 0.47825009185764283
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2412943.367962734,
+      "epoch_tdb": "1894-04-24T20:49:51.980 TDB",
+      "separation_px": 0.39994037315621395
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2415137.6207536245,
+      "epoch_tdb": "1900-04-28T02:53:53.113 TDB",
+      "separation_px": 1.3698788049249737
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2415497.4589626705,
+      "epoch_tdb": "1901-04-22T23:00:54.375 TDB",
+      "separation_px": 0.7874092926851531
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2417328.877743122,
+      "epoch_tdb": "1906-04-28T09:03:57.006 TDB",
+      "separation_px": 0.962853684872719
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2417692.5377497436,
+      "epoch_tdb": "1907-04-27T00:54:21.578 TDB",
+      "separation_px": 0.7585146550943946
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2419886.350063115,
+      "epoch_tdb": "1913-04-28T20:24:05.453 TDB",
+      "separation_px": 1.3536964521263943
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2420246.791007596,
+      "epoch_tdb": "1914-04-24T06:59:03.056 TDB",
+      "separation_px": 0.3387257257273158
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2422441.6310144225,
+      "epoch_tdb": "1920-04-27T03:08:39.646 TDB",
+      "separation_px": 1.0676646904426133
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2422800.6606540396,
+      "epoch_tdb": "1921-04-21T03:51:20.509 TDB",
+      "separation_px": 1.641994864738637
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2424634.844178185,
+      "epoch_tdb": "1926-04-29T08:15:36.995 TDB",
+      "separation_px": 1.0819440725560643
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2424996.0756474473,
+      "epoch_tdb": "1927-04-25T13:48:55.939 TDB",
+      "separation_px": 0.09097953307303609
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2427190.628108292,
+      "epoch_tdb": "1933-04-28T03:04:28.556 TDB",
+      "separation_px": 1.2952442423909076
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2427550.0604358306,
+      "epoch_tdb": "1934-04-22T13:27:01.656 TDB",
+      "separation_px": 1.1592514893731047
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2429382.9713885314,
+      "epoch_tdb": "1939-04-29T11:18:47.969 TDB",
+      "separation_px": 0.3633479781436656
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2429745.3041624646,
+      "epoch_tdb": "1940-04-25T19:17:59.637 TDB",
+      "separation_px": 0.48632591271373504
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2431939.499083036,
+      "epoch_tdb": "1946-04-28T23:58:40.774 TDB",
+      "separation_px": 1.4190629840137696
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2432299.4224348255,
+      "epoch_tdb": "1947-04-23T22:08:18.369 TDB",
+      "separation_px": 0.6921321992216733
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2434130.456484342,
+      "epoch_tdb": "1952-04-27T22:57:20.247 TDB",
+      "separation_px": 1.2930951018603443
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2434494.4676947184,
+      "epoch_tdb": "1953-04-26T23:13:28.824 TDB",
+      "separation_px": 0.8437026031376414
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2436688.193408243,
+      "epoch_tdb": "1959-04-29T16:38:30.472 TDB",
+      "separation_px": 1.370048352519315
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2437048.746034738,
+      "epoch_tdb": "1960-04-24T05:54:17.401 TDB",
+      "separation_px": 0.2430723460897063
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2439243.5472811395,
+      "epoch_tdb": "1966-04-28T01:08:05.090 TDB",
+      "separation_px": 1.1406220951428856
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2439602.636586805,
+      "epoch_tdb": "1967-04-22T03:16:41.100 TDB",
+      "separation_px": 1.5462222567134376
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2441436.6368534123,
+      "epoch_tdb": "1972-04-29T03:17:04.135 TDB",
+      "separation_px": 1.0492191046699704
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2441798.0234811706,
+      "epoch_tdb": "1973-04-25T12:33:48.773 TDB",
+      "separation_px": 0.18019734245966676
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2443992.521456209,
+      "epoch_tdb": "1979-04-29T00:30:53.816 TDB",
+      "separation_px": 1.3610297167335836
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2444352.028815671,
+      "epoch_tdb": "1980-04-22T12:41:29.674 TDB",
+      "separation_px": 1.0634668517925843
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2446184.6885832883,
+      "epoch_tdb": "1985-04-29T04:31:33.596 TDB",
+      "separation_px": 0.22798904076068624
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2446547.242417706,
+      "epoch_tdb": "1986-04-26T17:49:04.890 TDB",
+      "separation_px": 0.5752084498024378
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2448741.36614663,
+      "epoch_tdb": "1992-04-28T20:47:15.069 TDB",
+      "separation_px": 1.4603244725041973
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2449101.387825725,
+      "epoch_tdb": "1993-04-23T21:18:28.143 TDB",
+      "separation_px": 0.5977373018515002
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2450932.0076449327,
+      "epoch_tdb": "1998-04-28T12:11:00.522 TDB",
+      "separation_px": 1.6750099474859728
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2451296.391222279,
+      "epoch_tdb": "1999-04-27T21:23:21.605 TDB",
+      "separation_px": 0.9247885594263163
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2453490.030137887,
+      "epoch_tdb": "2005-04-29T12:43:23.913 TDB",
+      "separation_px": 1.3836063831722518
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2453850.7043914213,
+      "epoch_tdb": "2006-04-25T04:54:19.419 TDB",
+      "separation_px": 0.14971933669347276
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2456045.456185814,
+      "epoch_tdb": "2012-04-27T22:56:54.454 TDB",
+      "separation_px": 1.2163360217999593
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2456404.6117620347,
+      "epoch_tdb": "2013-04-22T02:40:56.240 TDB",
+      "separation_px": 1.4485833905982732
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2458238.425754795,
+      "epoch_tdb": "2018-04-29T22:13:05.214 TDB",
+      "separation_px": 1.0047466783250554
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2458599.968925815,
+      "epoch_tdb": "2019-04-26T11:15:15.190 TDB",
+      "separation_px": 0.27321613782998555
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2460794.416852149,
+      "epoch_tdb": "2025-04-28T22:00:16.026 TDB",
+      "separation_px": 1.4205475263180432
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2461153.9998439522,
+      "epoch_tdb": "2026-04-23T11:59:46.517 TDB",
+      "separation_px": 0.9685174164825827
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2462986.384206936,
+      "epoch_tdb": "2031-04-29T21:13:15.479 TDB",
+      "separation_px": 0.07316049990904455
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2463349.1763879377,
+      "epoch_tdb": "2032-04-26T16:13:59.918 TDB",
+      "separation_px": 0.6617929995655832
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2465543.2334889225,
+      "epoch_tdb": "2038-04-29T17:36:13.443 TDB",
+      "separation_px": 1.5030933290805535
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2465903.3495761203,
+      "epoch_tdb": "2039-04-24T20:23:23.377 TDB",
+      "separation_px": 0.5019695437775802
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2468098.313826213,
+      "epoch_tdb": "2045-04-27T19:31:54.585 TDB",
+      "separation_px": 1.0063731392124728
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2468457.1665460807,
+      "epoch_tdb": "2046-04-21T15:59:49.581 TDB",
+      "separation_px": 1.8425779613227935
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2470291.8553883834,
+      "epoch_tdb": "2051-04-30T08:31:45.556 TDB",
+      "separation_px": 1.3876406247070903
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2470652.657950395,
+      "epoch_tdb": "2052-04-25T03:47:26.914 TDB",
+      "separation_px": 0.05689514606757442
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2472847.3634728272,
+      "epoch_tdb": "2058-04-28T20:43:24.052 TDB",
+      "separation_px": 1.2883859389561567
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2473206.58153068,
+      "epoch_tdb": "2059-04-23T01:57:24.251 TDB",
+      "separation_px": 1.3503581000300728
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2475040.1948649627,
+      "epoch_tdb": "2064-04-29T16:40:36.333 TDB",
+      "separation_px": 0.9487228540880475
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2475401.9174380735,
+      "epoch_tdb": "2065-04-26T10:01:06.650 TDB",
+      "separation_px": 0.36379985402677395
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2477596.3012002488,
+      "epoch_tdb": "2071-04-29T19:13:43.701 TDB",
+      "separation_px": 1.4807968761647652
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2477955.965533515,
+      "epoch_tdb": "2072-04-23T11:10:22.096 TDB",
+      "separation_px": 0.869992614131875
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2479788.061586403,
+      "epoch_tdb": "2077-04-29T13:28:41.065 TDB",
+      "separation_px": 0.11415204685476874
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2480151.1114939116,
+      "epoch_tdb": "2078-04-27T14:40:33.074 TDB",
+      "separation_px": 0.7493848739291806
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2482345.0929629905,
+      "epoch_tdb": "2084-04-29T14:13:52.002 TDB",
+      "separation_px": 1.5378615165540823
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2482705.3122001546,
+      "epoch_tdb": "2085-04-24T19:29:34.093 TDB",
+      "separation_px": 0.4081757978117269
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2484900.231733606,
+      "epoch_tdb": "2091-04-28T17:33:41.784 TDB",
+      "separation_px": 1.0881454026267552
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2485259.142603111,
+      "epoch_tdb": "2092-04-21T15:25:20.909 TDB",
+      "separation_px": 1.7465141360394065
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2487093.6818185356,
+      "epoch_tdb": "2097-04-30T04:21:49.121 TDB",
+      "separation_px": 1.3897026074059642
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2487454.6130852015,
+      "epoch_tdb": "2098-04-26T02:42:50.561 TDB",
+      "separation_px": 0.03791861025258048
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2489649.264085679,
+      "epoch_tdb": "2104-04-29T18:20:17.003 TDB",
+      "separation_px": 1.3593989681273642
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2490008.5538440575,
+      "epoch_tdb": "2105-04-24T01:17:32.127 TDB",
+      "separation_px": 1.2508796214751925
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2491841.9534762297,
+      "epoch_tdb": "2110-05-01T10:53:00.346 TDB",
+      "separation_px": 0.8764900027587099
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2492203.858741156,
+      "epoch_tdb": "2111-04-28T08:36:35.236 TDB",
+      "separation_px": 0.45369381963303534
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2494398.1829482126,
+      "epoch_tdb": "2117-04-30T16:23:26.726 TDB",
+      "separation_px": 1.5360153396916518
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2494757.9297134047,
+      "epoch_tdb": "2118-04-25T10:18:47.238 TDB",
+      "separation_px": 0.7730945057655987
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2496589.7042646427,
+      "epoch_tdb": "2123-05-01T04:54:08.465 TDB",
+      "separation_px": 0.33525152017984816
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2496953.044528203,
+      "epoch_tdb": "2124-04-28T13:04:07.237 TDB",
+      "separation_px": 0.8364454690682658
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2499146.947545747,
+      "epoch_tdb": "2130-05-01T10:44:27.953 TDB",
+      "separation_px": 1.5727460393755055
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2499507.268668095,
+      "epoch_tdb": "2131-04-26T18:26:52.923 TDB",
+      "separation_px": 0.30849534560084185
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2501702.153636408,
+      "epoch_tdb": "2137-04-29T15:41:14.186 TDB",
+      "separation_px": 1.1678886923455416
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2502061.1202605595,
+      "epoch_tdb": "2138-04-23T14:53:10.512 TDB",
+      "separation_px": 1.6469043252430633
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2503895.4910352165,
+      "epoch_tdb": "2143-05-01T23:47:05.443 TDB",
+      "separation_px": 1.3784567903030047
+    },
+    {
+      "planet": "Mercury",
+      "detection_id": 63,
+      "jd_tdb": 2504256.563498677,
+      "epoch_tdb": "2144-04-27T01:31:26.286 TDB",
+      "separation_px": 0.12945619163365976
+    },
+    {
+      "planet": "Mars",
+      "detection_id": 63,
+      "jd_tdb": 2424698.453422376,
+      "epoch_tdb": "1926-07-01T22:52:55.693 TDB",
+      "separation_px": 0.3107732526601006
+    },
+    {
+      "planet": "Mars",
+      "detection_id": 63,
+      "jd_tdb": 2453551.9217989184,
+      "epoch_tdb": "2005-06-30T10:07:23.427 TDB",
+      "separation_px": 0.8678769282816455
+    },
+    {
+      "planet": "Mars",
+      "detection_id": 63,
+      "jd_tdb": 2470726.3907850864,
+      "epoch_tdb": "2052-07-07T21:22:43.831 TDB",
+      "separation_px": 1.5656515341062216
+    },
+    {
+      "planet": "Mars",
+      "detection_id": 63,
+      "jd_tdb": 2482405.392913363,
+      "epoch_tdb": "2084-06-28T21:25:47.715 TDB",
+      "separation_px": 1.4024048535724913
+    },
+    {
+      "planet": "Mars",
+      "detection_id": 63,
+      "jd_tdb": 2499579.509017607,
+      "epoch_tdb": "2131-07-08T00:12:59.121 TDB",
+      "separation_px": 0.8357958024665288
+    },
+    {
+      "planet": "Saturn",
+      "detection_id": 63,
+      "jd_tdb": 2407649.631926651,
+      "epoch_tdb": "1879-10-27T03:09:58.463 TDB",
+      "separation_px": 0.4340420883364807
+    },
+    {
+      "planet": "Saturn",
+      "detection_id": 63,
+      "jd_tdb": 2407740.7910046983,
+      "epoch_tdb": "1880-01-26T06:59:02.806 TDB",
+      "separation_px": 1.8672368186298416
+    },
+    {
+      "planet": "Saturn",
+      "detection_id": 63,
+      "jd_tdb": 2429228.162064388,
+      "epoch_tdb": "1938-11-25T15:53:22.363 TDB",
+      "separation_px": 0.013396535833669695
+    },
+    {
+      "planet": "Saturn",
+      "detection_id": 63,
+      "jd_tdb": 2429266.018607608,
+      "epoch_tdb": "1939-01-02T12:26:47.697 TDB",
+      "separation_px": 1.1112531802000734
+    },
+    {
+      "planet": "Saturn",
+      "detection_id": 63,
+      "jd_tdb": 2439721.27480937,
+      "epoch_tdb": "1967-08-18T18:35:43.530 TDB",
+      "separation_px": 0.4437591572875734
+    },
+    {
+      "planet": "Saturn",
+      "detection_id": 63,
+      "jd_tdb": 2461298.459221486,
+      "epoch_tdb": "2026-09-14T23:01:16.736 TDB",
+      "separation_px": 0.23978586282691125
+    },
+    {
+      "planet": "Saturn",
+      "detection_id": 63,
+      "jd_tdb": 2482868.8533896836,
+      "epoch_tdb": "2085-10-05T08:28:52.869 TDB",
+      "separation_px": 0.5165307674753336
+    },
+    {
+      "planet": "Saturn",
+      "detection_id": 63,
+      "jd_tdb": 2504437.85916189,
+      "epoch_tdb": "2144-10-25T08:37:11.587 TDB",
+      "separation_px": 0.5391283771205091
+    }
+  ],
+  "unchanged_products": {
+    "star_coordinates.csv": true,
+    "stellar_epoch.json": true,
+    "photometric_zenith.json": true,
+    "stellar_photometry.csv": true
+  },
+  "limitations": "Conditional on the saved camera and geocentric apparent ephemerides. No site, image date or stellar epoch seeds this search. Topocentric parallax, aberration/frame differences, refraction and ephemeris error are not fitted. Local time uncertainty excludes global aliases and model systematics. Ranking is not a calibrated false-alarm probability."
+}

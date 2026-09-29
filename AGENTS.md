@@ -80,6 +80,11 @@ boundary; their hashes are in `docs/v10-runtime.json`. `go11.sh`,
 `go_v0.11.0.sh`, and the complete `v11/` package are frozen at the public
 `v0.11.0` release; their hashes are in `docs/v11-runtime.json`.
 
+`go12.sh`, `go_v0.12.0.sh`, and the complete `v12/` experimental radial-model
+study are frozen at the v13 boundary; their hashes are in
+`docs/v12-runtime.json`. Develop integrated-refraction work only in `v13/` and
+its `go13.sh` and `go_v0.13.0.sh` launchers.
+
 Develop later upgrades in a new version directory with its own launchers,
 catalogue, lockfile, ephemeris data and source manifest. Never overwrite v11 or
 another preserved runtime. All versions must work without `.worktrees`; update
