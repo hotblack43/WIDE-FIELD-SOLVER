@@ -47,6 +47,10 @@ counts, commit hashes, or output-directory names for concrete inspection paths.
 If a new rendering exists only in a temporary location, say so explicitly and
 give that path; never imply that a preserved historical product was overwritten.
 
+Every final response must end with one small, concrete example of what the user
+can do next. Prefer a specific file to open, command to run, or visual comparison
+to make. Do not end with only an abstract offer of further help.
+
 ## Read the scientific goal first
 
 Read [GOAL.md](GOAL.md) before changes and check `docs/FEATURE_STATUS.md` when

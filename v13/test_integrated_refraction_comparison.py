@@ -2,20 +2,23 @@ import csv
 import importlib.util
 import json
 from pathlib import Path
+import re
 import sqlite3
 import tempfile
 import unittest
 
+import matplotlib.pyplot as plt
 import numpy as np
 
 from point_star_barghini import BarghiniCamera
 
 
 SCRIPT = Path(__file__).parent / "scripts" / "compare_integrated_refraction.py"
+REPORT_SCRIPT = Path(__file__).parent / "scripts" / "build_integrated_refraction_report.py"
 
 
-def load_script():
-    spec = importlib.util.spec_from_file_location("compare_integrated_refraction", SCRIPT)
+def load_script(path=SCRIPT):
+    spec = importlib.util.spec_from_file_location(path.stem, path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -101,6 +104,56 @@ class IntegratedRefractionComparisonTests(unittest.TestCase):
                  "integrated_refraction_comparison.png"},
             )
             self.assertTrue(all(path.is_file() for path in products))
+
+    def test_illustrated_pdf_report_has_four_pages_and_refuses_overwrite(self):
+        self.assertTrue(REPORT_SCRIPT.is_file(), "illustrated PDF report builder is missing")
+        report_module = load_script(REPORT_SCRIPT)
+        rows = [
+            {"family": "MMTO", "status": "rejected_zero", "fitted_count": 302,
+             "angular_diameter_deg": 167.4, "baseline_rms_arcmin": 2.26,
+             "candidate_rms_arcmin": 1.74, "selected_rms_arcmin": 2.26,
+             "refraction_a_arcsec": 180.0, "failure_reason": "physical_checks_failed"},
+            {"family": "APICAM", "status": "rejected_zero", "fitted_count": 4712,
+             "angular_diameter_deg": 172.7, "baseline_rms_arcmin": 1.68,
+             "candidate_rms_arcmin": 2.03, "selected_rms_arcmin": 1.68,
+             "refraction_a_arcsec": 0.0, "failure_reason": "physical_checks_failed"},
+            {"family": "small-field control", "status": "rejected_small_field",
+             "fitted_count": 122, "failure_reason": "detector_too_small"},
+        ]
+        summary = {
+            "ordinary_least_squares_used": False,
+            "row_count": len(rows),
+            "status_counts": {"rejected_small_field": 1, "rejected_zero": 2},
+            "rows": rows,
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            summary_path = root / "summary.json"
+            summary_path.write_text(json.dumps(summary))
+            images = []
+            for name, colour in (("comparison.png", (0.2, 0.4, 0.8)),
+                                 ("overlay.png", (0.1, 0.7, 0.3)),
+                                 ("residuals.png", (0.8, 0.3, 0.2))):
+                path = root / name
+                array = np.zeros((120, 180, 3), dtype=float)
+                array[:, :] = colour
+                plt.imsave(path, array)
+                images.append(path)
+            output = root / "integrated_refraction_report.pdf"
+
+            created = report_module.write_report(
+                summary_path, images[0], images[1], images[2], output
+            )
+            data = created.read_bytes()
+
+            self.assertEqual(created, output)
+            self.assertTrue(data.startswith(b"%PDF"))
+            self.assertEqual(len(re.findall(rb"/Type /Page\b", data)), 4)
+            self.assertGreater(len(data), 10_000)
+            with self.assertRaises(FileExistsError):
+                report_module.write_report(
+                    summary_path, images[0], images[1], images[2], output
+                )
 
 
 if __name__ == "__main__":
