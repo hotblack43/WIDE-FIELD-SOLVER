@@ -13,7 +13,7 @@ import numpy as np
 from astropy.time import Time
 from scipy.optimize import brentq, least_squares, minimize_scalar
 
-from point_star_barghini import (BarghiniCamera, ARCMIN_PER_RADIAN,
+from point_star_barghini import (BarghiniCamera, fit_camera,
     tangent_residuals_arcmin, radial_soft_l1_residuals)
 from point_star_zenith import zenith_constraints, zenith_supports_visibility
 
@@ -401,7 +401,8 @@ def refine_joint_epoch(image_path, output, result, science, catalogue_path):
             'Matched-count hierarchy and positional delta-cost <=4.5 competitor rule are heuristic, not false-alarm odds.',
             'Geocentric apparent planet vectors versus ICRS proper-motion stars retain frame/aberration limitations; '
             '3-arcminute per-source uncertainty floor is conservative, not a correction.',
-            'Topocentric parallax and integrated atmospheric refraction remain unmodelled; intervals exclude these systematics.',
+            'Topocentric parallax remains unmodelled. Atmospheric refraction is refitted at every trial but '
+            'is authoritative only when the stellar blocked-validation decision already adopted it.',
             'Visibility is conditional on the recorded zenith policy; image-centre default is an instrument assumption, '
             'not an extinction measurement. Its uncertainty is not included; metadata site is not used.'])
     candidates = record['candidates']
@@ -553,20 +554,30 @@ def refine_joint_epoch(image_path, output, result, science, catalogue_path):
 
 
 def _fit_weighted_camera(camera, xy, sky, sigmas):
-    scale = camera.scale
-    h, w = camera.shape
-    lower = [-np.pi, -.5, -.5, -.5, -.5, -2., -.8, .01]
-    upper = [np.pi, w/scale+.5, h/scale+.5, w/scale+.5, h/scale+.5, 3., .8, 5.]
-    def residual(p):
-        model = BarghiniCamera(camera.shape, camera.reference_rotation, p, camera.detector_parity)
-        angular = tangent_residuals_arcmin(model.to_sky(xy), sky)/sigmas[:, None]
-        robust = radial_soft_l1_residuals(angular, 1.)
-        penalty = np.maximum(1e-9-model.radial_slopes()*scale, 0)*ARCMIN_PER_RADIAN*1e6
-        return np.r_[robust.ravel(), penalty]
-    opt = least_squares(residual, camera.p, bounds=(lower, upper), loss='linear',
-                        x_scale='jac', max_nfev=1200, ftol=1e-10, xtol=1e-10, gtol=1e-10)
-    fitted = BarghiniCamera(camera.shape, camera.reference_rotation, opt.x, camera.detector_parity)
-    if not opt.success or not fitted.is_monotonic():
+    seed = camera
+    if camera.refraction.is_zero:
+        from point_star_refraction import IntegratedRefraction
+        direction = np.sum(np.asarray(sky) @ camera.reference_rotation, axis=0)
+        direction /= np.linalg.norm(direction)
+        seed = BarghiniCamera(
+            camera.shape, camera.reference_rotation, camera.p.copy(),
+            camera.detector_parity,
+            IntegratedRefraction('trial_seed', direction, 45., 0.))
+    candidate, candidate_info = fit_camera(
+        seed, xy, sky, max_nfev=600, fit_refraction=True,
+        uncertainty_arcmin=sigmas, refraction_multistart=False)
+    if camera.refraction.status == 'adopted':
+        refraction = candidate.refraction
+        candidate.refraction = type(refraction)(
+            'adopted', refraction.zenith_camera,
+            refraction.refraction_a_arcsec, refraction.refraction_b_arcsec)
+        fitted, info = candidate, candidate_info
+    else:
+        candidate.refraction = type(candidate.refraction).zero('rejected')
+        fitted, info = fit_camera(
+            candidate, xy, sky, max_nfev=1200, fit_refraction=False,
+            uncertainty_arcmin=sigmas)
+    if not info['success'] or not fitted.is_monotonic():
         raise RuntimeError('Joint camera minimisation did not converge monotonically')
     return fitted
 

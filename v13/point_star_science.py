@@ -14,7 +14,6 @@ import numpy as np
 from point_star_barghini import vectors
 from point_star_image import load_recorded_image
 from point_star_plotting import save_png
-from point_star_refraction import fit_atmospheric_refraction
 from point_star_report import _camera_from_result, observation_metadata
 
 def _read(path):
@@ -48,17 +47,14 @@ def fit_stellar_epoch(solution, result, catalogue_path, year_limits=(1850., 2036
 
 
 def fit_refraction(solution, result, catalogue_path, stellar_epoch):
+    """Report the refraction already selected inside the authoritative camera fit."""
     solution = Path(solution)
-    rows = _read(solution/'star_coordinates.csv')
-    xy = np.array([[_float(row, 'x_px'), _float(row, 'y_px')] for row in rows])
     camera = _camera_from_result(result)
     year = stellar_epoch.get('applied_epoch_jyear')
-    target = vectors([_float(row, 'propagated_ra_deg', _float(row, 'catalog_ra_deg')) for row in rows],
-                     [_float(row, 'propagated_dec_deg', _float(row, 'catalog_dec_deg')) for row in rows])
-    apparent_camera = camera.to_sky(xy) @ camera.reference_rotation
-    fitted = fit_atmospheric_refraction(apparent_camera, target, camera.reference_rotation)
-    output = fitted.as_dict()
+    output = camera.refraction.as_dict()
     output['catalogue_epoch_jyear_used'] = year
+    output['selection'] = result.get('integrated_refraction') or {}
+    output['refitted_downstream'] = False
     (solution/'refraction_fit.json').write_text(json.dumps(output, indent=2)+'\n')
     return output
 
@@ -101,36 +97,38 @@ def _airmass_kasten_young(altitude_deg):
 
 
 def _robust_line(x, y):
-    """Iteratively clipped ordinary line fit, returning fit diagnostics."""
-    keep = np.isfinite(x) & np.isfinite(y)
-    for _ in range(5):
-        if keep.sum() < 3:
-            break
-        design = np.c_[np.ones(keep.sum()), x[keep]]
-        coefficients = np.linalg.lstsq(design, y[keep], rcond=None)[0]
-        residual = y-(coefficients[0]+coefficients[1]*x)
-        centre = np.median(residual[keep])
-        sigma = 1.4826*np.median(np.abs(residual[keep]-centre))
-        if not np.isfinite(sigma) or sigma <= 0:
-            break
-        updated = keep & (np.abs(residual-centre) <= 3.*sigma)
-        if np.array_equal(updated, keep):
-            break
-        keep = updated
+    """Soft-L1 robust line fit with an audited severe-outlier mask."""
+    from scipy.optimize import least_squares
+    finite = np.isfinite(x) & np.isfinite(y)
+    keep = finite.copy()
     if keep.sum() < 3:
         return None, keep
-    design = np.c_[np.ones(keep.sum()), x[keep]]
-    coefficients = np.linalg.lstsq(design, y[keep], rcond=None)[0]
-    residual = y[keep]-design@coefficients
+    initial = np.array([np.median(y[keep]), 0.])
+    first = least_squares(
+        lambda coefficients: y[keep]-(coefficients[0]+coefficients[1]*x[keep]),
+        initial, loss='soft_l1', f_scale=.1)
+    all_residual = y-(first.x[0]+first.x[1]*x)
+    centre = np.median(all_residual[finite])
+    sigma = 1.4826*np.median(np.abs(all_residual[finite]-centre))
+    if np.isfinite(sigma):
+        keep = finite & (np.abs(all_residual-centre) <= max(.1, 3.*sigma))
+    if keep.sum() < 3:
+        return None, keep
+    fitted = least_squares(
+        lambda coefficients: y[keep]-(coefficients[0]+coefficients[1]*x[keep]),
+        first.x, loss='soft_l1', f_scale=.1)
+    coefficients = fitted.x
+    residual = y[keep]-(coefficients[0]+coefficients[1]*x[keep])
     variance = np.sum(residual**2)/max(keep.sum()-2, 1)
-    covariance = variance*np.linalg.pinv(design.T@design)
+    covariance = variance*np.linalg.pinv(fitted.jac.T@fitted.jac)
     total = np.sum((y[keep]-np.mean(y[keep]))**2)
     output = dict(intercept_mag=float(coefficients[0]),
                   coefficient_mag_per_airmass=float(coefficients[1]),
                   coefficient_sigma_mag_per_airmass=float(np.sqrt(covariance[1, 1])),
                   rms_mag=float(np.sqrt(np.mean(residual**2))),
                   r_squared=float(1.-np.sum(residual**2)/total) if total > 0 else 0.,
-                  fitted_count=int(keep.sum()), rejected_count=int((~keep).sum()))
+                  fitted_count=int(keep.sum()), rejected_count=int((~keep).sum()),
+                  robust_loss='soft_l1', robust_loss_scale_mag=.1)
     return output, keep
 
 

@@ -310,6 +310,25 @@ class FitsExportTests(unittest.TestCase):
         self.assertLess(np.linalg.norm(wcs.all_world2pix(np.c_[ra,dec],0)-xy,axis=1).max(),.05)
         self.assertEqual(json.dumps(camera.serialise(),sort_keys=True),before)
 
+    def test_axisymmetric_integrated_refraction_is_in_exported_fisheye_wcs(self):
+        from point_star_refraction import IntegratedRefraction
+        camera=BarghiniCamera.initial((900,1200),500.,np.eye(3))
+        camera.refraction=IntegratedRefraction(
+            'adopted', np.array([0., 0., 1.]), 50., .1)
+        q=camera.physical
+        yy,xx=np.indices(camera.shape)
+        mask=np.hypot(xx-q.x_o,yy-q.y_o)<=650.
+        header,record=self.api.validated_header(camera,valid_mask=mask)
+        self.assertLess(record['maximum_error_px'],self.api.LIMIT_PX)
+        rng=np.random.default_rng(13)
+        xy=rng.uniform([0,0],[1199,899],(1000,2))
+        xy=xy[np.hypot(xy[:,0]-q.x_o,xy[:,1]-q.y_o)<=640.][:250]
+        sky=camera.to_sky(xy)
+        ra=np.rad2deg(np.arctan2(sky[:,1],sky[:,0]))%360
+        dec=np.rad2deg(np.arctan2(sky[:,2],np.hypot(sky[:,0],sky[:,1])))
+        wcs=WCS(header)
+        self.assertLess(np.linalg.norm(wcs.all_world2pix(np.c_[ra,dec],0)-xy,axis=1).max(),.05)
+
     def test_nonfinite_intermediate_zpn_trial_does_not_block_later_valid_order(self):
         camera = BarghiniCamera(
             (925, 925),

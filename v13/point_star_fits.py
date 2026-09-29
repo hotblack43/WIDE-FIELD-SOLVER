@@ -22,6 +22,7 @@ from barghini_model import radial_u, radial_du_dr
 from point_star_barghini import BarghiniCamera, vectors
 from point_star_image import load_recorded_image
 from point_star_names import plot_label
+from point_star_refraction import ARCSEC_TO_RAD, remove_refraction
 
 LIMIT_PX = .05
 VIEWPORT_PX = 700
@@ -85,15 +86,35 @@ def validated_header(camera, valid_mask=None):
         valid_count = h*w
         grid_count, boundary_count = int(gx.size), int(4*len(edge_x))
     radii = np.linspace(0., rmax, 1025)
-    angles = radial_u(radii, q.v, q.s, q.d)
-    if not (np.isfinite(angles).all() and np.all(radial_du_dr(radii, q.v, q.s, q.d) > 0)
-            and 0 < angles[-1] < np.pi):
+    apparent_angles = radial_u(radii, q.v, q.s, q.d)
+    if not (np.isfinite(apparent_angles).all() and np.all(radial_du_dr(radii, q.v, q.s, q.d) > 0)
+            and 0 < apparent_angles[-1] < np.pi):
         label = 'Saved sky-footprint' if restricted else 'Whole-detector'
         raise ValueError(f'{label} radial domain is not invertible within 180 degrees')
-    scale = q.v + q.s*q.d
+    if camera.refraction.is_zero:
+        angles = apparent_angles
+        scale = q.v + q.s*q.d
+    else:
+        if not np.allclose(camera.refraction.zenith_camera, [0., 0., 1.], atol=1e-8):
+            raise ValueError(
+                'Non-axisymmetric integrated refraction cannot be represented faithfully by ZPN')
+        apparent_rays = np.column_stack([
+            np.sin(apparent_angles), np.zeros_like(apparent_angles),
+            np.cos(apparent_angles)])
+        vacuum_rays = remove_refraction(
+            apparent_rays, camera.refraction.zenith_camera,
+            camera.refraction.refraction_a_arcsec,
+            camera.refraction.refraction_b_arcsec)
+        angles = np.arccos(np.clip(vacuum_rays[:, 2], -1., 1.))
+        scale = ((q.v + q.s*q.d)
+                 /(1.-camera.refraction.refraction_a_arcsec*ARCSEC_TO_RAD))
+        if not (np.isfinite(angles).all() and np.all(np.diff(angles) > 0)
+                and 0 < angles[-1] < np.pi):
+            raise ValueError('Refracted radial domain is not invertible within 180 degrees')
     g = np.empty_like(angles)
-    g[0] = -q.s*q.d*q.d/(2*scale*scale)
     g[1:] = (scale*radii[1:] - angles[1:])/angles[1:]**2
+    g[0] = (-q.s*q.d*q.d/(2*scale*scale)
+            if camera.refraction.is_zero else g[1])
     rays = camera.to_sky([[q.x_o, q.y_o], [q.x_o+1, q.y_o], [q.x_o, q.y_o+1]])
     axis = rays[0]/np.linalg.norm(rays[0])
     tangent = rays[1:] - (rays[1:] @ axis)[:, None]*axis
@@ -106,6 +127,14 @@ def validated_header(camera, valid_mask=None):
     truth = sky_degrees(camera.to_sky(xy))
     check_r = np.linspace(0, rmax, 100003)
     check_u = radial_u(check_r, q.v, q.s, q.d)
+    if not camera.refraction.is_zero:
+        check_rays = np.column_stack([
+            np.sin(check_u), np.zeros_like(check_u), np.cos(check_u)])
+        check_vacuum = remove_refraction(
+            check_rays, camera.refraction.zenith_camera,
+            camera.refraction.refraction_a_arcsec,
+            camera.refraction.refraction_b_arcsec)
+        check_u = np.arccos(np.clip(check_vacuum[:, 2], -1., 1.))
     attempts = []
     for order in (3, 5, 7, 9, 11, 13, 15, 17):
         coeff = np.r_[0., 1., Chebyshev.fit(angles, g, order-2).convert(kind=Polynomial).coef]
@@ -139,7 +168,13 @@ def validated_header(camera, valid_mask=None):
             attempts.append({'order': order, 'maximum_error_px': None,
                              'reason': 'nonfinite world-to-pixel validation result'})
             continue
-        errors = np.r_[np.linalg.norm(camera.project(vectors(world[:, 0], world[:, 1]))-xy, axis=1),
+        try:
+            physical_pixels = camera.project(vectors(world[:, 0], world[:, 1]))
+        except ValueError as error:
+            attempts.append({'order': order, 'maximum_error_px': None,
+                             'reason': f'physical projection rejected: {error}'})
+            continue
+        errors = np.r_[np.linalg.norm(physical_pixels-xy, axis=1),
                        np.linalg.norm(truth_pixels-xy, axis=1),
                        np.linalg.norm(roundtrip_pixels-xy, axis=1),
                        np.abs(poly(check_u)/scale-check_r)]

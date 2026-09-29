@@ -16,6 +16,34 @@ from test_point_star_epoch import moving_field
 
 
 class EpochIntegrationTests(unittest.TestCase):
+    def test_epoch_trial_requests_coupled_refraction_fit(self):
+        from point_star_barghini import BarghiniCamera, fit_camera
+        from point_star_epoch import Catalogue, fit_epoch
+        camera, xy, rows, _ = moving_field(motion_scale=0., noise=0.)
+        catalogue = Catalogue.from_rows(rows)
+        with patch('point_star_barghini.fit_camera', wraps=fit_camera) as fitted:
+            fit_epoch(camera, xy, catalogue, (1990., 2010.),
+                      fixed_year=2000., fit_refraction=True)
+        self.assertTrue(fitted.call_args.kwargs['fit_refraction'])
+
+    def test_science_reports_integrated_refraction_without_refitting(self):
+        from point_star_barghini import BarghiniCamera
+        from point_star_refraction import IntegratedRefraction
+        from point_star_science import fit_refraction
+        camera = BarghiniCamera.initial((100, 120), 60., np.eye(3))
+        camera.refraction = IntegratedRefraction(
+            'adopted', np.array([0.2, -0.1, 0.97]), 48., 0.12)
+        result = dict(camera=camera.serialise(), integrated_refraction={
+            'adopted': True, 'validation_improvement_fraction': 0.25})
+        with tempfile.TemporaryDirectory() as tmp:
+            output = fit_refraction(Path(tmp), result, None,
+                                    {'applied_epoch_jyear': 2025.})
+            saved = json.loads((Path(tmp)/'refraction_fit.json').read_text())
+        self.assertEqual(output, saved)
+        self.assertEqual(output['status'], 'adopted')
+        self.assertEqual(output['refraction_a_arcsec'], 48.)
+        self.assertEqual(output['selection']['validation_improvement_fraction'], 0.25)
+
     def test_new_run_refuses_to_overwrite_existing_output(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

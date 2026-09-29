@@ -201,18 +201,31 @@ class BarghiniCamera:
                     monotonic_on_detector=self.is_monotonic())
 
 
-def fit_camera(camera, xy, sky, max_nfev=300, *, fit_refraction=False):
+def fit_camera(camera, xy, sky, max_nfev=300, *, fit_refraction=False,
+               uncertainty_arcmin=None, refraction_multistart=True):
     scale = camera.scale
     h, w = camera.shape
+    xy = np.asarray(xy, dtype=float)
+    sky = np.asarray(sky, dtype=float)
+    if uncertainty_arcmin is None:
+        uncertainty = None
+    else:
+        uncertainty = np.asarray(uncertainty_arcmin, dtype=float)
+        if uncertainty.shape != (len(xy),) or not np.isfinite(uncertainty).all() or np.any(uncertainty <= 0):
+            raise ValueError('Per-source angular uncertainties must be positive finite values')
     lower = [-np.pi, -.5, -.5, -.5, -.5, -2., -.8, .01]
     upper = [np.pi, w/scale+.5, h/scale+.5, w/scale+.5, h/scale+.5, 3., .8, 5.]
+
+    def robustify(angular):
+        if uncertainty is None:
+            return radial_soft_l1_residuals(angular, ASTROMETRIC_LOSS_SCALE_ARCMIN)
+        return radial_soft_l1_residuals(angular/uncertainty[:, None], 1.)
 
     def residual(p):
         model = BarghiniCamera(camera.shape, camera.reference_rotation, p,
                                camera.detector_parity, camera.refraction)
         angular = tangent_residuals_arcmin(model.to_sky(xy), sky)
-        robust_angular = radial_soft_l1_residuals(
-            angular, ASTROMETRIC_LOSS_SCALE_ARCMIN)
+        robust_angular = robustify(angular)
         scaled_slopes = model.radial_slopes()*scale
         monotonic_penalty = np.maximum(1e-9-scaled_slopes, 0)*ARCMIN_PER_RADIAN*1e6
         return np.r_[robust_angular.ravel(), monotonic_penalty]
@@ -226,15 +239,21 @@ def fit_camera(camera, xy, sky, max_nfev=300, *, fit_refraction=False):
         return fitted, dict(success=bool(opt.success), nfev=opt.nfev, cost=float(opt.cost),
                             robust_loss='radial_soft_l1_per_star')
 
-    xy = np.asarray(xy, dtype=float)
-    sky = np.asarray(sky, dtype=float)
     vacuum_camera = sky @ camera.reference_rotation
     mean_direction = np.sum(vacuum_camera, axis=0)
     mean_direction /= np.linalg.norm(mean_direction)
-    seed_zeniths = [camera.refraction.zenith_camera, mean_direction,
-                    np.array([0., 0., 1.]), np.array([1., 0., 0.]),
-                    np.array([-1., 0., 0.]), np.array([0., 1., 0.]),
-                    np.array([0., -1., 0.])]
+    weak_refraction_seed = (camera.refraction.refraction_a_arcsec < 1.
+                            and abs(camera.refraction.refraction_b_arcsec) < .01)
+    if not refraction_multistart:
+        seed_zeniths = [mean_direction if weak_refraction_seed
+                        else camera.refraction.zenith_camera]
+    elif camera.refraction.is_zero:
+        seed_zeniths = [camera.refraction.zenith_camera, mean_direction,
+                        np.array([0., 0., 1.]), np.array([1., 0., 0.]),
+                        np.array([-1., 0., 0.]), np.array([0., 1., 0.]),
+                        np.array([0., -1., 0.])]
+    else:
+        seed_zeniths = [camera.refraction.zenith_camera, mean_direction]
     refraction_lower = np.r_[lower, -np.pi, 0., 0., -2.]
     refraction_upper = np.r_[upper, np.pi, np.pi, 180., 2.]
 
@@ -248,8 +267,7 @@ def fit_camera(camera, xy, sky, max_nfev=300, *, fit_refraction=False):
             vacuum_camera, refraction.zenith_camera,
             refraction.refraction_a_arcsec, refraction.refraction_b_arcsec)
         angular = tangent_residuals_arcmin(predicted_apparent, model.apparent_rays(xy))
-        robust_angular = radial_soft_l1_residuals(
-            angular, ASTROMETRIC_LOSS_SCALE_ARCMIN)
+        robust_angular = robustify(angular)
         scaled_slopes = model.radial_slopes()*scale
         monotonic_penalty = np.maximum(1e-9-scaled_slopes, 0)*ARCMIN_PER_RADIAN*1e6
         zenith_distance = np.arccos(np.clip(
@@ -268,7 +286,8 @@ def fit_camera(camera, xy, sky, max_nfev=300, *, fit_refraction=False):
         azimuth, inclination = zenith_angles(zenith)
         coefficient_a = camera.refraction.refraction_a_arcsec
         coefficient_b = camera.refraction.refraction_b_arcsec
-        if camera.refraction.is_zero and index:
+        if ((camera.refraction.is_zero and index) or
+                (not refraction_multistart and weak_refraction_seed)):
             coefficient_a = 45.
             coefficient_b = 0.
         seeds.append(np.r_[camera.p, azimuth, inclination, coefficient_a, coefficient_b])
@@ -286,6 +305,110 @@ def fit_camera(camera, xy, sky, max_nfev=300, *, fit_refraction=False):
     return fitted, dict(success=bool(best.success), nfev=best.nfev,
                         cost=float(best.cost), robust_loss='radial_soft_l1_per_star',
                         fit_refraction=True, seed_count=len(seeds))
+
+
+def robust_camera_cost(camera, xy, sky, uncertainty_arcmin=None):
+    """Evaluate the same radial soft-L1 astrometric objective used by fitting."""
+    angular = tangent_residuals_arcmin(camera.to_sky(xy), sky)
+    if uncertainty_arcmin is None:
+        robust = radial_soft_l1_residuals(angular, ASTROMETRIC_LOSS_SCALE_ARCMIN)
+    else:
+        uncertainty = np.asarray(uncertainty_arcmin, dtype=float)
+        robust = radial_soft_l1_residuals(angular/uncertainty[:, None], 1.)
+    return float(.5*np.sum(robust**2))
+
+
+def _zero_refraction_camera(camera, status='zero'):
+    return BarghiniCamera(
+        camera.shape, camera.reference_rotation, camera.p.copy(), camera.detector_parity,
+        IntegratedRefraction.zero(status))
+
+
+def select_integrated_refraction(camera, xy, sky, *, candidate=None, folds=4,
+                                 max_nfev=600):
+    """Choose coupled refraction only after deterministic blocked robust validation."""
+    xy = np.asarray(xy, dtype=float)
+    sky = np.asarray(sky, dtype=float)
+    if len(xy) != len(sky) or folds < 2:
+        raise ValueError('Blocked refraction validation needs paired stars and at least two folds')
+    baseline, baseline_info = fit_camera(
+        _zero_refraction_camera(camera), xy, sky, max_nfev=max_nfev)
+    if len(xy) < 24:
+        baseline.refraction = IntegratedRefraction.zero('rejected')
+        return baseline, dict(
+            method='deterministic angular-block robust validation of nested zero/coupled models',
+            adopted=False, folds=[], physical_checks={},
+            rejection_reason='insufficient_stars_for_blocked_validation',
+            fitted_count=int(len(xy)), minimum_count=24,
+            baseline_full_cost=float(baseline_info['cost']))
+    if candidate is None:
+        candidate, candidate_info = fit_camera(
+            camera, xy, sky, max_nfev=max_nfev, fit_refraction=True)
+    else:
+        candidate_info = {'success': True, 'supplied_candidate': True}
+
+    vacuum = sky @ candidate.reference_rotation
+    zenith_distance = np.rad2deg(np.arccos(np.clip(
+        vacuum @ candidate.refraction.zenith_camera, -1., 1.)))
+    physical_checks = {
+        'fit_success': bool(candidate_info.get('success')),
+        'monotonic_camera': candidate.is_monotonic(),
+        'coefficient_a_interior': bool(1. <= candidate.refraction.refraction_a_arcsec <= 179.),
+        'coefficient_b_interior': bool(abs(candidate.refraction.refraction_b_arcsec) <= 1.9),
+        'supported_horizon_domain': bool(np.max(zenith_distance) < 88.5),
+        'zenith_distance_span_deg': float(np.ptp(zenith_distance)),
+    }
+    physical_checks['sufficient_zenith_span'] = physical_checks['zenith_distance_span_deg'] >= 20.
+
+    centre = (np.asarray(camera.shape[::-1], dtype=float)-1.)/2.
+    phase = (np.arctan2(xy[:, 1]-centre[1], xy[:, 0]-centre[0])+2.*np.pi) % (2.*np.pi)
+    block = np.minimum((phase/(2.*np.pi)*folds).astype(int), folds-1)
+    fold_rows = []
+    if all(physical_checks.values()):
+        for fold in range(folds):
+            held = block == fold
+            train = ~held
+            if held.sum() < 2 or train.sum() < 12:
+                raise ValueError('Spatial refraction fold has insufficient training or validation stars')
+            fold_baseline, _ = fit_camera(
+                baseline, xy[train], sky[train], max_nfev=max_nfev)
+            fold_candidate, _ = fit_camera(
+                candidate, xy[train], sky[train], max_nfev=max_nfev,
+                fit_refraction=True, refraction_multistart=False)
+            baseline_cost = robust_camera_cost(fold_baseline, xy[held], sky[held])
+            candidate_cost = robust_camera_cost(fold_candidate, xy[held], sky[held])
+            fold_rows.append(dict(
+                fold=fold, training_count=int(train.sum()), validation_count=int(held.sum()),
+                baseline_cost=baseline_cost, candidate_cost=candidate_cost,
+                improved=bool(candidate_cost < baseline_cost)))
+    baseline_validation = float(sum(row['baseline_cost'] for row in fold_rows))
+    candidate_validation = float(sum(row['candidate_cost'] for row in fold_rows))
+    improvement = ((baseline_validation-candidate_validation)/baseline_validation
+                   if baseline_validation > 0. else 0.)
+    improved_folds = sum(row['improved'] for row in fold_rows)
+    adopted = (bool(fold_rows) and all(physical_checks.values())
+               and improvement >= .02 and improved_folds >= max(2, folds-1))
+    evidence = dict(
+        method='deterministic angular-block robust validation of nested zero/coupled models',
+        adopted=adopted, folds=fold_rows, physical_checks=physical_checks,
+        baseline_validation_cost=baseline_validation,
+        candidate_validation_cost=candidate_validation,
+        validation_improvement_fraction=float(improvement),
+        improved_fold_count=int(improved_folds), fold_count=int(folds),
+        baseline_full_cost=float(baseline_info['cost']),
+        candidate_full_cost=float(candidate_info.get('cost', robust_camera_cost(candidate, xy, sky))),
+        candidate=candidate.refraction.as_dict())
+    if adopted:
+        refraction = IntegratedRefraction(
+            'adopted', candidate.refraction.zenith_camera,
+            candidate.refraction.refraction_a_arcsec,
+            candidate.refraction.refraction_b_arcsec)
+        return BarghiniCamera(candidate.shape, candidate.reference_rotation, candidate.p.copy(),
+                              candidate.detector_parity, refraction), evidence
+    evidence['rejection_reason'] = ('physical_checks_failed' if not all(physical_checks.values())
+                                    else 'blocked_validation_gain_insufficient')
+    baseline.refraction = IntegratedRefraction.zero('rejected')
+    return baseline, evidence
 
 
 def bootstrap(xy, shape):
@@ -422,8 +545,11 @@ def astrometric_stats(camera, measured_xy, reference_sky):
     """Report detector residuals and their physical great-circle equivalents."""
     measured_xy = np.asarray(measured_xy, dtype=float)
     reference_sky = np.asarray(reference_sky, dtype=float)
-    predicted_xy = camera.project(reference_sky)
-    report = stats(predicted_xy-measured_xy)
+    try:
+        predicted_xy = camera.project(reference_sky)
+        report = stats(predicted_xy-measured_xy)
+    except ValueError:
+        report = dict(count=len(measured_xy), rms_px=None, median_px=None, p90_px=None)
     angular = angular_separations_arcmin(camera.to_sky(measured_xy), reference_sky)
     report.update(
         rms_arcmin=float(np.sqrt(np.mean(angular**2))) if len(angular) else None,
@@ -650,6 +776,9 @@ def run(image_path, output, catalog_path, *, label_count=40, names_cache=None, o
         raise RuntimeError('Insufficient catalogue associations after Barghini refinement')
     # Refine all current catalogue associations together.
     camera, final_fit = fit_camera(camera, xy[train[train_i]], sky[train_j], max_nfev=600)
+    camera, final_fit = fit_camera(
+        camera, xy[train[train_i]], sky[train_j], max_nfev=1200,
+        fit_refraction=True)
     if epoch_mode != 'catalog':
         # Each epoch profile uses a fixed set. All dots remain eligible when
         # reassociating between profiles, including large/saturated sources.
@@ -658,7 +787,7 @@ def run(image_path, output, catalog_path, *, label_count=40, names_cache=None, o
             fitted_i, fitted_j = train_i, train_j
             camera, final_fit, stellar_epoch = fit_epoch(
                 camera, xy[train[fitted_i]], catalogue.subset(fitted_j), epoch_limits,
-                fixed_year=epoch_year)
+                fixed_year=epoch_year, fit_refraction=True)
             sky = catalogue.at_year(stellar_epoch['applied_epoch_jyear'])
             final_gate = resolved_association_gate_arcmin(
                 camera, FINAL_ASSOCIATION_PHYSICAL_FLOOR_ARCMIN)
@@ -681,6 +810,26 @@ def run(image_path, output, catalog_path, *, label_count=40, names_cache=None, o
         if causal_epoch_ceiling is not None:
             stellar_epoch['causal_epoch_ceiling'] = causal_epoch_ceiling
         write_epoch_products(output, stellar_epoch)
+    camera, refraction_selection = select_integrated_refraction(
+        camera, xy[train[train_i]], sky[train_j], candidate=camera,
+        folds=4, max_nfev=600)
+    selected_i, selected_j = associate(
+        camera, xy[train], sky,
+        resolved_association_gate_arcmin(
+            camera, FINAL_ASSOCIATION_PHYSICAL_FLOOR_ARCMIN))
+    if len(selected_i) >= 20 and (
+            not np.array_equal(selected_i, train_i) or not np.array_equal(selected_j, train_j)):
+        train_i, train_j = selected_i, selected_j
+        camera, final_fit = fit_camera(
+            camera, xy[train[train_i]], sky[train_j], max_nfev=900,
+            fit_refraction=refraction_selection['adopted'])
+        if refraction_selection['adopted']:
+            refraction = IntegratedRefraction(
+                'adopted', camera.refraction.zenith_camera,
+                camera.refraction.refraction_a_arcsec,
+                camera.refraction.refraction_b_arcsec)
+            camera.refraction = refraction
+    final_fit = dict(final_fit, refraction_adopted=refraction_selection['adopted'])
     final_gate = resolved_association_gate_arcmin(
         camera, FINAL_ASSOCIATION_PHYSICAL_FLOOR_ARCMIN)
     fit_score = astrometric_stats(camera, xy[train[train_i]], sky[train_j])
@@ -688,9 +837,10 @@ def run(image_path, output, catalog_path, *, label_count=40, names_cache=None, o
     result = dict(status='point_star_fit_converged' if accepted else 'point_star_fit_not_converged',
         source=str(image_path), source_sha256=detection['source_sha256'],
         input_image=detection.get('input_image'),
-        model='Barghini_2019_O_Z_FET', metadata_used=False, trails_used=False,
+        model='Barghini_2019_O_Z_FET_with_integrated_refraction', metadata_used=False, trails_used=False,
         catalogue_sha256=hashlib.sha256(Path(catalog_path).read_bytes()).hexdigest(),
         camera=camera.serialise(), plate_scale=plate_scale_summary(camera), stages=stages,
+        integrated_refraction=refraction_selection,
         association=dict(units='arcmin', final_gate_arcmin=final_gate,
                          physical_gate_floor_arcmin=FINAL_ASSOCIATION_PHYSICAL_FLOOR_ARCMIN,
                          sampling_floor_pixels=1.,
@@ -703,7 +853,8 @@ def run(image_path, output, catalog_path, *, label_count=40, names_cache=None, o
           f'the fitted associations, selected with a {final_gate:.3f}-arcmin '
           'matching gate; they are not independent '
           'validation or a completeness measurement. No date, terrestrial orientation, '
-          'proper-motion epoch or atmospheric-refraction solution is claimed.',
+          'proper-motion epoch is not claimed. Atmospheric refraction is applied only when '
+          'the nested coupled model passes blocked robust validation.',
         elapsed_seconds=time.monotonic()-started)
     result.update(solver_version=SOLVER_VERSION, epoch_mode=epoch_mode, blind=epoch_mode != 'fixed',
                   coordinate_frame='ICRS')

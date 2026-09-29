@@ -214,11 +214,15 @@ def report_sections(result, science=None, **legacy):
     photometric_zenith = photometry.get('photometric_zenith') or {}
     if refraction:
         status = refraction.get('status', 'unknown').replace('_', ' ')
+        selection = refraction.get('selection') or {}
+        evidence = (f"blocked-validation gain "
+                    f"{_fmt(100.*selection['validation_improvement_fraction'], 1)}%"
+                    if selection.get('validation_improvement_fraction') is not None else
+                    f"ΔBIC {_fmt(refraction.get('delta_bic'), 1)}")
         atmosphere = (
             f"Refraction: {status}; "
             f"A={_fmt(refraction.get('refraction_a_arcsec'), 2)} arcsec and "
-            f"B={_fmt(refraction.get('refraction_b_arcsec'), 3)} arcsec, with ΔBIC "
-            f"{_fmt(refraction.get('delta_bic'), 1)}."
+            f"B={_fmt(refraction.get('refraction_b_arcsec'), 3)} arcsec, with {evidence}."
         )
     else:
         atmosphere = 'Refraction: not run.'
@@ -444,7 +448,9 @@ def table_rows(result, science):
         ('Refraction', f"{refraction.get('status', '--').replace('_', ' ')}; "
                        f"A={_fmt(refraction.get('refraction_a_arcsec'),2)} arcsec, "
                        f"B={_fmt(refraction.get('refraction_b_arcsec'),3)} arcsec; "
-                       f"ΔBIC={_fmt(refraction.get('delta_bic'),1)}"),
+                       + (f"blocked gain={_fmt(100.*(refraction.get('selection') or {}).get('validation_improvement_fraction'),1)}%"
+                          if (refraction.get('selection') or {}).get('validation_improvement_fraction') is not None
+                          else f"ΔBIC={_fmt(refraction.get('delta_bic'),1)}")),
         ('Photometry', f"{image_kind.replace('_', ' ')}; "
                        f"{photometry.get('usable_photometric_stars', photometry.get('usable_unsaturated_compact_stars', '--'))} usable stars"),
         ('Extinction', extinction_value),

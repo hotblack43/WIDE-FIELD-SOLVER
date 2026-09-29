@@ -38,6 +38,20 @@ class GlobalContextTests(unittest.TestCase):
 
 
 class JointFitTests(unittest.TestCase):
+    def test_weighted_joint_camera_refits_integrated_refraction(self):
+        from point_star_joint_epoch import _fit_weighted_camera
+        camera = BarghiniCamera.initial((800, 1000), 500., np.eye(3))
+        xy = np.array([[300. + i*10., 250. + (i % 4)*20.] for i in range(12)])
+        sky = camera.to_sky(xy)
+        sigmas = np.linspace(1., 2., len(xy))
+        with patch('point_star_joint_epoch.fit_camera',
+                   return_value=(camera, {'success': True})) as fitted:
+            answer = _fit_weighted_camera(camera, xy, sky, sigmas)
+        self.assertIs(answer, camera)
+        self.assertTrue(any(call.kwargs['fit_refraction'] for call in fitted.call_args_list))
+        for call in fitted.call_args_list:
+            np.testing.assert_allclose(call.kwargs['uncertainty_arcmin'], sigmas)
+
     def test_adoption_handles_empty_photometry_and_declines_changed_zenith_authority(self):
         from astropy.io import fits
         from point_star_joint_epoch import attempt_adoption, profile_joint_candidate

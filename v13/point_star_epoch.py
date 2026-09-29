@@ -75,7 +75,8 @@ def radial_profile_variance(residual, scale, degrees_of_freedom):
     return float(np.sum(radius_squared*radial_weight)/max(1, degrees_of_freedom))
 
 
-def fit_epoch(camera, xy, catalogue, year_limits=(1850., 2036.), *, fixed_year=None):
+def fit_epoch(camera, xy, catalogue, year_limits=(1850., 2036.), *, fixed_year=None,
+              fit_refraction=False):
     """Refit all fixed associations at trial epochs and return the adopted camera.
 
     The interval is an approximate profile-likelihood interval conditional on
@@ -102,7 +103,9 @@ def fit_epoch(camera, xy, catalogue, year_limits=(1850., 2036.), *, fixed_year=N
         year = float(year)
         if year not in cache:
             sky = catalogue.at_year(year)
-            fitted, info = fit_camera(camera, xy, sky, max_nfev=2000)
+            fitted, info = fit_camera(
+                camera, xy, sky, max_nfev=2000, fit_refraction=fit_refraction,
+                refraction_multistart=False)
             if not info['success'] or not fitted.is_monotonic():
                 raise RuntimeError(f'Barghini fit failed at trial epoch {year:g}')
             residual = tangent_residuals_arcmin(fitted.to_sky(xy), sky)
@@ -117,7 +120,10 @@ def fit_epoch(camera, xy, catalogue, year_limits=(1850., 2036.), *, fixed_year=N
                   proper_motion_count=int(catalogue.has_motion.sum()),
                   missing_motion_count=int((~catalogue.has_motion).sum()),
                   boundary_limited=False, provisional=False, conditional_interval_95_jyear=[None, None],
-                  method='all-star Barghini soft_l1 profile on fixed associations',
+                  method=('all-star coupled Barghini/refraction radial soft-L1 profile on fixed associations'
+                          if fit_refraction else
+                          'all-star Barghini radial soft-L1 profile on fixed associations'),
+                  integrated_refraction_refitted_each_trial=bool(fit_refraction),
                   uncertainty_method='approximate delta-cost interval scaled by fitted residual variance',
                   limitation='Conditional on catalogue motions, associations and lens model; '
                     'does not include catalogue errors or atmospheric/lens systematics. '
@@ -146,9 +152,10 @@ def fit_epoch(camera, xy, catalogue, year_limits=(1850., 2036.), *, fixed_year=N
                 candidates.append((float(answer.x), float(answer.fun)))
         best, minimum = min(candidates, key=lambda pair: pair[1])
         fitted, _, _, residual = evaluate(best)
-        # Two independent sky coordinates per star, eight camera terms and epoch.
+        # Two independent sky coordinates per star, camera terms and epoch.
+        fitted_parameters = 13 if fit_refraction else 9
         variance = radial_profile_variance(
-            residual, ASTROMETRIC_LOSS_SCALE_ARCMIN, 2*len(xy)-9)
+            residual, ASTROMETRIC_LOSS_SCALE_ARCMIN, 2*len(xy)-fitted_parameters)
         threshold = minimum + 1.920729410347062*max(variance, 1e-14)
         boundary = min(best-low, high-best) < .02
         nodes = sorted(set([*map(float, grid), *[c[0] for c in candidates]]))

@@ -6,6 +6,7 @@ from point_star_barghini import (
     BarghiniCamera,
     angular_separations_arcmin,
     fit_camera,
+    select_integrated_refraction,
 )
 from point_star_refraction import IntegratedRefraction
 
@@ -93,6 +94,33 @@ class IntegratedRefractionCameraTests(unittest.TestCase):
         self.assertLess(float(np.max(error)), 1.0e-5)
         self.assertLess(abs(fitted.refraction.refraction_a_arcsec), 0.05)
         self.assertLess(abs(fitted.refraction.refraction_b_arcsec), 0.01)
+
+    def test_blocked_validation_adopts_signal_and_rejects_exact_zero(self):
+        truth = self.truth_camera()
+        refracted_sky = truth.to_sky(self.xy)
+        candidate, _ = fit_camera(
+            self.base, self.xy, refracted_sky, max_nfev=900, fit_refraction=True
+        )
+        adopted, evidence = select_integrated_refraction(
+            self.base, self.xy, refracted_sky, candidate=candidate,
+            folds=3, max_nfev=350,
+        )
+        self.assertEqual(adopted.refraction.status, "adopted")
+        self.assertTrue(evidence["adopted"])
+        self.assertEqual(len(evidence["folds"]), 3)
+
+        zero_sky = self.base.to_sky(self.xy)
+        zero_candidate, _ = fit_camera(
+            self.base, self.xy, zero_sky, max_nfev=500, fit_refraction=True
+        )
+        rejected, evidence = select_integrated_refraction(
+            self.base, self.xy, zero_sky, candidate=zero_candidate,
+            folds=3, max_nfev=250,
+        )
+        self.assertFalse(evidence["adopted"])
+        self.assertTrue(rejected.refraction.is_zero)
+        self.assertEqual(rejected.refraction.refraction_a_arcsec, 0.0)
+        self.assertEqual(rejected.refraction.refraction_b_arcsec, 0.0)
 
 
 if __name__ == "__main__":
