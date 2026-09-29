@@ -31,6 +31,18 @@ class BenchmarkTests(unittest.TestCase):
         self.assertEqual(summary['v6_median_seconds'], 5.)
         self.assertEqual(summary['speedup_ratio'], 2.)
 
+    def test_cache_state_supports_v5_provenance_and_v6_telemetry(self):
+        from scripts.benchmark_planet_search import _cache_state
+        v5 = {'ephemeris': {'cache_source': 'writable_cache',
+                            'cache_path': '/cache/v5.npz', 'cache_bytes': 12,
+                            'content_sha256': 'old', 'cache_build_seconds': 0.}}
+        v6 = {'planet_search_performance': {'cache': {
+            'source': 'bundled', 'path': '/data/v6.npz', 'bytes': 34,
+            'digest': 'new', 'build_seconds': 0.}}}
+        self.assertEqual(_cache_state(v5)['source'], 'writable_cache')
+        self.assertEqual(_cache_state(v5)['digest'], 'old')
+        self.assertEqual(_cache_state(v6)['source'], 'bundled')
+
     def test_scientific_comparison_allows_only_tiny_exact_numeric_differences(self):
         from scripts.benchmark_planet_search import compare_science
         v5 = self.candidate()

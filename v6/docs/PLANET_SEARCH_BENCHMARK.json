@@ -7,27 +7,164 @@
   },
   "repetitions": 3,
   "v6_workers": 4,
+  "full_launcher": {
+    "image": "/home/pth/Skrivebord/StarTrails/FishEye18-1021w_Espenak.jpg",
+    "measurement_date": "2026-09-16",
+    "v5_wall_seconds": 211.39,
+    "v6_wall_seconds": 172.94,
+    "speedup_ratio": 1.22233,
+    "wall_seconds_saved": 38.45,
+    "v5_max_rss_kb": 842572,
+    "v6_max_rss_kb": 841836,
+    "v6_reported_planet_stage_seconds": 32.24,
+    "note": "One complete launcher run per version. Shared blind-bootstrap timing varies; use the three-repetition isolated stage for the planet-search comparison."
+  },
   "timing": {
     "v5_seconds": [
-      68.60333266798989,
-      76.77441935199022,
-      76.79955259300186
+      66.39971319699544,
+      66.87408400799904,
+      67.95376678799221
     ],
     "v6_seconds": [
-      24.83840567500738,
-      25.52968406700529,
-      24.160062962997472
+      29.06626577100542,
+      30.192154445991036,
+      33.25267016800353
     ],
-    "v5_median_seconds": 76.77441935199022,
-    "v6_median_seconds": 24.83840567500738,
-    "speedup_ratio": 3.0909560120938564
+    "v5_median_seconds": 66.87408400799904,
+    "v6_median_seconds": 30.192154445991036,
+    "speedup_ratio": 2.2149490566374173
+  },
+  "cache_states": {
+    "v5": [
+      {
+        "source": "writable_cache_present_before_run",
+        "paths": [
+          "/home/pth/WORKSHOP/WIDE-FIELD-SOLVER/.worktrees/v6-planet-search/v5/results/ephemeris-cache/planet-reference-cff5c71f8b86fbd81ec1.npz"
+        ],
+        "bytes": 19292466,
+        "digest": "3bf01ee7a887891f7fe0c19fddcec1ef857cfdeba100a9d62aa53fddc000b2fe",
+        "build_seconds": 0.0
+      },
+      {
+        "source": "writable_cache_present_before_run",
+        "paths": [
+          "/home/pth/WORKSHOP/WIDE-FIELD-SOLVER/.worktrees/v6-planet-search/v5/results/ephemeris-cache/planet-reference-cff5c71f8b86fbd81ec1.npz"
+        ],
+        "bytes": 19292466,
+        "digest": "3bf01ee7a887891f7fe0c19fddcec1ef857cfdeba100a9d62aa53fddc000b2fe",
+        "build_seconds": 0.0
+      },
+      {
+        "source": "writable_cache_present_before_run",
+        "paths": [
+          "/home/pth/WORKSHOP/WIDE-FIELD-SOLVER/.worktrees/v6-planet-search/v5/results/ephemeris-cache/planet-reference-cff5c71f8b86fbd81ec1.npz"
+        ],
+        "bytes": 19292466,
+        "digest": "3bf01ee7a887891f7fe0c19fddcec1ef857cfdeba100a9d62aa53fddc000b2fe",
+        "build_seconds": 0.0
+      }
+    ],
+    "v6": [
+      {
+        "source": "bundled",
+        "path": "/home/pth/WORKSHOP/WIDE-FIELD-SOLVER/.worktrees/v6-planet-search/v6/data/planet-reference-1850-2036.npz",
+        "bytes": 11964142,
+        "digest": "ebf09fdcde047cc8f0b1a0030e212590bcb2db1555ab824e060d46e27c00adac",
+        "build_seconds": 0.0
+      },
+      {
+        "source": "bundled",
+        "path": "/home/pth/WORKSHOP/WIDE-FIELD-SOLVER/.worktrees/v6-planet-search/v6/data/planet-reference-1850-2036.npz",
+        "bytes": 11964142,
+        "digest": "ebf09fdcde047cc8f0b1a0030e212590bcb2db1555ab824e060d46e27c00adac",
+        "build_seconds": 0.0
+      },
+      {
+        "source": "bundled",
+        "path": "/home/pth/WORKSHOP/WIDE-FIELD-SOLVER/.worktrees/v6-planet-search/v6/data/planet-reference-1850-2036.npz",
+        "bytes": 11964142,
+        "digest": "ebf09fdcde047cc8f0b1a0030e212590bcb2db1555ab824e060d46e27c00adac",
+        "build_seconds": 0.0
+      }
+    ]
   },
   "science": {
     "equivalent": true,
-    "reasons": [],
-    "max_epoch_difference_seconds": 0.1388847827911377,
-    "max_rms_difference_px": 2.5587088003931058e-11,
-    "candidate_count_v5": 138,
-    "candidate_count_v6": 138
+    "repetitions": [
+      {
+        "equivalent": true,
+        "reasons": [],
+        "max_epoch_difference_seconds": 0.14862120151519775,
+        "max_rms_difference_px": 3.2811087180562026e-11,
+        "candidate_count_v5": 138,
+        "candidate_count_v6": 138
+      },
+      {
+        "equivalent": true,
+        "reasons": [],
+        "max_epoch_difference_seconds": 0.14862120151519775,
+        "max_rms_difference_px": 3.2811087180562026e-11,
+        "candidate_count_v5": 138,
+        "candidate_count_v6": 138
+      },
+      {
+        "equivalent": true,
+        "reasons": [],
+        "max_epoch_difference_seconds": 0.14862120151519775,
+        "max_rms_difference_px": 3.2811087180562026e-11,
+        "candidate_count_v5": 138,
+        "candidate_count_v6": 138
+      },
+      {
+        "equivalent": true,
+        "reasons": [],
+        "max_epoch_difference_seconds": 0.0,
+        "max_rms_difference_px": 0.0,
+        "candidate_count_v5": 138,
+        "candidate_count_v6": 138,
+        "kind": "repeatability",
+        "version": "v5",
+        "left_repetition": 1,
+        "right_repetition": 2
+      },
+      {
+        "equivalent": true,
+        "reasons": [],
+        "max_epoch_difference_seconds": 0.0,
+        "max_rms_difference_px": 0.0,
+        "candidate_count_v5": 138,
+        "candidate_count_v6": 138,
+        "kind": "repeatability",
+        "version": "v5",
+        "left_repetition": 1,
+        "right_repetition": 3
+      },
+      {
+        "equivalent": true,
+        "reasons": [],
+        "max_epoch_difference_seconds": 0.0,
+        "max_rms_difference_px": 0.0,
+        "candidate_count_v5": 138,
+        "candidate_count_v6": 138,
+        "kind": "repeatability",
+        "version": "v6",
+        "left_repetition": 1,
+        "right_repetition": 2
+      },
+      {
+        "equivalent": true,
+        "reasons": [],
+        "max_epoch_difference_seconds": 0.0,
+        "max_rms_difference_px": 0.0,
+        "candidate_count_v5": 138,
+        "candidate_count_v6": 138,
+        "kind": "repeatability",
+        "version": "v6",
+        "left_repetition": 1,
+        "right_repetition": 3
+      }
+    ],
+    "max_epoch_difference_seconds": 0.14862120151519775,
+    "max_rms_difference_px": 3.2811087180562026e-11
   }
 }

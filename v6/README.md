@@ -32,4 +32,5 @@ batches exact Astropy refinement and uses up to four deterministic planet
 workers. Set `WFS_PLANET_WORKERS=1` for the serial reference path. Timing and
 call counts are written to `planet_search_performance.json`; see the
 [controlled v5/v6 benchmark](docs/PLANET_SEARCH_PERFORMANCE.md), which measured
-a 3.09x median planetary-stage speedup with unchanged candidate identities.
+a 2.21x median planetary-stage speedup with unchanged candidate identities and
+equivalent exported science products.

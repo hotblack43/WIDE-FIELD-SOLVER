@@ -1,6 +1,9 @@
 """Blind time search recovers measured positions and preserves date aliases."""
 import json
 import os
+from pathlib import Path
+import subprocess
+import sys
 import tempfile
 import unittest
 import numpy as np
@@ -20,6 +23,26 @@ def _parallel_vectors(name, jd):
     else:
         points = np.c_[220+1.5*(t-4.3), np.full(len(t), 210.)]
     return camera.to_sky(points)
+
+
+def _parallel_answer(workers):
+    from point_star_planets import search_planet_epochs
+    camera = BarghiniCamera.initial((300, 400), 180., np.eye(3))
+    dates = _PARALLEL_ORIGIN+np.arange(11.)
+    names = ('saturn', 'jupiter', 'mars')
+    grid = {name: _parallel_vectors(name, dates) for name in names}
+    positions = ([120., 100.], [270., 170.], [220., 210.])
+    sources = [dict(detection_id=str(index), x_px=x, y_px=y,
+                    saturated='True', source_class='broad_blob',
+                    flux_above_background=100.)
+               for index, (x, y) in enumerate(positions)]
+    answer = search_planet_epochs(
+        camera, sources, dates, grid, _parallel_vectors,
+        gate_px=1., positional_sigma_px=.2,
+        zenith_unit_vector=[0, 0, 1], planet_workers=workers,
+        latest_jd_tdb=_PARALLEL_ORIGIN+100.)
+    answer.pop('planet_search_performance')
+    return answer
 
 
 class PlanetSearchTests(unittest.TestCase):
@@ -99,33 +122,32 @@ class PlanetSearchTests(unittest.TestCase):
         self.assertTrue(all(r['saturated'] for r in result['matches']))
 
     def test_complete_search_is_deterministic_for_one_two_and_four_workers(self):
-        from point_star_planets import search_planet_epochs
-        dates = self.origin+np.arange(11.)
-        names = ('saturn', 'jupiter', 'mars')
-        grid = {name: _parallel_vectors(name, dates) for name in names}
-        positions = ([120., 100.], [270., 170.], [220., 210.])
-        sources = [dict(detection_id=str(index), x_px=x, y_px=y,
-                        saturated='True', source_class='broad_blob',
-                        flux_above_background=100.)
-                   for index, (x, y) in enumerate(positions)]
         answers = []
         with tempfile.TemporaryDirectory() as temporary:
             old_cwd = os.getcwd()
             try:
                 os.chdir(temporary)
                 for workers in (1, 2, 4):
-                    answer = search_planet_epochs(
-                        self.camera, sources, dates, grid, _parallel_vectors,
-                        gate_px=1., positional_sigma_px=.2,
-                        zenith_unit_vector=[0, 0, 1], planet_workers=workers,
-                        latest_jd_tdb=self.origin+100.)
-                    answer.pop('planet_search_performance')
-                    answers.append(answer)
+                    answers.append(_parallel_answer(workers))
             finally:
                 os.chdir(old_cwd)
             self.assertEqual(list(os.scandir(temporary)), [])
         self.assertEqual(answers[0], answers[1])
         self.assertEqual(answers[0], answers[2])
+
+    def test_parallel_search_repeats_across_fresh_python_processes(self):
+        code = ('import json; from test_point_star_planets import _parallel_answer; '
+                'print(json.dumps(_parallel_answer(2), sort_keys=True))')
+        with tempfile.TemporaryDirectory() as temporary:
+            outputs = []
+            for _ in range(2):
+                completed = subprocess.run(
+                    [sys.executable, '-c', code], cwd=temporary,
+                    env={**os.environ, 'PYTHONPATH': str(Path(__file__).resolve().parent)},
+                    capture_output=True, text=True, check=True)
+                outputs.append(completed.stdout.splitlines()[-1])
+            self.assertEqual(list(os.scandir(temporary)), [])
+        self.assertEqual(outputs[0], outputs[1])
 
     def test_fast_planet_between_daily_samples_is_not_missed(self):
         tracks = {'mercury': lambda t: np.c_[150+30*(t-.37), np.full(len(t), 130.)]}
@@ -322,6 +344,8 @@ class PlanetSearchTests(unittest.TestCase):
             zenith_unit_vector=[0, 0, 1], latest_jd_tdb=self.origin+5.5)
         self.assertEqual(answer['matches'], [])
         self.assertLessEqual(answer['search_end_jd_tdb'], self.origin+5.5)
+        self.assertEqual(answer['planet_search_performance']['providers']['exact_calls'], 1)
+        self.assertEqual(answer['planet_search_performance']['providers']['exact_dates'], 1)
 
     def test_brief_visible_passage_is_not_hidden_by_visibility_penalty(self):
         from point_star_planets import search_planet_epochs

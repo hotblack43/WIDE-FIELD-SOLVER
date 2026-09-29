@@ -93,7 +93,7 @@ how missing Mercury, Venus, Mars, Jupiter or Saturn can count against an epoch,
 and when the image is too uncertain to judge.
 V6 preserves those rules and adds a bundled 1850--2036 reference, batched exact
 refinement and up to four planet workers. Its controlled benchmark measured a
-[3.09x median planetary-stage speedup](v6/docs/PLANET_SEARCH_PERFORMANCE.md).
+[2.21x median planetary-stage speedup](v6/docs/PLANET_SEARCH_PERFORMANCE.md).
 
 Other useful products include:
 

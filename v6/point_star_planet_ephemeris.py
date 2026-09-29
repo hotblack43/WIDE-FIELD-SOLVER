@@ -125,19 +125,35 @@ class EphemerisProvider:
         clipped = np.clip(insertion, 0, len(self.jd)-1)
         exact = self.jd[clipped] == dates
         value[exact] = track[clipped[exact]]
-        for row in np.flatnonzero(~exact):
-            right = insertion[row]
-            left = right-1
-            first = min(max(left-1, 0), len(self.jd)-4)
-            sample_dates = self.jd[first:first+4]
-            sample_vectors = track[first:first+4]
-            weights = np.ones(4, dtype=np.float64)
+        rows = np.flatnonzero(~exact)
+        if len(rows):
+            left = insertion[rows]-1
+            interior = (left >= 1) & (left+2 < len(self.jd))
+            inner_rows = rows[interior]
+            inner_left = left[interior]
+            if len(inner_rows):
+                widths = self.jd[inner_left+1]-self.jd[inner_left]
+                u = ((dates[inner_rows]-self.jd[inner_left])/widths)[:, None]
+                p0, p1, p2, p3 = (track[inner_left-1], track[inner_left],
+                                  track[inner_left+1], track[inner_left+2])
+                value[inner_rows] = .5*((2*p1) + (-p0+p2)*u +
+                    (2*p0-5*p1+4*p2-p3)*u*u +
+                    (-p0+3*p1-3*p2+p3)*u*u*u)
+            # The first and final segment lack a centred Catmull--Rom stencil;
+            # use the nearest one-sided cubic solely for those proposal edges.
+            edge_rows = rows[~interior]
+            edge_left = left[~interior]
+            first = np.minimum(np.maximum(edge_left-1, 0), len(self.jd)-4)
+            sample_indices = first[:, None]+np.arange(4)
+            sample_dates = self.jd[sample_indices]
+            weights = np.ones((len(edge_rows), 4), dtype=np.float64)
             for i in range(4):
                 for j in range(4):
                     if i != j:
-                        weights[i] *= ((dates[row]-sample_dates[j]) /
-                                       (sample_dates[i]-sample_dates[j]))
-            value[row] = weights@sample_vectors
+                        weights[:, i] *= ((dates[edge_rows]-sample_dates[:, j]) /
+                                          (sample_dates[:, i]-sample_dates[:, j]))
+            value[edge_rows] = np.einsum('ni,nij->nj', weights,
+                                         track[sample_indices])
         norms = np.linalg.norm(value, axis=1)
         if not np.isfinite(value).all() or np.any(norms <= 0):
             raise ValueError('Interpolated ephemeris returned invalid vectors')

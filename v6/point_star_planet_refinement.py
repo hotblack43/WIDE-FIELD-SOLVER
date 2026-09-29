@@ -150,7 +150,13 @@ def batched_exact_minima(provider, name: str, visits: Sequence[Visit],
 
 def batched_interpolated_minima(provider, name: str, visits: Sequence[Visit],
                                 objective: Callable, xatol: float = 1e-4):
-    """Produce cheap cubic-trajectory minima without narrowing exact brackets."""
+    """Produce cheap cubic-trajectory proposals without narrowing exact brackets.
+
+    Five positions sample each original bracket in one vector call. A local
+    parabolic step around the best sample then proposes a sub-grid date for one
+    further interpolated evaluation. The subsequent exact optimizer still sees
+    the entire unchanged bracket.
+    """
     visits = tuple(visits)
     if not visits:
         return np.empty(0), np.empty(0)
@@ -162,33 +168,29 @@ def batched_interpolated_minima(provider, name: str, visits: Sequence[Visit],
     b = np.array([visit.stop for visit in visits], dtype=np.float64)
     if (not np.isfinite(a).all() or not np.isfinite(b).all() or np.any(b <= a)):
         raise ValueError('Visit brackets must be finite and have positive width')
-    invphi = (np.sqrt(5.)-1.)/2.
-    c = b-invphi*(b-a)
-    d = a+invphi*(b-a)
-    vectors = provider.interpolated(name, np.r_[c, d])
-    fc = _costs(objective, c, vectors[:len(visits)], visits)
-    fd = _costs(objective, d, vectors[len(visits):], visits)
-    for _ in range(128):
-        active = np.flatnonzero((b-a) > xatol)
-        if not len(active):
-            break
-        left = active[fc[active] <= fd[active]]
-        right = active[fc[active] > fd[active]]
-        if len(left):
-            b[left], d[left], fd[left] = d[left], c[left], fc[left]
-            c[left] = b[left]-invphi*(b[left]-a[left])
-        if len(right):
-            a[right], c[right], fc[right] = c[right], d[right], fd[right]
-            d[right] = a[right]+invphi*(b[right]-a[right])
-        new_dates = np.r_[c[left], d[right]]
-        new_visits = tuple(visits[i] for i in np.r_[left, right])
-        values = provider.interpolated(name, new_dates)
-        costs = _costs(objective, new_dates, values, new_visits)
-        fc[left] = costs[:len(left)]
-        fd[right] = costs[len(left):]
-    else:
-        raise RuntimeError('Batched interpolated proposal did not converge')
-    dates = (a+b)/2.
+    fractions = np.linspace(0., 1., 5)
+    sampled_dates = np.concatenate([a+fraction*(b-a) for fraction in fractions])
+    active_visits = visits*len(fractions)
+    vectors = provider.interpolated(name, sampled_dates)
+    sampled_costs = _costs(objective, sampled_dates, vectors, active_visits)
+    sampled_costs = sampled_costs.reshape(len(fractions), len(visits))
+    best = np.argmin(sampled_costs, axis=0)
+    proposed_fraction = fractions[best]
+    interior = np.flatnonzero((best > 0) & (best < len(fractions)-1))
+    if len(interior):
+        center = best[interior]
+        columns = interior
+        lower = sampled_costs[center-1, columns]
+        middle = sampled_costs[center, columns]
+        upper = sampled_costs[center+1, columns]
+        denominator = lower-2*middle+upper
+        stable = np.abs(denominator) > np.finfo(float).eps*np.maximum(
+            1., np.maximum(abs(lower), abs(upper)))
+        delta = np.zeros(len(interior))
+        delta[stable] = .5*(lower[stable]-upper[stable])/denominator[stable]
+        proposed_fraction[interior] = np.clip(
+            (center+np.clip(delta, -1., 1.))/4., 0., 1.)
+    dates = a+proposed_fraction*(b-a)
     values = provider.interpolated(name, dates)
     return dates, _costs(objective, dates, values, visits)
 

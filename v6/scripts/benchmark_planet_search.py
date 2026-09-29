@@ -70,8 +70,9 @@ def compare_science(v5, v6, *, epoch_tolerance_seconds=.25,
                 reasons.append(f'{path} differs')
         elif (isinstance(left, (int, float)) and not isinstance(left, bool)
               and isinstance(right, (int, float)) and not isinstance(right, bool)):
-            tolerance = (epoch_tolerance_seconds/86400. if 'jd_tdb' in key
-                         else residual_tolerance_px)
+            tolerance = epoch_tolerance_seconds/86400. if 'jd_tdb' in key else 1e-4
+            if any(token in key for token in ('rms_px', 'separation_px', 'cost_px')):
+                tolerance = residual_tolerance_px
             if abs(float(left)-float(right)) > tolerance:
                 reasons.append(f'{path} differs')
         elif left != right:
@@ -105,6 +106,9 @@ def _run(version, analysis, image, workers):
     interpreter = ROOT/version/'.venv/bin/python'
     if not interpreter.is_file():
         raise ValueError(f'Missing locked interpreter: {interpreter}')
+    cache_dir = ROOT/version/'results/ephemeris-cache'
+    cache_before = {path.resolve(): path.stat().st_size
+                    for path in cache_dir.glob('*.npz')} if cache_dir.is_dir() else {}
     with tempfile.TemporaryDirectory(prefix=f'wfs-{version}-benchmark-') as temporary:
         destination = Path(temporary)/'analysis'
         shutil.copytree(analysis, destination)
@@ -145,7 +149,34 @@ def _run(version, analysis, image, workers):
         products['planet_non_detections.json'] = json.loads(
             (destination/'planet_non_detections.json').read_text())
         answer['_benchmark_products'] = products
+        cache_after = {path.resolve(): path.stat().st_size
+                       for path in cache_dir.glob('*.npz')} if cache_dir.is_dir() else {}
+        answer['_benchmark_cache_state'] = {
+            'source': ('writable_cache_present_before_run' if cache_before
+                       and cache_before == cache_after else
+                       'generated_during_run' if cache_after else 'none'),
+            'paths': [str(path) for path in sorted(cache_after, key=str)],
+            'bytes': int(sum(cache_after.values())),
+            'digest': (answer.get('ephemeris') or {}).get('content_sha256'),
+            'build_seconds': 0.,
+        }
     return elapsed, answer
+
+
+def _cache_state(answer):
+    performance = answer.get('planet_search_performance') or {}
+    if performance.get('cache'):
+        return performance['cache']
+    if answer.get('_benchmark_cache_state'):
+        return answer['_benchmark_cache_state']
+    provenance = answer.get('ephemeris') or {}
+    return {
+        'source': provenance.get('cache_source'),
+        'path': provenance.get('cache_path'),
+        'bytes': provenance.get('cache_bytes'),
+        'digest': provenance.get('content_sha256'),
+        'build_seconds': float(provenance.get('cache_build_seconds', 0.)),
+    }
 
 
 def main(argv=None):
@@ -190,8 +221,7 @@ def main(argv=None):
         'repetitions': args.repetitions,
         'v6_workers': args.workers,
         'timing': timing_summary(timings['v5'], timings['v6']),
-        'cache_states': {version: [answer.get('planet_search_performance', {}).get('cache', {})
-                                  for answer in values]
+        'cache_states': {version: [_cache_state(answer) for answer in values]
                          for version, values in answers.items()},
         'science': science,
     }

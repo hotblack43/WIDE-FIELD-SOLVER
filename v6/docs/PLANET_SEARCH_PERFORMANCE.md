@@ -10,7 +10,8 @@ ceiling still excludes future dates; 2036 is deliberate headroom beyond the
 
 - A validated 12 MB daily reference table is shipped with v6, so ordinary runs
   do not build a 300-year ephemeris cache.
-- Normalized cubic interpolation supplies cheap proposal checks only.
+- Normalized Catmull--Rom interpolation supplies optimized proposal dates;
+  one-sided cubic stencils cover the two reference-table edge segments.
 - Independent visit brackets for one planet are refined in vector batches.
 - Up to four planet groups run in deterministic worker processes. Set
   `WFS_PLANET_WORKERS=1` for the serial reference path.
@@ -18,10 +19,12 @@ ceiling still excludes future dates; 2036 is deliberate headroom beyond the
   count, exact/interpolated call counts and candidate counts. The identical
   object is embedded in `planet_epoch.json`.
 
-Exact Astropy builtin directions remain authoritative. Every final date,
-detector gate, altitude, saved predicted position and residual is evaluated on
-the exact path. Interpolation cannot accept a candidate, and tests deliberately
-put interpolated and exact positions on opposite sides of a gate.
+Exact Astropy builtin directions remain authoritative. The interpolated date is
+accepted as an option only after an exact evaluation confirms the five-arcsecond
+interpolation guard. Every original visit bracket is still minimized in full on
+the exact path, and every final detector gate, altitude, saved predicted
+position and residual is exact. Tests deliberately put interpolated and exact
+positions on opposite sides of a gate.
 
 ## Controlled Espenak benchmark
 
@@ -33,18 +36,29 @@ warm validated cache; v6 used four workers. Raw evidence is in
 
 | Runtime | Repetitions (s) | Median (s) |
 |---|---:|---:|
-| v5 warm cache | 68.60, 76.77, 76.80 | 76.77 |
-| v6 bundled table, 4 workers | 24.84, 25.53, 24.16 | 24.84 |
+| v5 warm cache | 66.40, 66.87, 67.95 | 66.87 |
+| v6 bundled table, 4 workers | 29.07, 30.19, 33.25 | 30.19 |
 
-The median speedup is **3.09×**. A separate v6 one-worker run took 32.42 s wall
-(30.34 s measured inside the stage), showing that batching supplies most of the
-gain and process parallelism supplies a further improvement.
+The median isolated-stage speedup is **2.21×**. The evidence records the v5
+writable cache as present before every timed run and the v6 bundled-table digest
+for every run.
+
+One complete launcher run per version on the same image took 211.39 seconds for
+`go5.sh` and 172.94 seconds for `go6.sh`: **1.22× end-to-end**, or 38.45 seconds
+saved. The shared blind-bootstrap stage is both dominant and variable, so the
+three-repetition isolated comparison is the appropriate measure of the planet
+search itself. The complete v6 run reported 32.24 seconds inside the planetary
+stage.
 
 Both versions found 843 positional visits, ran 138 joint trials, retained the
 same 138 candidate identities and reported `planet_epoch_not_identifiable`.
-The largest candidate-epoch difference was 0.139 seconds and the largest RMS
-difference was `2.56e-11` pixel. These are bounded exact-minimizer termination
+The largest candidate-epoch difference was 0.149 seconds and the largest RMS
+difference was `3.28e-11` pixel. These are bounded exact-minimizer termination
 differences, not changes to the camera, detections, gates or scientific status.
+Every repetition also compared predicted coordinates, individual residuals and
+altitudes, visibility decisions, source candidates, negative evidence, and the
+planet CSV/JSON products. Both v5 and v6 reproduced their own full outputs on
+all repeated runs.
 
 Reproduce the comparison from the repository root after syncing both locked
 environments and making the v5 warm cache available:

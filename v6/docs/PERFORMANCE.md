@@ -48,10 +48,11 @@ its solver subprocess.
 
 ## v0.6.0 planetary epoch stage
 
-The Espenak planetary stage improved from a 76.77-second v5 warm-cache median
-to 24.84 seconds in v6 with four workers, a 3.09x speedup. The one-worker v6
-reference path took 32.42 seconds wall. Candidate identities, counts and status
-were unchanged; exact epoch differences were at most 0.139 seconds. See
+The Espenak planetary stage improved from a 66.87-second v5 warm-cache median
+to 30.19 seconds in v6 with four workers, a 2.21x speedup. Candidate identities,
+counts, status and exported science products were equivalent; exact epoch
+differences were at most 0.149 seconds. Complete launcher runs took 211.39
+seconds for v5 and 172.94 seconds for v6. See
 [the full method and raw timings](PLANET_SEARCH_PERFORMANCE.md).
 
 

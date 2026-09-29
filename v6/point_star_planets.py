@@ -69,13 +69,16 @@ def _visible_projection(camera, vectors, zenith):
     return points
 
 
-def _record_empty_performance(output, search_started, requested_workers):
+def _record_empty_performance(output, search_started, requested_workers,
+                              provider_counts=None):
     from point_star_planet_performance import PlanetSearchPerformance
     performance = PlanetSearchPerformance(requested_workers=int(requested_workers))
     performance.seconds.update(
         coarse_scan=0., interpolated_refinement=0., exact_refinement=0.,
         individual_refinement=0., joint_assignment=0., negative_evidence=0.,
         cache_load=0.)
+    if provider_counts:
+        performance.providers.update(provider_counts)
     output['planet_search_performance'] = performance.serialise(
         total_planet_stage=time.perf_counter()-search_started)
 
@@ -103,6 +106,8 @@ def search_planet_epochs(camera, detections, jd_grid, sky_grid, vector_function,
         raise ValueError('The causal time ceiling must be finite')
     last_date = min(float(jd[-1]), float(latest_jd_tdb))
     names = list(sky_grid)
+    endpoint_counts = dict(interpolated_calls=0, interpolated_dates=0,
+                           exact_calls=0, exact_dates=0)
     output = dict(status='no_planet_match', matches=[], candidates=[], match_count=0,
                   metadata_used=False, stellar_epoch_used_as_date_prior=False, derived_epoch_utc=None, source_candidates=[],
                   search_start_tdb=_date_text(jd[0]), search_end_tdb=_date_text(last_date), search_end_jd_tdb=last_date,
@@ -119,16 +124,23 @@ def search_planet_epochs(camera, detections, jd_grid, sky_grid, vector_function,
                     'Ranking is not a calibrated false-alarm probability.')
     if last_date <= jd[0]:
         output['reason'] = 'Reference interval lies entirely beyond the causal time ceiling'
-        _record_empty_performance(output, search_started, planet_workers)
+        _record_empty_performance(output, search_started, planet_workers,
+                                  endpoint_counts)
         return output
     if jd[-1] > last_date:
         before = jd < last_date
-        sky_grid = {name: np.vstack([np.asarray(values)[before], vector_function(name, [last_date])])
-                    for name, values in sky_grid.items()}
+        clipped = {}
+        for name, values in sky_grid.items():
+            endpoint = vector_function(name, [last_date])
+            endpoint_counts['exact_calls'] += 1
+            endpoint_counts['exact_dates'] += 1
+            clipped[name] = np.vstack([np.asarray(values)[before], endpoint])
+        sky_grid = clipped
         jd = np.r_[jd[before], last_date]
     if zenith_unit_vector is None:
         output.update(status='visibility_unresolved', reason='No image-derived photometric zenith; planet visibility cannot be checked')
-        _record_empty_performance(output, search_started, planet_workers)
+        _record_empty_performance(output, search_started, planet_workers,
+                                  endpoint_counts)
         return output
     zenith = np.asarray(zenith_unit_vector, dtype=float)
     if zenith.shape != (3,) or not np.isfinite(zenith).all() or np.linalg.norm(zenith) < 1e-12:
@@ -139,7 +151,8 @@ def search_planet_epochs(camera, detections, jd_grid, sky_grid, vector_function,
                                 horizon_roundoff_tolerance_deg=1e-7)
     if not detections or not names:
         output['reason'] = 'No measured sources or reference planets'
-        _record_empty_performance(output, search_started, planet_workers)
+        _record_empty_performance(output, search_started, planet_workers,
+                                  endpoint_counts)
         return output
     xy = np.array([[float(r['x_px']), float(r['y_px'])] for r in detections])
     if not np.isfinite(xy).all():
@@ -233,7 +246,8 @@ def search_planet_epochs(camera, detections, jd_grid, sky_grid, vector_function,
     def record_performance(joint_seconds=0.):
         from point_star_planet_performance import PlanetSearchPerformance
         counts = provider.counts()
-        counts = {key: int(value+worker_counters.get(key, 0))
+        counts = {key: int(value+worker_counters.get(key, 0)
+                           + endpoint_counts.get(key, 0))
                   for key, value in counts.items()}
         performance = PlanetSearchPerformance(requested_workers=int(planet_workers))
         performance.used_workers = int(workers_used)
