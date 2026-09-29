@@ -27,6 +27,15 @@ uv run --frozen python -m unittest discover -v
 Keep `uv.lock` committed. Document numerical changes and their reasons. Leave
 the historical comparison with solve-field factual and bounded by its tests.
 
+## Default to action
+
+When the requested outcome is clear and the next step is local, reversible and
+non-destructive, proceed without asking for confirmation. This includes normal
+inspection, analysis, plotting, tests, and additions that preserve existing
+evidence. Pause only when a material ambiguity would change the result, or when
+the next step would erase or overwrite user data, create an irreversible effect,
+publish externally, or require authority beyond the request.
+
 ## End with inspection targets
 
 Every final response after repository work must end by telling the user what to
