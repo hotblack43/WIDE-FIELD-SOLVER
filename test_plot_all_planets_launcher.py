@@ -52,12 +52,12 @@ class PlotAllPlanetsLauncherTests(unittest.TestCase):
             check=False,
         )
 
-    def test_runs_extinction_corrected_product_for_all_three_channels(self):
+    def test_runs_extinction_and_distance_corrected_product_for_all_channels(self):
         result = self.run_launcher()
 
         self.assertEqual(result.returncode, 0, result.stdout)
         invocations = self.uv_log.read_text(encoding="utf-8").splitlines()
-        self.assertEqual(len(invocations), 3)
+        self.assertEqual(len(invocations), 4)
         self.assertTrue(all(
             f"run --project {ROOT} --frozen" in line
             for line in invocations
@@ -76,11 +76,19 @@ class PlotAllPlanetsLauncherTests(unittest.TestCase):
             self.assertIn(
                 "--extinction-corrected-distance-corrected", nightly_run
             )
+            self.assertNotIn(" --extinction-corrected ", f" {nightly_run} ")
             self.assertIn(
                 f"--nightly-calibration {self.nightly_calibration}",
                 nightly_run,
             )
             self.assertNotIn(" --stellar-calibrated-distance-corrected", nightly_run)
+        colour_runs = [
+            line for line in invocations
+            if "scripts/plot_planet_colours.py" in line
+        ]
+        self.assertEqual(len(colour_runs), 1)
+        self.assertIn(f"--input-root {self.output}", colour_runs[0])
+        self.assertIn(f"--output {self.output}", colour_runs[0])
         self.assertIn("All planet plots completed", result.stdout)
         self.assertTrue((self.output / "plot_ALL_planets.log").is_file())
 

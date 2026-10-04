@@ -1,5 +1,10 @@
 # MMTO Nightly Extinction Calibration Design
 
+> Historical design note: the adopted per-image-Theil--Sen median described
+> below was superseded on 2026-10-02 by the nightly shared-slope, per-star-
+> intercept fit documented in `docs/MMTO_NIGHTLY_EXTINCTION.md`. Per-image fits
+> remain diagnostics.
+
 Date: 2026-09-27
 
 ## Purpose

@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 import hashlib
 import importlib.util
 import json
+import math
 from pathlib import Path
 import sqlite3
 import tempfile
@@ -34,6 +35,8 @@ def write_nightly_sidecar(
     scaled_mad=0.03,
     zero_point=-6.0,
     zero_uncertainty=0.04,
+    extinction_uncertainty=0.01,
+    covariance=-0.0002,
     duplicate_zero_point=False,
 ):
     directory = Path(directory)
@@ -55,7 +58,7 @@ def write_nightly_sidecar(
             "night": night,
             "channel": channel,
             "catalogue_sha256": catalogue_sha256,
-            "model": "reference_theil_sen",
+            "model": "nightly_shared_slope_star_intercepts_soft_l1",
             "status": "accepted",
             "extinction_mag_per_airmass": extinction,
             "scaled_mad_mag_per_airmass": scaled_mad,
@@ -63,13 +66,46 @@ def write_nightly_sidecar(
             "maximum_mag_per_airmass": extinction + 0.02,
             "accepted_image_count": 10,
         })
-    with (directory / "image_zero_points.csv").open(
+    with (directory / "nightly_shared_slope_fits.csv").open(
+        "w", newline="", encoding="utf-8"
+    ) as stream:
+        fields = [
+            "night", "channel", "catalogue_sha256", "model", "estimator",
+            "robust_loss", "robust_loss_scale_magnitude", "status", "accepted",
+            "extinction_mag_per_airmass",
+            "extinction_uncertainty_mag_per_airmass",
+            "residual_rms_magnitude",
+            "measurement_count", "accepted_image_count", "reference_star_count",
+            "airmass_min", "airmass_max", "airmass_span",
+        ]
+        writer = csv.DictWriter(stream, fieldnames=fields)
+        writer.writeheader()
+        writer.writerow({
+            "night": night,
+            "channel": channel,
+            "catalogue_sha256": catalogue_sha256,
+            "model": "nightly_shared_slope_star_intercepts_soft_l1",
+            "estimator": "scipy.optimize.least_squares",
+            "robust_loss": "soft_l1",
+            "robust_loss_scale_magnitude": 0.1,
+            "status": "accepted",
+            "accepted": True,
+            "extinction_mag_per_airmass": extinction,
+            "extinction_uncertainty_mag_per_airmass": extinction_uncertainty,
+            "residual_rms_magnitude": 0.1,
+            "measurement_count": 400,
+            "accepted_image_count": 10,
+            "reference_star_count": 40,
+            "airmass_min": 1.0,
+            "airmass_max": 3.0,
+            "airmass_span": 2.0,
+        })
+    with (directory / "image_extinction_joins.csv").open(
         "w", newline="", encoding="utf-8"
     ) as stream:
         fields = [
             "night", "channel", "observed_utc", "source_sha256",
-            "catalogue_sha256", "model", "status", "zero_point_magnitude",
-            "uncertainty_magnitude", "rms_magnitude", "star_count",
+            "catalogue_sha256", "model", "status", "reference_star_count",
             "extinction_mag_per_airmass",
         ]
         writer = csv.DictWriter(stream, fieldnames=fields)
@@ -80,12 +116,9 @@ def write_nightly_sidecar(
             "observed_utc": "2026-09-20T01:00:00+00:00",
             "source_sha256": source_sha256,
             "catalogue_sha256": catalogue_sha256,
-            "model": "reference_theil_sen",
+            "model": "nightly_shared_slope_star_intercepts_soft_l1",
             "status": "accepted",
-            "zero_point_magnitude": zero_point,
-            "uncertainty_magnitude": zero_uncertainty,
-            "rms_magnitude": 0.1,
-            "star_count": 40,
+            "reference_star_count": 40,
             "extinction_mag_per_airmass": extinction,
         }
         writer.writerow(record)
@@ -881,21 +914,31 @@ class PlanetPhotometryLoadingTests(unittest.TestCase):
         key = ("a" * 64, TEST_CATALOGUE_SHA, "2026-09-19", "G")
         self.assertEqual(set(calibrations), {key})
         self.assertEqual(calibrations[key]["extinction_mag_per_airmass"], 0.2)
-        self.assertEqual(calibrations[key]["zero_point_magnitude"], -6.0)
         self.assertEqual(
             calibrations[key]["observed_utc"], "2026-09-20T01:00:00Z"
         )
 
         write_nightly_sidecar(sidecar, duplicate_zero_point=True)
-        with self.assertRaisesRegex(ValueError, "duplicate image zero point"):
+        with self.assertRaisesRegex(ValueError, "duplicate image extinction join"):
             loader(sidecar)
 
-    def test_planet_uses_star_only_nightly_k_and_fixed_image_zero_point(self):
+    def test_nightly_loader_accepts_shared_fit_without_diagnostic_mad(self):
+        import scripts.plot_planet_photometry as planet_plot
+
+        sidecar = Path(self.temporary.name) / "nightly-no-diagnostic-mad"
+        write_nightly_sidecar(sidecar, scaled_mad="")
+
+        calibrations = planet_plot.load_nightly_image_calibrations(sidecar)
+
+        key = ("a" * 64, TEST_CATALOGUE_SHA, "2026-09-19", "G")
+        self.assertIsNone(calibrations[key]["extinction_scaled_mad"])
+
+    def test_planet_uses_only_the_nightly_shared_stellar_slope(self):
         import scripts.plot_planet_photometry as planet_plot
 
         writer = getattr(
             planet_plot,
-            "write_extinction_corrected_distance_outputs",
+            "write_extinction_corrected_outputs",
             None,
         )
         self.assertTrue(callable(writer))
@@ -917,13 +960,6 @@ class PlanetPhotometryLoadingTests(unittest.TestCase):
         sidecar = Path(self.temporary.name) / "nightly-sidecar"
         write_nightly_sidecar(sidecar, source_sha256=source_sha)
         output = Path(self.temporary.name) / "nightly-output"
-        distances = {
-            ("Mars", "2026-09-20T01:00:00Z"): {
-                "sun_planet_distance_au": 1.0,
-                "earth_planet_distance_au": 1.0,
-                "distance_ephemeris_source": "test ephemeris",
-            }
-        }
         uncertainties = {
             ("run", "1"): {
                 "machine_magnitude_uncertainty": 0.1,
@@ -939,17 +975,16 @@ class PlanetPhotometryLoadingTests(unittest.TestCase):
             database=self.database,
             nightly_calibration=sidecar,
             channel="G",
-            distance_lookup=distances,
             uncertainty_lookup=uncertainties,
         )
 
-        with (output / "planet_extinction_corrected_distance_measurements.csv").open(
+        with (output / "planet_extinction_corrected_measurements.csv").open(
             newline="", encoding="utf-8"
         ) as stream:
             exported = list(csv.DictReader(stream))
         self.assertEqual(len(exported), 1)
         mars = exported[0]
-        expected = -5.0 - (-6.0) - 0.2 * rows[0]["planet_airmass"]
+        expected = -5.0 - 0.2 * rows[0]["planet_airmass"]
         self.assertAlmostEqual(
             float(mars["extinction_corrected_magnitude"]), expected, 12
         )
@@ -960,17 +995,221 @@ class PlanetPhotometryLoadingTests(unittest.TestCase):
         )
         self.assertEqual(mars["extinction_correction_status"], "available")
         self.assertEqual(mars["nightly_extinction_night"], "2026-09-19")
+        airmass = float(rows[0]["planet_airmass"])
+        calibration_variance = (airmass * 0.01) ** 2
+        self.assertAlmostEqual(
+            float(mars["nightly_calibration_uncertainty_mag"]),
+            math.sqrt(calibration_variance),
+            12,
+        )
+        self.assertAlmostEqual(
+            float(mars["total_magnitude_uncertainty"]),
+            math.sqrt(0.1 ** 2 + calibration_variance),
+            12,
+        )
         self.assertEqual(summary["plotted_counts"]["measurements"], 1)
         self.assertEqual(
             summary["quantity"],
-            "extinction-corrected, distance-corrected magnitude",
+            "extinction-corrected instrumental magnitude",
         )
         self.assertTrue(
-            (output / "planet_extinction_corrected_distance_magnitude_vs_time.pdf").is_file()
+            (output / "planet_extinction_corrected_magnitude_vs_time.pdf").is_file()
         )
         self.assertFalse(
-            (output / "planet_extinction_corrected_distance_magnitude_vs_time.png").exists()
+            (output / "planet_extinction_corrected_magnitude_vs_time.png").exists()
         )
+        self.assertTrue(
+            (
+                output
+                / "planet_extinction_corrected_magnitude_vs_hours_past_local_noon.pdf"
+            ).is_file()
+        )
+        with (output / "planet_extinction_corrected_nightly_slopes.csv").open(
+            newline="", encoding="utf-8"
+        ) as stream:
+            slope_rows = list(csv.DictReader(stream))
+        self.assertEqual(len(slope_rows), 1)
+        self.assertEqual(slope_rows[0]["night"], "2026-09-19")
+        self.assertEqual(slope_rows[0]["status"], "insufficient_measurements")
+        self.assertAlmostEqual(float(mars["hours_past_local_noon"]), 6.0, 12)
+
+    def test_hours_past_local_noon_uses_arizona_observing_night(self):
+        import scripts.plot_planet_photometry as planet_plot
+
+        self.assertAlmostEqual(
+            planet_plot._hours_past_local_noon(
+                "2026-09-20T01:00:00Z", "2026-09-19"
+            ),
+            6.0,
+            12,
+        )
+
+    def test_local_noon_plot_connects_only_within_night_planet_and_camera(self):
+        import matplotlib.pyplot as plt
+        import scripts.plot_planet_photometry as planet_plot
+
+        usable = []
+        for night, planet, camera, utc_times, magnitudes in (
+            (
+                "2026-09-19",
+                "Mars",
+                "MMTO skycam",
+                ("2026-09-20T01:00:00Z", "2026-09-20T02:00:00Z"),
+                (-5.0, -4.9),
+            ),
+            (
+                "2026-09-20",
+                "Mars",
+                "MMTO skycam",
+                ("2026-09-21T01:00:00Z", "2026-09-21T02:00:00Z"),
+                (-4.8, -4.7),
+            ),
+            (
+                "2026-09-19",
+                "Saturn",
+                "MMTO skycam",
+                ("2026-09-20T01:00:00Z", "2026-09-20T02:00:00Z"),
+                (-10.0, -9.9),
+            ),
+            (
+                "2026-09-19",
+                "Mars",
+                "APICAM",
+                ("2026-09-20T01:00:00Z", "2026-09-20T02:00:00Z"),
+                (-5.2, -5.1),
+            ),
+        ):
+            for observed, magnitude in zip(utc_times, magnitudes):
+                usable.append({
+                    "planet": planet,
+                    "camera_label": camera,
+                    "nightly_extinction_night": night,
+                    "observation_time_utc": observed,
+                    "hours_past_local_noon": planet_plot._hours_past_local_noon(
+                        observed, night
+                    ),
+                    "extinction_corrected_magnitude": magnitude,
+                    "total_magnitude_uncertainty": 0.02,
+                })
+
+        figure, axis = planet_plot._build_extinction_corrected_local_noon_figure(
+            usable,
+            {"MMTO skycam": "o", "APICAM": "s"},
+            {
+                "Mars": planet_plot.PLANET_COLOURS["Mars"],
+                "Saturn": planet_plot.PLANET_COLOURS["Saturn"],
+            },
+            channel="G",
+        )
+        self.addCleanup(plt.close, figure)
+
+        self.assertEqual(len(axis.lines), 4)
+        self.assertTrue(all(len(line.get_xdata()) == 2 for line in axis.lines))
+        self.assertTrue(all(
+            list(line.get_xdata()) == [6.0, 7.0] for line in axis.lines
+        ))
+
+    def test_nightly_phase_slopes_recover_magnitude_change_per_hour(self):
+        import scripts.plot_planet_photometry as planet_plot
+
+        rows = [
+            {
+                "nightly_extinction_night": "2026-09-19",
+                "planet": "Mars",
+                "camera_label": "MMTO skycam",
+                "channel": "G",
+                "hours_past_local_noon": hour,
+                "extinction_corrected_magnitude": 1.5 + 0.04 * hour,
+            }
+            for hour in (5.0, 6.0, 7.0, 8.0)
+        ]
+
+        slopes = planet_plot._nightly_phase_slopes(rows)
+
+        self.assertEqual(len(slopes), 1)
+        self.assertEqual(slopes[0]["status"], "accepted")
+        self.assertAlmostEqual(slopes[0]["slope_mag_per_hour"], 0.04, 12)
+        self.assertAlmostEqual(slopes[0]["residual_rms_magnitude"], 0.0, 12)
+
+    def test_distance_nightly_phase_slopes_use_combined_magnitude(self):
+        import scripts.plot_planet_photometry as planet_plot
+
+        fitter = getattr(planet_plot, "_nightly_distance_phase_slopes", None)
+        self.assertTrue(callable(fitter))
+        if not callable(fitter):
+            return
+        rows = [
+            {
+                "nightly_extinction_night": "2026-09-19",
+                "planet": "Mars",
+                "camera_label": "MMTO skycam",
+                "channel": "G",
+                "hours_past_local_noon": hour,
+                "extinction_corrected_magnitude": 1.5 + 0.01 * hour,
+                "extinction_corrected_distance_magnitude": 2.0 + 0.04 * hour,
+            }
+            for hour in (5.0, 6.0, 7.0, 8.0)
+        ]
+
+        slopes = fitter(rows)
+
+        self.assertEqual(len(slopes), 1)
+        self.assertEqual(slopes[0]["status"], "accepted")
+        self.assertAlmostEqual(slopes[0]["slope_mag_per_hour"], 0.04, 12)
+
+    def test_distance_local_noon_plot_uses_combined_magnitude(self):
+        import matplotlib.pyplot as plt
+        import scripts.plot_planet_photometry as planet_plot
+
+        builder = getattr(
+            planet_plot,
+            "_build_extinction_corrected_distance_local_noon_figure",
+            None,
+        )
+        self.assertTrue(callable(builder))
+        if not callable(builder):
+            return
+        rows = [
+            {
+                "nightly_extinction_night": "2026-09-19",
+                "planet": "Mars",
+                "camera_label": "MMTO skycam",
+                "hours_past_local_noon": hour,
+                "extinction_corrected_magnitude": extinction_magnitude,
+                "extinction_corrected_distance_magnitude": distance_magnitude,
+                "total_magnitude_uncertainty": 0.02,
+            }
+            for hour, extinction_magnitude, distance_magnitude in (
+                (6.0, -5.0, -3.0),
+                (7.0, -4.9, -2.8),
+            )
+        ]
+
+        figure, axis = builder(
+            rows,
+            {"MMTO skycam": "o"},
+            {"Mars": planet_plot.PLANET_COLOURS["Mars"]},
+            channel="G",
+        )
+        self.addCleanup(plt.close, figure)
+
+        self.assertEqual(list(axis.lines[0].get_ydata()), [-3.0, -2.8])
+        self.assertIn("distance-corrected", axis.get_ylabel())
+
+    def test_combined_empty_plots_name_both_corrections(self):
+        import matplotlib.pyplot as plt
+        import scripts.plot_planet_photometry as planet_plot
+
+        builders = (
+            planet_plot._build_extinction_corrected_distance_figure,
+            planet_plot._build_extinction_corrected_distance_local_noon_figure,
+        )
+        for builder in builders:
+            with self.subTest(builder=builder.__name__):
+                figure, axis = builder([], {}, {}, channel="G")
+                self.addCleanup(plt.close, figure)
+                empty_text = " ".join(text.get_text() for text in axis.texts)
+                self.assertIn("extinction- and distance-corrected", empty_text)
 
     def test_missing_sidecar_match_has_no_legacy_or_raw_fallback(self):
         import scripts.plot_planet_photometry as planet_plot
@@ -1374,6 +1613,21 @@ class PlanetPhotometryLoadingTests(unittest.TestCase):
             expected_distance,
             12,
         )
+        self.assertTrue(
+            (
+                output
+                / (
+                    "planet_extinction_corrected_distance_magnitude_"
+                    "vs_hours_past_local_noon.pdf"
+                )
+            ).is_file()
+        )
+        self.assertTrue(
+            (
+                output
+                / "planet_extinction_corrected_distance_nightly_slopes.csv"
+            ).is_file()
+        )
 
     def test_uncertainty_lookup_remeasures_checksum_verified_fits(self):
         import scripts.plot_planet_photometry as planet_plot
@@ -1565,7 +1819,7 @@ class PlanetPhotometryLoadingTests(unittest.TestCase):
         self.assertEqual(status, 0)
         writer.assert_called_once()
 
-    def test_command_line_selects_nightly_sidecar_writer_explicitly(self):
+    def test_command_line_selects_extinction_only_sidecar_writer_explicitly(self):
         import scripts.plot_planet_photometry as planet_plot
 
         self.add_run("run", "image", "2026-09-20T01:00:00Z")
@@ -1582,14 +1836,14 @@ class PlanetPhotometryLoadingTests(unittest.TestCase):
             return_value=metadata_rows,
         ) as loader, mock.patch.object(
             planet_plot,
-            "write_extinction_corrected_distance_outputs",
+            "write_extinction_corrected_outputs",
             return_value=summary,
         ) as writer:
             status = planet_plot.main([
                 "--database", str(self.database),
                 "--output", str(output),
                 "--channel", "G",
-                "--extinction-corrected-distance-corrected",
+                "--extinction-corrected",
                 "--nightly-calibration", str(sidecar),
             ])
 

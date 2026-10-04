@@ -1,0 +1,846 @@
+{
+  "channel_high_signal": {
+    "B": {
+      "bootstrap_95_percent_interval_magnitude": [
+        0.24524712579760255,
+        0.3107968656828195
+      ],
+      "median_residual_magnitude": 0.2777234083711946,
+      "minimum_predicted_count_rate_adu_per_s": 5000.0,
+      "observed_to_predicted_count_ratio": 0.7743024557374247,
+      "star_night_count": 151
+    },
+    "G": {
+      "bootstrap_95_percent_interval_magnitude": [
+        0.30822047019249865,
+        0.37003149616072495
+      ],
+      "median_residual_magnitude": 0.34541632270304756,
+      "minimum_predicted_count_rate_adu_per_s": 5000.0,
+      "observed_to_predicted_count_ratio": 0.7275007927741663,
+      "star_night_count": 237
+    },
+    "R": {
+      "bootstrap_95_percent_interval_magnitude": [
+        0.3046042538649134,
+        0.4498056455162196
+      ],
+      "median_residual_magnitude": 0.3697936150989687,
+      "minimum_predicted_count_rate_adu_per_s": 5000.0,
+      "observed_to_predicted_count_ratio": 0.711348719315391,
+      "star_night_count": 135
+    }
+  },
+  "channel_measurements": {
+    "B": 2036,
+    "G": 3731,
+    "R": 2880
+  },
+  "channel_median_residual_above_5000_adu_per_s": {
+    "B": 0.2777234083711946,
+    "G": 0.34541632270304756,
+    "R": 0.3697936150989687
+  },
+  "channel_star_nights": {
+    "B": 325,
+    "G": 595,
+    "R": 455
+  },
+  "control_max_count_rate_adu_per_s": 3000.0,
+  "measurement_count": 8647,
+  "method": "faint held-out stars fit per-night extinction and per-image offsets; the high-airmass third anchors each bright star and the low-airmass third is tested",
+  "night_channel_fits": [
+    {
+      "channel": "B",
+      "control_measurement_count": 3067,
+      "control_residual_rms_magnitude": 0.31070214181099115,
+      "control_star_count": 203,
+      "extinction_mag_per_airmass": 0.3680436925813938,
+      "image_count": 23,
+      "night": "2026-08-18",
+      "status": "accepted",
+      "tested_bright_star_count": 11
+    },
+    {
+      "channel": "G",
+      "control_measurement_count": 2807,
+      "control_residual_rms_magnitude": 0.22256119359430615,
+      "control_star_count": 188,
+      "extinction_mag_per_airmass": 0.3026271903854446,
+      "image_count": 23,
+      "night": "2026-08-18",
+      "status": "accepted",
+      "tested_bright_star_count": 23
+    },
+    {
+      "channel": "R",
+      "control_measurement_count": 2939,
+      "control_residual_rms_magnitude": 0.290504388899627,
+      "control_star_count": 196,
+      "extinction_mag_per_airmass": 0.29865455612482605,
+      "image_count": 23,
+      "night": "2026-08-18",
+      "status": "accepted",
+      "tested_bright_star_count": 18
+    },
+    {
+      "channel": "B",
+      "control_measurement_count": 597,
+      "control_residual_rms_magnitude": 0.40198063801510375,
+      "control_star_count": 55,
+      "extinction_mag_per_airmass": 1.1337923705080788,
+      "image_count": 12,
+      "night": "2026-08-19",
+      "status": "accepted",
+      "tested_bright_star_count": 3
+    },
+    {
+      "channel": "G",
+      "control_measurement_count": 521,
+      "control_residual_rms_magnitude": 0.3005316394735212,
+      "control_star_count": 48,
+      "extinction_mag_per_airmass": 0.9582331279948215,
+      "image_count": 12,
+      "night": "2026-08-19",
+      "status": "accepted",
+      "tested_bright_star_count": 2
+    },
+    {
+      "channel": "R",
+      "control_measurement_count": 555,
+      "control_residual_rms_magnitude": 0.3695777162936599,
+      "control_star_count": 51,
+      "extinction_mag_per_airmass": 1.005577038352054,
+      "image_count": 12,
+      "night": "2026-08-19",
+      "status": "accepted",
+      "tested_bright_star_count": 2
+    },
+    {
+      "channel": "B",
+      "control_measurement_count": 3562,
+      "control_residual_rms_magnitude": 0.2980225538260536,
+      "control_star_count": 223,
+      "extinction_mag_per_airmass": 0.41573807443961575,
+      "image_count": 27,
+      "night": "2026-08-20",
+      "status": "accepted",
+      "tested_bright_star_count": 14
+    },
+    {
+      "channel": "G",
+      "control_measurement_count": 3272,
+      "control_residual_rms_magnitude": 0.17821034658449503,
+      "control_star_count": 208,
+      "extinction_mag_per_airmass": 0.3382842700518962,
+      "image_count": 27,
+      "night": "2026-08-20",
+      "status": "accepted",
+      "tested_bright_star_count": 29
+    },
+    {
+      "channel": "R",
+      "control_measurement_count": 3416,
+      "control_residual_rms_magnitude": 0.25854387237099175,
+      "control_star_count": 216,
+      "extinction_mag_per_airmass": 0.3369314944949886,
+      "image_count": 27,
+      "night": "2026-08-20",
+      "status": "accepted",
+      "tested_bright_star_count": 22
+    },
+    {
+      "channel": "B",
+      "control_measurement_count": 2141,
+      "control_residual_rms_magnitude": 0.32245240188690133,
+      "control_star_count": 159,
+      "extinction_mag_per_airmass": 0.38378540955164664,
+      "image_count": 20,
+      "night": "2026-08-21",
+      "status": "accepted",
+      "tested_bright_star_count": 8
+    },
+    {
+      "channel": "G",
+      "control_measurement_count": 1973,
+      "control_residual_rms_magnitude": 0.21036943651022763,
+      "control_star_count": 148,
+      "extinction_mag_per_airmass": 0.32321637184825375,
+      "image_count": 20,
+      "night": "2026-08-21",
+      "status": "accepted",
+      "tested_bright_star_count": 16
+    },
+    {
+      "channel": "R",
+      "control_measurement_count": 2055,
+      "control_residual_rms_magnitude": 0.2795802954247229,
+      "control_star_count": 153,
+      "extinction_mag_per_airmass": 0.3067460347746771,
+      "image_count": 20,
+      "night": "2026-08-21",
+      "status": "accepted",
+      "tested_bright_star_count": 16
+    },
+    {
+      "channel": "B",
+      "control_measurement_count": 3242,
+      "control_residual_rms_magnitude": 0.3230073504653043,
+      "control_star_count": 205,
+      "extinction_mag_per_airmass": 0.38234353506067625,
+      "image_count": 27,
+      "night": "2026-08-24",
+      "status": "accepted",
+      "tested_bright_star_count": 19
+    },
+    {
+      "channel": "G",
+      "control_measurement_count": 2998,
+      "control_residual_rms_magnitude": 0.15720514161134536,
+      "control_star_count": 191,
+      "extinction_mag_per_airmass": 0.2941029778035512,
+      "image_count": 27,
+      "night": "2026-08-24",
+      "status": "accepted",
+      "tested_bright_star_count": 32
+    },
+    {
+      "channel": "R",
+      "control_measurement_count": 3143,
+      "control_residual_rms_magnitude": 0.25455676859430093,
+      "control_star_count": 199,
+      "extinction_mag_per_airmass": 0.3027339772708175,
+      "image_count": 27,
+      "night": "2026-08-24",
+      "status": "accepted",
+      "tested_bright_star_count": 25
+    },
+    {
+      "channel": "B",
+      "control_measurement_count": 3686,
+      "control_residual_rms_magnitude": 0.36742325880252513,
+      "control_star_count": 221,
+      "extinction_mag_per_airmass": 0.37449273893869867,
+      "image_count": 29,
+      "night": "2026-08-25",
+      "status": "accepted",
+      "tested_bright_star_count": 17
+    },
+    {
+      "channel": "G",
+      "control_measurement_count": 3364,
+      "control_residual_rms_magnitude": 0.15892924311762513,
+      "control_star_count": 206,
+      "extinction_mag_per_airmass": 0.28955271652768766,
+      "image_count": 29,
+      "night": "2026-08-25",
+      "status": "accepted",
+      "tested_bright_star_count": 33
+    },
+    {
+      "channel": "R",
+      "control_measurement_count": 3591,
+      "control_residual_rms_magnitude": 0.26378657305592684,
+      "control_star_count": 218,
+      "extinction_mag_per_airmass": 0.29785485261647404,
+      "image_count": 29,
+      "night": "2026-08-25",
+      "status": "accepted",
+      "tested_bright_star_count": 23
+    },
+    {
+      "channel": "B",
+      "control_measurement_count": 2599,
+      "control_residual_rms_magnitude": 0.37314397525386245,
+      "control_star_count": 170,
+      "extinction_mag_per_airmass": 0.39363488449295875,
+      "image_count": 29,
+      "night": "2026-08-26",
+      "status": "accepted",
+      "tested_bright_star_count": 14
+    },
+    {
+      "channel": "G",
+      "control_measurement_count": 2306,
+      "control_residual_rms_magnitude": 0.22191670603786845,
+      "control_star_count": 154,
+      "extinction_mag_per_airmass": 0.2976547854900207,
+      "image_count": 29,
+      "night": "2026-08-26",
+      "status": "accepted",
+      "tested_bright_star_count": 27
+    },
+    {
+      "channel": "R",
+      "control_measurement_count": 2458,
+      "control_residual_rms_magnitude": 0.31784953372017605,
+      "control_star_count": 162,
+      "extinction_mag_per_airmass": 0.31324888867668366,
+      "image_count": 29,
+      "night": "2026-08-26",
+      "status": "accepted",
+      "tested_bright_star_count": 20
+    },
+    {
+      "channel": "B",
+      "control_measurement_count": 1819,
+      "control_residual_rms_magnitude": 0.37339280966261273,
+      "control_star_count": 130,
+      "extinction_mag_per_airmass": 0.41559313962802913,
+      "image_count": 23,
+      "night": "2026-08-28",
+      "status": "accepted",
+      "tested_bright_star_count": 10
+    },
+    {
+      "channel": "G",
+      "control_measurement_count": 1701,
+      "control_residual_rms_magnitude": 0.1887565452294334,
+      "control_star_count": 124,
+      "extinction_mag_per_airmass": 0.31424622525859514,
+      "image_count": 23,
+      "night": "2026-08-28",
+      "status": "accepted",
+      "tested_bright_star_count": 15
+    },
+    {
+      "channel": "R",
+      "control_measurement_count": 1796,
+      "control_residual_rms_magnitude": 0.33812480332997724,
+      "control_star_count": 129,
+      "extinction_mag_per_airmass": 0.3207445614317078,
+      "image_count": 23,
+      "night": "2026-08-28",
+      "status": "accepted",
+      "tested_bright_star_count": 12
+    },
+    {
+      "channel": "B",
+      "control_measurement_count": 2941,
+      "control_residual_rms_magnitude": 0.3652037044235933,
+      "control_star_count": 194,
+      "extinction_mag_per_airmass": 0.3901269549965681,
+      "image_count": 27,
+      "night": "2026-08-31",
+      "status": "accepted",
+      "tested_bright_star_count": 13
+    },
+    {
+      "channel": "G",
+      "control_measurement_count": 2726,
+      "control_residual_rms_magnitude": 0.22870965136310756,
+      "control_star_count": 183,
+      "extinction_mag_per_airmass": 0.28028022707455846,
+      "image_count": 27,
+      "night": "2026-08-31",
+      "status": "accepted",
+      "tested_bright_star_count": 26
+    },
+    {
+      "channel": "R",
+      "control_measurement_count": 2836,
+      "control_residual_rms_magnitude": 0.3310551433211374,
+      "control_star_count": 190,
+      "extinction_mag_per_airmass": 0.2940558503623542,
+      "image_count": 27,
+      "night": "2026-08-31",
+      "status": "accepted",
+      "tested_bright_star_count": 21
+    },
+    {
+      "channel": "B",
+      "control_measurement_count": 2183,
+      "control_residual_rms_magnitude": 0.45002914261198174,
+      "control_star_count": 169,
+      "extinction_mag_per_airmass": 0.2987246007873478,
+      "image_count": 20,
+      "night": "2026-09-04",
+      "status": "accepted",
+      "tested_bright_star_count": 11
+    },
+    {
+      "channel": "G",
+      "control_measurement_count": 1994,
+      "control_residual_rms_magnitude": 0.36514959314855944,
+      "control_star_count": 156,
+      "extinction_mag_per_airmass": 0.2447350571339762,
+      "image_count": 20,
+      "night": "2026-09-04",
+      "status": "accepted",
+      "tested_bright_star_count": 21
+    },
+    {
+      "channel": "R",
+      "control_measurement_count": 2052,
+      "control_residual_rms_magnitude": 0.4077763023183638,
+      "control_star_count": 160,
+      "extinction_mag_per_airmass": 0.25836272645800473,
+      "image_count": 20,
+      "night": "2026-09-04",
+      "status": "accepted",
+      "tested_bright_star_count": 17
+    },
+    {
+      "channel": "B",
+      "control_measurement_count": 1253,
+      "control_residual_rms_magnitude": 0.5086698475917997,
+      "control_star_count": 102,
+      "extinction_mag_per_airmass": 0.36924982702830245,
+      "image_count": 19,
+      "night": "2026-09-05",
+      "status": "accepted",
+      "tested_bright_star_count": 5
+    },
+    {
+      "channel": "G",
+      "control_measurement_count": 1145,
+      "control_residual_rms_magnitude": 0.39289319383158716,
+      "control_star_count": 95,
+      "extinction_mag_per_airmass": 0.28136481384148837,
+      "image_count": 19,
+      "night": "2026-09-05",
+      "status": "accepted",
+      "tested_bright_star_count": 10
+    },
+    {
+      "channel": "R",
+      "control_measurement_count": 1216,
+      "control_residual_rms_magnitude": 0.4556223128173794,
+      "control_star_count": 100,
+      "extinction_mag_per_airmass": 0.3021416664757837,
+      "image_count": 19,
+      "night": "2026-09-05",
+      "status": "accepted",
+      "tested_bright_star_count": 8
+    },
+    {
+      "channel": "B",
+      "control_measurement_count": 2424,
+      "control_residual_rms_magnitude": 0.44162148538291424,
+      "control_star_count": 171,
+      "extinction_mag_per_airmass": 0.3085297510153324,
+      "image_count": 20,
+      "night": "2026-09-10",
+      "status": "accepted",
+      "tested_bright_star_count": 5
+    },
+    {
+      "channel": "G",
+      "control_measurement_count": 2213,
+      "control_residual_rms_magnitude": 0.3376929312535066,
+      "control_star_count": 158,
+      "extinction_mag_per_airmass": 0.24594663403847922,
+      "image_count": 20,
+      "night": "2026-09-10",
+      "status": "accepted",
+      "tested_bright_star_count": 13
+    },
+    {
+      "channel": "R",
+      "control_measurement_count": 2339,
+      "control_residual_rms_magnitude": 0.3918716810967154,
+      "control_star_count": 166,
+      "extinction_mag_per_airmass": 0.23970642474801607,
+      "image_count": 20,
+      "night": "2026-09-10",
+      "status": "accepted",
+      "tested_bright_star_count": 10
+    },
+    {
+      "channel": "B",
+      "control_measurement_count": 3884,
+      "control_residual_rms_magnitude": 0.31233329664851917,
+      "control_star_count": 231,
+      "extinction_mag_per_airmass": 0.49097979921849666,
+      "image_count": 28,
+      "night": "2026-09-12",
+      "status": "accepted",
+      "tested_bright_star_count": 15
+    },
+    {
+      "channel": "G",
+      "control_measurement_count": 3538,
+      "control_residual_rms_magnitude": 0.20859199965204195,
+      "control_star_count": 214,
+      "extinction_mag_per_airmass": 0.4221239670490007,
+      "image_count": 28,
+      "night": "2026-09-12",
+      "status": "accepted",
+      "tested_bright_star_count": 30
+    },
+    {
+      "channel": "R",
+      "control_measurement_count": 3789,
+      "control_residual_rms_magnitude": 0.2979173116306826,
+      "control_star_count": 226,
+      "extinction_mag_per_airmass": 0.43238630179031157,
+      "image_count": 28,
+      "night": "2026-09-12",
+      "status": "accepted",
+      "tested_bright_star_count": 21
+    },
+    {
+      "channel": "B",
+      "control_measurement_count": 1176,
+      "control_residual_rms_magnitude": 0.6081614848634811,
+      "control_star_count": 99,
+      "extinction_mag_per_airmass": 0.23163861367662217,
+      "image_count": 19,
+      "night": "2026-09-14",
+      "status": "accepted",
+      "tested_bright_star_count": 4
+    },
+    {
+      "channel": "G",
+      "control_measurement_count": 1009,
+      "control_residual_rms_magnitude": 0.5358244200283133,
+      "control_star_count": 87,
+      "extinction_mag_per_airmass": 0.16310229803740728,
+      "image_count": 19,
+      "night": "2026-09-14",
+      "status": "accepted",
+      "tested_bright_star_count": 10
+    },
+    {
+      "channel": "R",
+      "control_measurement_count": 1056,
+      "control_residual_rms_magnitude": 0.5602677678763947,
+      "control_star_count": 90,
+      "extinction_mag_per_airmass": 0.17480654762419642,
+      "image_count": 19,
+      "night": "2026-09-14",
+      "status": "accepted",
+      "tested_bright_star_count": 10
+    },
+    {
+      "channel": "B",
+      "control_measurement_count": 2589,
+      "control_residual_rms_magnitude": 0.22770021463982,
+      "control_star_count": 178,
+      "extinction_mag_per_airmass": 0.32347963308860705,
+      "image_count": 20,
+      "night": "2026-09-17",
+      "status": "accepted",
+      "tested_bright_star_count": 16
+    },
+    {
+      "channel": "G",
+      "control_measurement_count": 2366,
+      "control_residual_rms_magnitude": 0.09212511633124053,
+      "control_star_count": 164,
+      "extinction_mag_per_airmass": 0.2563788438111098,
+      "image_count": 20,
+      "night": "2026-09-17",
+      "status": "accepted",
+      "tested_bright_star_count": 26
+    },
+    {
+      "channel": "R",
+      "control_measurement_count": 2535,
+      "control_residual_rms_magnitude": 0.19767587700731395,
+      "control_star_count": 174,
+      "extinction_mag_per_airmass": 0.25872881942302284,
+      "image_count": 20,
+      "night": "2026-09-17",
+      "status": "accepted",
+      "tested_bright_star_count": 22
+    },
+    {
+      "channel": "B",
+      "control_measurement_count": 4908,
+      "control_residual_rms_magnitude": 0.2644538500038235,
+      "control_star_count": 269,
+      "extinction_mag_per_airmass": 0.30715294686448974,
+      "image_count": 33,
+      "night": "2026-09-18",
+      "status": "accepted",
+      "tested_bright_star_count": 26
+    },
+    {
+      "channel": "G",
+      "control_measurement_count": 4507,
+      "control_residual_rms_magnitude": 0.10257244925831413,
+      "control_star_count": 249,
+      "extinction_mag_per_airmass": 0.2461418712745534,
+      "image_count": 33,
+      "night": "2026-09-18",
+      "status": "accepted",
+      "tested_bright_star_count": 44
+    },
+    {
+      "channel": "R",
+      "control_measurement_count": 4758,
+      "control_residual_rms_magnitude": 0.20921587463708816,
+      "control_star_count": 261,
+      "extinction_mag_per_airmass": 0.2535833952128438,
+      "image_count": 33,
+      "night": "2026-09-18",
+      "status": "accepted",
+      "tested_bright_star_count": 34
+    },
+    {
+      "channel": "B",
+      "control_measurement_count": 2940,
+      "control_residual_rms_magnitude": 0.28179179805055377,
+      "control_star_count": 193,
+      "extinction_mag_per_airmass": 0.31142023321110013,
+      "image_count": 22,
+      "night": "2026-09-19",
+      "status": "accepted",
+      "tested_bright_star_count": 14
+    },
+    {
+      "channel": "G",
+      "control_measurement_count": 2657,
+      "control_residual_rms_magnitude": 0.1291441241941402,
+      "control_star_count": 175,
+      "extinction_mag_per_airmass": 0.2520963161798966,
+      "image_count": 22,
+      "night": "2026-09-19",
+      "status": "accepted",
+      "tested_bright_star_count": 26
+    },
+    {
+      "channel": "R",
+      "control_measurement_count": 2815,
+      "control_residual_rms_magnitude": 0.220601137893872,
+      "control_star_count": 185,
+      "extinction_mag_per_airmass": 0.25405572917055846,
+      "image_count": 22,
+      "night": "2026-09-19",
+      "status": "accepted",
+      "tested_bright_star_count": 19
+    },
+    {
+      "channel": "B",
+      "control_measurement_count": 3083,
+      "control_residual_rms_magnitude": 0.2981048227881882,
+      "control_star_count": 202,
+      "extinction_mag_per_airmass": 0.30148298898333226,
+      "image_count": 22,
+      "night": "2026-09-20",
+      "status": "accepted",
+      "tested_bright_star_count": 13
+    },
+    {
+      "channel": "G",
+      "control_measurement_count": 2782,
+      "control_residual_rms_magnitude": 0.1237180841141205,
+      "control_star_count": 184,
+      "extinction_mag_per_airmass": 0.2444781935056353,
+      "image_count": 22,
+      "night": "2026-09-20",
+      "status": "accepted",
+      "tested_bright_star_count": 26
+    },
+    {
+      "channel": "R",
+      "control_measurement_count": 2985,
+      "control_residual_rms_magnitude": 0.2303453569042177,
+      "control_star_count": 197,
+      "extinction_mag_per_airmass": 0.26081162004905434,
+      "image_count": 22,
+      "night": "2026-09-20",
+      "status": "accepted",
+      "tested_bright_star_count": 17
+    },
+    {
+      "channel": "B",
+      "control_measurement_count": 3534,
+      "control_residual_rms_magnitude": 0.3811396525925084,
+      "control_star_count": 213,
+      "extinction_mag_per_airmass": 0.34902962421191586,
+      "image_count": 31,
+      "night": "2026-09-21",
+      "status": "accepted",
+      "tested_bright_star_count": 21
+    },
+    {
+      "channel": "G",
+      "control_measurement_count": 3092,
+      "control_residual_rms_magnitude": 0.28153078810795124,
+      "control_star_count": 189,
+      "extinction_mag_per_airmass": 0.2705032468688226,
+      "image_count": 31,
+      "night": "2026-09-21",
+      "status": "accepted",
+      "tested_bright_star_count": 42
+    },
+    {
+      "channel": "R",
+      "control_measurement_count": 3375,
+      "control_residual_rms_magnitude": 0.36527767117750176,
+      "control_star_count": 206,
+      "extinction_mag_per_airmass": 0.2821072394813092,
+      "image_count": 31,
+      "night": "2026-09-21",
+      "status": "accepted",
+      "tested_bright_star_count": 30
+    },
+    {
+      "channel": "B",
+      "control_measurement_count": 1893,
+      "control_residual_rms_magnitude": 0.3556571115209315,
+      "control_star_count": 143,
+      "extinction_mag_per_airmass": 0.30713109524886645,
+      "image_count": 20,
+      "night": "2026-09-24",
+      "status": "accepted",
+      "tested_bright_star_count": 21
+    },
+    {
+      "channel": "G",
+      "control_measurement_count": 1758,
+      "control_residual_rms_magnitude": 0.1503858682299056,
+      "control_star_count": 134,
+      "extinction_mag_per_airmass": 0.20581340134999668,
+      "image_count": 20,
+      "night": "2026-09-24",
+      "status": "accepted",
+      "tested_bright_star_count": 28
+    },
+    {
+      "channel": "R",
+      "control_measurement_count": 1883,
+      "control_residual_rms_magnitude": 0.2586661028161011,
+      "control_star_count": 143,
+      "extinction_mag_per_airmass": 0.22966307621542517,
+      "image_count": 20,
+      "night": "2026-09-24",
+      "status": "accepted",
+      "tested_bright_star_count": 23
+    },
+    {
+      "channel": "B",
+      "control_measurement_count": 3368,
+      "control_residual_rms_magnitude": 0.4058806282536717,
+      "control_star_count": 199,
+      "extinction_mag_per_airmass": 0.3374403407862121,
+      "image_count": 32,
+      "night": "2026-09-25",
+      "status": "accepted",
+      "tested_bright_star_count": 27
+    },
+    {
+      "channel": "G",
+      "control_measurement_count": 2972,
+      "control_residual_rms_magnitude": 0.19221471769012266,
+      "control_star_count": 179,
+      "extinction_mag_per_airmass": 0.21842809378960237,
+      "image_count": 32,
+      "night": "2026-09-25",
+      "status": "accepted",
+      "tested_bright_star_count": 45
+    },
+    {
+      "channel": "R",
+      "control_measurement_count": 3257,
+      "control_residual_rms_magnitude": 0.2735768354407137,
+      "control_star_count": 194,
+      "extinction_mag_per_airmass": 0.24841686847853037,
+      "image_count": 32,
+      "night": "2026-09-25",
+      "status": "accepted",
+      "tested_bright_star_count": 34
+    },
+    {
+      "channel": "B",
+      "control_measurement_count": 638,
+      "control_residual_rms_magnitude": 0.29505693075352485,
+      "control_star_count": 58,
+      "extinction_mag_per_airmass": 0.4584267129097429,
+      "image_count": 13,
+      "night": "2026-09-27",
+      "status": "accepted",
+      "tested_bright_star_count": 1
+    },
+    {
+      "channel": "G",
+      "control_measurement_count": 549,
+      "control_residual_rms_magnitude": 0.16717010733909088,
+      "control_star_count": 50,
+      "extinction_mag_per_airmass": 0.2713381110089936,
+      "image_count": 13,
+      "night": "2026-09-27",
+      "status": "accepted",
+      "tested_bright_star_count": 4
+    },
+    {
+      "channel": "R",
+      "control_measurement_count": 589,
+      "control_residual_rms_magnitude": 0.262672754525661,
+      "control_star_count": 54,
+      "extinction_mag_per_airmass": 0.27377537963184073,
+      "image_count": 13,
+      "night": "2026-09-27",
+      "status": "accepted",
+      "tested_bright_star_count": 2
+    },
+    {
+      "channel": "B",
+      "control_measurement_count": 2736,
+      "control_residual_rms_magnitude": 0.2807215589366745,
+      "control_star_count": 182,
+      "extinction_mag_per_airmass": 0.3446923182725129,
+      "image_count": 22,
+      "night": "2026-09-30",
+      "status": "accepted",
+      "tested_bright_star_count": 12
+    },
+    {
+      "channel": "G",
+      "control_measurement_count": 2465,
+      "control_residual_rms_magnitude": 0.15138497639576315,
+      "control_star_count": 165,
+      "extinction_mag_per_airmass": 0.25862605051017273,
+      "image_count": 22,
+      "night": "2026-09-30",
+      "status": "accepted",
+      "tested_bright_star_count": 23
+    },
+    {
+      "channel": "R",
+      "control_measurement_count": 2633,
+      "control_residual_rms_magnitude": 0.24349066021364135,
+      "control_star_count": 176,
+      "extinction_mag_per_airmass": 0.26595856130267775,
+      "image_count": 22,
+      "night": "2026-09-30",
+      "status": "accepted",
+      "tested_bright_star_count": 17
+    },
+    {
+      "channel": "B",
+      "control_measurement_count": 4604,
+      "control_residual_rms_magnitude": 0.2878766713067392,
+      "control_star_count": 256,
+      "extinction_mag_per_airmass": 0.3053165318656649,
+      "image_count": 32,
+      "night": "2026-10-01",
+      "status": "accepted",
+      "tested_bright_star_count": 25
+    },
+    {
+      "channel": "G",
+      "control_measurement_count": 4156,
+      "control_residual_rms_magnitude": 0.12604386453593033,
+      "control_star_count": 232,
+      "extinction_mag_per_airmass": 0.23789620316113816,
+      "image_count": 32,
+      "night": "2026-10-01",
+      "status": "accepted",
+      "tested_bright_star_count": 44
+    },
+    {
+      "channel": "R",
+      "control_measurement_count": 4483,
+      "control_residual_rms_magnitude": 0.22756859370296895,
+      "control_star_count": 249,
+      "extinction_mag_per_airmass": 0.2507205402546226,
+      "image_count": 32,
+      "night": "2026-10-01",
+      "status": "accepted",
+      "tested_bright_star_count": 32
+    }
+  ]
+}

@@ -184,7 +184,11 @@ def synthetic_loaded_data(
             )
         )
         stars = [
-            (f"bright-{star:02d}", 2.5 + star / 100.0, 1.0 + 3.0 * star / 29.0)
+            (
+                f"bright-{star:02d}",
+                2.5 + star / 100.0,
+                1.0 + 3.0 * ((star + image) % 30) / 29.0,
+            )
             for star in range(30)
         ]
         if add_faint:
@@ -193,7 +197,7 @@ def synthetic_loaded_data(
             stars.append(("high-airmass-star", 3.0, 6.0))
         for star_id, catalogue_magnitude, airmass in stars:
             slope = 0.12 + 0.005 * image
-            zero_point = -6.0 + 0.02 * (image % 3)
+            zero_point = -6.0
             delta_magnitude = zero_point + slope * airmass
             machine_magnitude = catalogue_magnitude + delta_magnitude
             count_rate = 10.0 ** (-0.4 * machine_magnitude)
@@ -346,6 +350,67 @@ class ManifestLoadingTests(unittest.TestCase):
 
 
 class CalibrationDatabaseLoadingTests(unittest.TestCase):
+    def test_latest_success_is_selected_per_physical_source_across_catalogues(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            database_path = root / "stars.sqlite"
+            manifest_path = root / "manifest.sqlite"
+            create_run_database(database_path)
+            create_manifest_database(manifest_path)
+            source_sha = "a" * 64
+            insert_manifest_row(
+                manifest_path,
+                remote_url="https://skycam.mmto.arizona.edu/skycam/archive/a.fits.bz2",
+                sha256=source_sha,
+            )
+            insert_run(
+                database_path,
+                "old-catalogue-run",
+                "2026-09-26T05:01:00+00:00",
+                source_sha,
+                "c" * 64,
+                0,
+            )
+            insert_measurement(
+                database_path,
+                "old-catalogue-run",
+                1,
+                "star-1",
+                photometry_payload(r_rate=999.0),
+            )
+            insert_run(
+                database_path,
+                "new-catalogue-run",
+                "2026-09-26T05:02:00+00:00",
+                source_sha,
+                "d" * 64,
+                0,
+            )
+            insert_measurement(
+                database_path,
+                "new-catalogue-run",
+                1,
+                "star-1",
+                photometry_payload(r_rate=100.0),
+            )
+
+            loaded = load_mmto_calibration_data(database_path, manifest_path)
+
+        self.assertEqual(loaded.selected_run_ids, ("new-catalogue-run",))
+        self.assertEqual(
+            {row.catalogue_sha256 for row in loaded.measurements},
+            {"d" * 64},
+        )
+        self.assertTrue(
+            any(
+                audit.run_id == "old-catalogue-run"
+                and "superseded_successful_run" in audit.exclusion_reasons
+                for audit in loaded.audit_rows
+            )
+        )
+
     def test_snapshot_selects_latest_success_before_quality_and_preserves_database(
         self,
     ) -> None:
@@ -486,11 +551,108 @@ class CalibrationDatabaseLoadingTests(unittest.TestCase):
 
 
 class CalibrationOutputTests(unittest.TestCase):
-    def test_nightly_uncertainty_points_use_same_night_time_as_median_marker(
+    def test_audit_explains_star_pruned_after_sparse_image_removal(self) -> None:
+        base = synthetic_loaded_data(10)
+        measurements = list(base.measurements)
+        audit_rows = list(base.audit_rows)
+        manifest_entries = list(base.manifest_entries)
+        sparse_source = "f" * 64
+        sparse_time = datetime(2026, 9, 26, 7, tzinfo=timezone.utc)
+        manifest_entries.append(
+            ManifestEntry(
+                source_sha256=sparse_source,
+                observed_utc=sparse_time,
+                night="2026-09-25",
+                source_url="https://skycam.mmto.arizona.edu/skycam/archive/sparse.fits.bz2",
+                local_path="/data/sparse.fits.bz2",
+            )
+        )
+        for index in range(10):
+            if index < 9:
+                entry = base.manifest_entries[index]
+            else:
+                entry = manifest_entries[-1]
+            airmass = 1.0 + 2.0 * index / 9.0
+            machine_magnitude = -6.0 + 0.2 * airmass
+            count_rate = 10.0 ** (-0.4 * machine_magnitude)
+            measurements.append(
+                StellarMeasurement(
+                    night="2026-09-25",
+                    source_sha256=entry.source_sha256,
+                    catalogue_sha256="c" * 64,
+                    star_id="post-filter-pruned",
+                    channel="R",
+                    catalogue_magnitude=3.0,
+                    count_rate_adu_per_s=count_rate,
+                    count_rate_uncertainty_adu_per_s=0.1,
+                    airmass=airmass,
+                    saturated=False,
+                    measurement_method="ordinary_aperture",
+                    observed_utc=entry.observed_utc.isoformat(),
+                )
+            )
+            audit_rows.append(
+                CalibrationAuditRow(
+                    run_id=f"pruned-{index}",
+                    source_sha256=entry.source_sha256,
+                    catalogue_sha256="c" * 64,
+                    night="2026-09-25",
+                    star_id="post-filter-pruned",
+                    detection_id=f"pruned-detection-{index}",
+                    channel="R",
+                    catalogue_magnitude=3.0,
+                    count_rate_adu_per_s=count_rate,
+                    airmass=airmass,
+                    saturated=False,
+                    measurement_method="ordinary_aperture",
+                    included=True,
+                    exclusion_reasons=(),
+                )
+            )
+        data = LoadedCalibrationData(
+            measurements=tuple(measurements),
+            audit_rows=tuple(audit_rows),
+            selected_run_ids=base.selected_run_ids + ("pruned-sparse",),
+            manifest_entries=tuple(manifest_entries),
+        )
+
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary) / "sidecar"
+            write_calibration_outputs(data, output, CalibrationConfig())
+            with (output / "calibration_star_measurements.csv").open(
+                newline="", encoding="utf-8"
+            ) as source:
+                pruned_rows = [
+                    row
+                    for row in csv.DictReader(source)
+                    if row["star_id"] == "post-filter-pruned"
+                ]
+
+        retained_image_rows = [
+            row for row in pruned_rows if row["source_sha256"] != sparse_source
+        ]
+        self.assertEqual(len(retained_image_rows), 9)
+        self.assertTrue(
+            all(row["included_in_adopted_fit"] == "False" for row in retained_image_rows)
+        )
+        self.assertTrue(
+            all(
+                "insufficient_star_observations_after_image_filtering"
+                in row["fit_exclusion_reasons"]
+                for row in retained_image_rows
+            )
+        )
+
+    def test_nightly_uncertainty_points_use_same_night_time_as_shared_fit_marker(
         self,
     ) -> None:
         data = synthetic_loaded_data(10)
         result = calibrate_night(data.measurements, CalibrationConfig())
+        adopted = next(
+            item
+            for item in result.night_coefficients
+            if item.model == result.adopted_model
+        )
         manifest_by_source = {
             item.source_sha256: item for item in data.manifest_entries
         }
@@ -506,7 +668,11 @@ class CalibrationOutputTests(unittest.TestCase):
             point.observed_utc,
             datetime(2026, 9, 26, 4, 30, tzinfo=timezone.utc),
         )
-        self.assertAlmostEqual(point.extinction_mag_per_airmass, 0.1425, 12)
+        self.assertAlmostEqual(
+            point.extinction_mag_per_airmass,
+            adopted.extinction_mag_per_airmass,
+            12,
+        )
         self.assertAlmostEqual(point.scaled_mad_mag_per_airmass, 0.0185325, 12)
 
     def test_writer_creates_complete_sidecar_and_diagnostics(self) -> None:
@@ -520,8 +686,10 @@ class CalibrationOutputTests(unittest.TestCase):
                 "calibration_manifest.json",
                 "image_extinction_fits.csv",
                 "nightly_extinction_coefficients.csv",
+                "nightly_shared_slope_fits.csv",
+                "nightly_star_intercepts.csv",
                 "calibration_star_measurements.csv",
-                "image_zero_points.csv",
+                "image_extinction_joins.csv",
                 "corrected_stellar_photometry.csv",
                 "extinction_diagnostics.pdf",
                 "extinction_by_band_and_night.pdf",
@@ -531,18 +699,22 @@ class CalibrationOutputTests(unittest.TestCase):
             manifest = json.loads(
                 (output / "calibration_manifest.json").read_text(encoding="utf-8")
             )
-            self.assertEqual(manifest["adopted_model"], "reference_theil_sen")
+            self.assertEqual(manifest["schema_version"], 5)
+            self.assertEqual(
+                manifest["adopted_model"],
+                "nightly_shared_slope_star_intercepts_soft_l1",
+            )
             self.assertEqual(
                 manifest["formulae"]["machine_magnitude"],
                 "m_machine = -2.5 log10(count_rate_adu_per_s)",
             )
             self.assertEqual(
-                manifest["formulae"]["image_fit_estimator"],
-                "Theil-Sen slope with joint-median intercept",
+                manifest["formulae"]["nightly_fit_estimator"],
+                "soft-L1 least squares with f_scale = 0.1 mag",
             )
             self.assertEqual(
                 manifest["formulae"]["corrected_magnitude"],
-                "m_corrected = m_machine - Z_fixed - k_night X",
+                "m_corrected = m_machine - k_night X",
             )
             with (output / "nightly_extinction_coefficients.csv").open(
                 newline="", encoding="utf-8"
@@ -550,16 +722,58 @@ class CalibrationOutputTests(unittest.TestCase):
                 coefficient_rows = list(csv.DictReader(source))
             self.assertTrue(
                 any(
-                    row["model"] == "reference_theil_sen"
+                    row["model"] == "nightly_shared_slope_star_intercepts_soft_l1"
                     and row["status"] == "accepted"
                     for row in coefficient_rows
                 )
             )
-            with (output / "image_zero_points.csv").open(
+            adopted_coefficient = next(
+                row
+                for row in coefficient_rows
+                if row["model"] == "nightly_shared_slope_star_intercepts_soft_l1"
+                and row["status"] == "accepted"
+            )
+            with (output / "nightly_shared_slope_fits.csv").open(
                 newline="", encoding="utf-8"
             ) as source:
+                shared_fit_reader = csv.DictReader(source)
                 self.assertEqual(
-                    next(csv.reader(source)),
+                    shared_fit_reader.fieldnames,
+                    [
+                        "night", "channel", "catalogue_sha256s", "model",
+                        "estimator", "robust_loss", "robust_loss_scale_magnitude",
+                        "status", "accepted", "extinction_mag_per_airmass",
+                        "extinction_uncertainty_mag_per_airmass",
+                        "residual_rms_magnitude", "measurement_count",
+                        "accepted_image_count", "reference_star_count",
+                        "airmass_min", "airmass_max", "airmass_span",
+                        "maximum_within_star_airmass_span",
+                    ],
+                )
+                shared_fit = next(shared_fit_reader)
+            self.assertEqual(
+                shared_fit["model"],
+                "nightly_shared_slope_star_intercepts_soft_l1",
+            )
+            self.assertEqual(shared_fit["robust_loss"], "soft_l1")
+            self.assertEqual(shared_fit["measurement_count"], "300")
+            self.assertEqual(shared_fit["accepted_image_count"], "10")
+            self.assertEqual(shared_fit["reference_star_count"], "30")
+            self.assertAlmostEqual(float(shared_fit["airmass_span"]), 3.0, 12)
+            self.assertTrue(
+                float(shared_fit["extinction_uncertainty_mag_per_airmass"]) > 0
+            )
+            with (output / "nightly_star_intercepts.csv").open(
+                newline="", encoding="utf-8"
+            ) as source:
+                intercept_rows = list(csv.DictReader(source))
+            self.assertEqual(len(intercept_rows), 30)
+            with (output / "image_extinction_joins.csv").open(
+                newline="", encoding="utf-8"
+            ) as source:
+                join_reader = csv.DictReader(source)
+                self.assertEqual(
+                    join_reader.fieldnames,
                     [
                         "night",
                         "channel",
@@ -568,13 +782,40 @@ class CalibrationOutputTests(unittest.TestCase):
                         "catalogue_sha256",
                         "model",
                         "status",
-                        "zero_point_magnitude",
-                        "uncertainty_magnitude",
-                        "rms_magnitude",
-                        "star_count",
+                        "reference_star_count",
                         "extinction_mag_per_airmass",
                     ],
                 )
+                next(
+                    row
+                    for row in join_reader
+                    if row["model"]
+                    == "nightly_shared_slope_star_intercepts_soft_l1"
+                    and row["status"] == "accepted"
+                )
+            with (output / "calibration_star_measurements.csv").open(
+                newline="", encoding="utf-8"
+            ) as source:
+                adopted_measurement = next(
+                    row
+                    for row in csv.DictReader(source)
+                    if row["included_in_adopted_fit"] == "True"
+                )
+            expected_residual = (
+                float(adopted_measurement["machine_magnitude"])
+                - float(next(
+                    row["stellar_intercept_machine_magnitude"]
+                    for row in intercept_rows
+                    if row["star_id"] == adopted_measurement["star_id"]
+                ))
+                - float(adopted_coefficient["extinction_mag_per_airmass"])
+                * float(adopted_measurement["airmass"])
+            )
+            self.assertAlmostEqual(
+                float(adopted_measurement["residual_magnitude"]),
+                expected_residual,
+                12,
+            )
 
     def test_insufficient_night_keeps_audit_rows_without_corrected_values(self) -> None:
         data = synthetic_loaded_data(9)

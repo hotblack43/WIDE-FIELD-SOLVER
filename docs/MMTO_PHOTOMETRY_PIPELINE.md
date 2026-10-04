@@ -70,6 +70,8 @@ RESULTS_DIR/photometry-runs/YYYYMMDDTHHMMSSZ/
 ├── stellar-lightcurves/
 ├── nightly-extinction/
 └── planet-photometry/
+    ├── planet_colour_colour.png
+    ├── planet_colour_colour.csv
     ├── R/
     ├── G/
     └── B/
@@ -77,10 +79,32 @@ RESULTS_DIR/photometry-runs/YYYYMMDDTHHMMSSZ/
 
 The stages run in that order. `stellar-lightcurves/` contains the instrumental
 stellar repeatability products. `nightly-extinction/` is the read-only,
-stellar-only extinction sidecar. `planet-photometry/` contains the R/G/B
-extinction-corrected and distance-corrected planetary photometry derived from
-that exact sidecar. Figure products are written once as PDF; duplicate PNG
-renderings are not generated.
+stellar-only extinction sidecar. For each night and R/G/B band it jointly fits
+one intercept per star and one robust extinction slope shared by all stars:
+`m_machine(s,i) = a_s + k X(s,i)`. `nightly_shared_slope_fits.csv` records the
+shared slope, uncertainty, RMS, counts, robust-loss settings, and airmass
+leverage; `nightly_star_intercepts.csv` records the fitted stellar intercepts.
+`planet-photometry/` first subtracts the applicable `k X_planet` from every raw
+planet magnitude, then normalizes the result to unit Sun--planet and
+Earth--planet distances using
+`m_1,1 = m_raw - k X_planet - 5 log10(r_sun-planet r_earth-planet)`. It contains
+two all-night extinction- and distance-corrected plots per band: one against
+UTC and one with all nights overlaid against hours past 12:00 Arizona local
+time. Lines in the latter join points only within the same planet/night/camera
+sequence. Its companion
+`planet_extinction_corrected_distance_nightly_slopes.csv` quantifies the
+remaining within-night slopes for groups with at least four measurements. No
+zero point or colour term is applied.
+
+After all three bands have been written, the planet stage exactly joins R, G,
+and B rows from the same image, planet, and detection. It plots `B-G` against
+`B-R` in one combined, data-scaled colour--colour diagram. Planet identity is
+encoded by marker shape and hours since the latest Arizona local noon by marker
+colour. Both indices use `extinction_corrected_distance_magnitude`; raw or
+extinction-only magnitudes are not substituted when a corrected band is
+missing. The companion CSV records the three corrected magnitudes and both
+indices. Existing per-band products retain their established PDF format; the
+new single-page colour--colour diagram is written only as PNG.
 
 Choose a new explicit output directory when required:
 

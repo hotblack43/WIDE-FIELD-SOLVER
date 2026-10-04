@@ -12,6 +12,9 @@ results/
 *.png
 *.jpg
 *.jpeg
+!/reports/wide-field-diagnostics/figures/mmto_machine_magnitude_vs_catalogue_magnitude.png
+!/reports/wide-field-diagnostics/figures/mmto_natural_attenuation_response.png
+!/reports/wide-field-diagnostics/figures/mmto_planet_colour_orthogonal_by_planet.png
 /raw_allsky_samples/.download.lock
 /raw_allsky_samples/derived/
 /raw_allsky_samples/*.log

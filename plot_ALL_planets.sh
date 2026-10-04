@@ -11,7 +11,7 @@ usage() {
     printf '%s\n' \
         "Usage: $0 --nightly-calibration DIR [--database PATH] [--output DIR] [--skip-earliest-observations N]" \
         "" \
-        "Plot extinction-corrected planet photometry for R, G, and B." \
+        "Plot extinction- and distance-corrected planet photometry for R, G, and B." \
         "By default, read results/stars.sqlite and create a new timestamped" \
         "directory below results/. Existing non-empty output directories are" \
         "never overwritten."
@@ -91,7 +91,7 @@ trap failed ERR
 printf 'Planet database: %s\n' "$DATABASE"
 printf 'Extinction-correction sidecar: %s\n' "$NIGHTLY_CALIBRATION"
 printf 'Output directory: %s\n' "$OUTPUT"
-printf 'Product: extinction-corrected and distance-corrected photometry\n'
+printf 'Product: extinction- and distance-corrected photometry\n'
 printf 'Channels: R, G, B\n'
 
 run_number=0
@@ -107,12 +107,18 @@ for channel in R G B; do
     )
 
     ((++run_number))
-    printf '\n[%d/3] %s channel: extinction-corrected and distance-corrected photometry\n' \
+    printf '\n[%d/4] %s channel: extinction- and distance-corrected photometry\n' \
         "$run_number" "$channel"
     "${common[@]}" \
         --extinction-corrected-distance-corrected \
         --nightly-calibration "$NIGHTLY_CALIBRATION"
 done
+
+printf '\n[4/4] Combined planetary colour-colour diagram\n'
+uv run --project "$ROOT_DIR" --frozen python \
+    "$ROOT_DIR/scripts/plot_planet_colours.py" \
+    --input-root "$OUTPUT" \
+    --output "$OUTPUT"
 
 printf '\nAll planet plots completed.\n'
 printf 'Outputs: %s\n' "$OUTPUT"

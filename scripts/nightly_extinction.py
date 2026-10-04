@@ -14,11 +14,15 @@ import math
 from typing import AbstractSet
 
 import numpy as np
+from scipy.optimize import least_squares
+from scipy.sparse import csr_matrix
 from scipy.stats import theilslopes
 
 
 StarKey = tuple[str, str]
-ADOPTED_MODEL = "reference_theil_sen"
+NIGHTLY_SHARED_SLOPE_MODEL = "nightly_shared_slope_star_intercepts_soft_l1"
+PER_IMAGE_REFERENCE_MODEL = "reference_theil_sen"
+ADOPTED_MODEL = NIGHTLY_SHARED_SLOPE_MODEL
 
 
 @dataclass(frozen=True)
@@ -31,6 +35,7 @@ class CalibrationConfig:
     min_images_per_night: int = 10
     minimum_repeatability_weight: float = 1.0
     maximum_repeatability_weight: float = 10_000.0
+    nightly_robust_loss_scale: float = 0.1
 
 
 @dataclass(frozen=True)
@@ -121,6 +126,22 @@ class ImageFit:
 
 
 @dataclass(frozen=True)
+class NightFit:
+    night: str
+    catalogue_sha256s: tuple[str, ...]
+    channel: str
+    model: str
+    status: str
+    accepted: bool
+    line: LineFit
+    star_keys: tuple[StarKey, ...]
+    star_intercepts: tuple[tuple[StarKey, float], ...]
+    accepted_source_sha256s: tuple[str, ...]
+    accepted_image_count: int
+    within_star_airmass_span: float
+
+
+@dataclass(frozen=True)
 class NightCoefficient:
     night: str
     catalogue_sha256: str
@@ -164,6 +185,7 @@ class StarWeight:
 @dataclass(frozen=True)
 class NightCalibrationResult:
     adopted_model: str
+    night_fits: tuple[NightFit, ...]
     image_fits: tuple[ImageFit, ...]
     sensitivity_image_fits: tuple[ImageFit, ...]
     night_coefficients: tuple[NightCoefficient, ...]
@@ -357,7 +379,7 @@ def fit_image_robust(
     reference_star_ids: AbstractSet[StarKey],
     config: CalibrationConfig,
     *,
-    model: str = ADOPTED_MODEL,
+    model: str = PER_IMAGE_REFERENCE_MODEL,
 ) -> ImageFit:
     """Robustly fit ``delta_m = Z + k X`` for one image and channel."""
 
@@ -446,6 +468,252 @@ def fit_image_robust(
         accepted=status == "accepted",
         line=line,
         star_keys=star_keys,
+    )
+
+
+def fit_night_robust(
+    measurements: Sequence[StellarMeasurement],
+    reference_star_ids: AbstractSet[StarKey],
+    config: CalibrationConfig,
+    *,
+    model: str = NIGHTLY_SHARED_SLOPE_MODEL,
+) -> NightFit:
+    """Fit ``m_si = a_s + k_night X_si`` with one intercept per star."""
+
+    if not measurements:
+        raise ValueError("night fit requires at least one measurement")
+    identities = {(row.night, row.channel) for row in measurements}
+    if len(identities) != 1:
+        raise ValueError("night fit requires one night and channel")
+    night, channel = next(iter(identities))
+    catalogue_sha256s = tuple(
+        sorted({row.catalogue_sha256 for row in measurements})
+    )
+
+    eligible_by_image: dict[str, dict[StarKey, StellarMeasurement]] = defaultdict(dict)
+    for row in measurements:
+        if row.star_key not in reference_star_ids:
+            continue
+        if reference_measurement_exclusion_reasons(row, config):
+            continue
+        if row.airmass > config.max_reference_airmass:
+            continue
+        eligible_by_image[row.source_sha256].setdefault(row.star_key, row)
+    active_stars = set(reference_star_ids)
+    active_sources = set(eligible_by_image)
+    while True:
+        retained_sources = {
+            source
+            for source in active_sources
+            if sum(
+                star_key in active_stars
+                for star_key in eligible_by_image[source]
+            )
+            >= config.min_stars_per_image
+        }
+        retained_observations: dict[StarKey, int] = defaultdict(int)
+        for source in retained_sources:
+            for star_key in eligible_by_image[source]:
+                if star_key in active_stars:
+                    retained_observations[star_key] += 1
+        retained_stars = {
+            star_key
+            for star_key in active_stars
+            if retained_observations[star_key]
+            >= config.min_observations_per_star
+        }
+        if retained_sources == active_sources and retained_stars == active_stars:
+            break
+        active_sources = retained_sources
+        active_stars = retained_stars
+    accepted_sources = sorted(active_sources)
+    rows = [
+        eligible_by_image[source][star_key]
+        for source in accepted_sources
+        for star_key in sorted(eligible_by_image[source])
+        if star_key in active_stars
+    ]
+    star_keys = tuple(sorted({row.star_key for row in rows}))
+    airmass = np.asarray([row.airmass for row in rows], dtype=float)
+    sample_count = len(rows)
+    airmass_min = float(np.min(airmass)) if sample_count else None
+    airmass_max = float(np.max(airmass)) if sample_count else None
+    airmass_span = (
+        airmass_max - airmass_min
+        if airmass_min is not None and airmass_max is not None
+        else None
+    )
+    airmass_by_star: dict[StarKey, list[float]] = defaultdict(list)
+    for row in rows:
+        airmass_by_star[row.star_key].append(row.airmass)
+    within_star_airmass_span = max(
+        (
+            max(values) - min(values)
+            for values in airmass_by_star.values()
+            if values
+        ),
+        default=0.0,
+    )
+    if len(accepted_sources) < config.min_images_per_night:
+        status = "insufficient_accepted_images"
+    elif airmass_span is None or airmass_span < config.min_airmass_span:
+        status = "insufficient_airmass_span"
+    elif within_star_airmass_span < config.min_airmass_span:
+        status = "insufficient_within_star_airmass_span"
+    elif sample_count <= len(star_keys) + 1:
+        status = "insufficient_degrees_of_freedom"
+    else:
+        status = "accepted"
+
+    if status != "accepted":
+        line = LineFit(
+            status=status,
+            intercept=None,
+            slope=None,
+            covariance=None,
+            intercept_uncertainty=None,
+            slope_uncertainty=None,
+            rms=None,
+            residuals=(),
+            sample_count=sample_count,
+            airmass_min=airmass_min,
+            airmass_max=airmass_max,
+            airmass_span=airmass_span,
+        )
+    else:
+        machine_magnitude = np.asarray(
+            [row.machine_magnitude for row in rows], dtype=float
+        )
+        star_index_by_key = {key: index for index, key in enumerate(star_keys)}
+        star_index = np.asarray(
+            [star_index_by_key[row.star_key] for row in rows], dtype=int
+        )
+        star_count = len(star_keys)
+        per_star_count = np.bincount(star_index, minlength=star_count)
+        mean_airmass = np.bincount(
+            star_index, weights=airmass, minlength=star_count
+        ) / per_star_count
+        mean_magnitude = np.bincount(
+            star_index, weights=machine_magnitude, minlength=star_count
+        ) / per_star_count
+        centered_airmass = airmass - mean_airmass[star_index]
+        centered_magnitude = machine_magnitude - mean_magnitude[star_index]
+        information = float(np.dot(centered_airmass, centered_airmass))
+        if information <= 0.0:
+            raise ValueError("accepted nightly fit has no within-star airmass leverage")
+        initial_slope = float(
+            np.dot(centered_airmass, centered_magnitude) / information
+        )
+        initial_intercepts = np.asarray(
+            [
+                np.median(
+                    machine_magnitude[star_index == index]
+                    - initial_slope * airmass[star_index == index]
+                )
+                for index in range(star_count)
+            ],
+            dtype=float,
+        )
+        initial = np.concatenate((initial_intercepts, [initial_slope]))
+        design = csr_matrix(
+            (
+                np.concatenate((np.ones(sample_count), airmass)),
+                (
+                    np.concatenate((np.arange(sample_count), np.arange(sample_count))),
+                    np.concatenate(
+                        (star_index, np.full(sample_count, star_count, dtype=int))
+                    ),
+                ),
+            ),
+            shape=(sample_count, star_count + 1),
+        )
+        result = least_squares(
+            lambda coefficients: machine_magnitude - design @ coefficients,
+            initial,
+            jac=lambda _coefficients: -design,
+            loss="soft_l1",
+            f_scale=config.nightly_robust_loss_scale,
+        )
+        if not result.success or not np.all(np.isfinite(result.x)):
+            raise RuntimeError(
+                f"nightly robust fit failed for {night} {channel}: "
+                f"{result.message}"
+            )
+        residual_array = machine_magnitude - design @ result.x
+        robust_weights = 1.0 / np.sqrt(
+            1.0
+            + np.square(residual_array / config.nightly_robust_loss_scale)
+        )
+        weight_by_star = np.bincount(
+            star_index, weights=robust_weights, minlength=star_count
+        )
+        weighted_airmass_mean = np.bincount(
+            star_index,
+            weights=robust_weights * airmass,
+            minlength=star_count,
+        ) / weight_by_star
+        slope_information = float(
+            np.sum(
+                robust_weights
+                * np.square(airmass - weighted_airmass_mean[star_index])
+            )
+        )
+        degrees_of_freedom = sample_count - star_count - 1
+        residual_variance = float(
+            np.dot(robust_weights, np.square(residual_array))
+            / degrees_of_freedom
+        )
+        slope_uncertainty = math.sqrt(residual_variance / slope_information)
+        if not math.isfinite(slope_uncertainty):
+            raise RuntimeError(
+                f"nightly robust fit produced invalid uncertainty for "
+                f"{night} {channel}"
+            )
+        fitted_intercepts = np.asarray(result.x[:-1], dtype=float)
+        catalogue_by_star = {
+            row.star_key: row.catalogue_magnitude for row in rows
+        }
+        catalogue_magnitudes = np.asarray(
+            [catalogue_by_star[key] for key in star_keys], dtype=float
+        )
+        zero_point_offsets = fitted_intercepts - catalogue_magnitudes
+        representative_zero_point = float(np.median(zero_point_offsets))
+        zero_point_scatter = float(
+            1.4826
+            * np.median(np.abs(zero_point_offsets - representative_zero_point))
+        )
+        zero_point_uncertainty = zero_point_scatter / math.sqrt(star_count)
+        line = LineFit(
+            status=status,
+            intercept=representative_zero_point,
+            slope=float(result.x[-1]),
+            covariance=None,
+            intercept_uncertainty=zero_point_uncertainty,
+            slope_uncertainty=float(slope_uncertainty),
+            rms=float(np.sqrt(np.mean(np.square(residual_array)))),
+            residuals=tuple(float(value) for value in residual_array),
+            sample_count=sample_count,
+            airmass_min=airmass_min,
+            airmass_max=airmass_max,
+            airmass_span=airmass_span,
+        )
+    return NightFit(
+        night=night,
+        catalogue_sha256s=catalogue_sha256s,
+        channel=channel,
+        model=model,
+        status=status,
+        accepted=status == "accepted",
+        line=line,
+        star_keys=star_keys,
+        star_intercepts=(
+            tuple(zip(star_keys, (float(value) for value in fitted_intercepts)))
+            if status == "accepted"
+            else ()
+        ),
+        accepted_source_sha256s=tuple(accepted_sources),
+        accepted_image_count=len(accepted_sources),
+        within_star_airmass_span=within_star_airmass_span,
     )
 
 
@@ -600,6 +868,41 @@ def _night_coefficient_from_fits(
     )
 
 
+def _night_coefficient_from_shared_fit(
+    night_fit: NightFit,
+    diagnostic_image_fits: Sequence[ImageFit],
+    catalogue_sha256: str,
+) -> NightCoefficient:
+    diagnostic_slopes = np.asarray(
+        [
+            fit.line.slope
+            for fit in diagnostic_image_fits
+            if fit.accepted and fit.line.slope is not None
+        ],
+        dtype=float,
+    )
+    return NightCoefficient(
+        night=night_fit.night,
+        catalogue_sha256=catalogue_sha256,
+        channel=night_fit.channel,
+        model=night_fit.model,
+        status=night_fit.status,
+        extinction_mag_per_airmass=(
+            night_fit.line.slope if night_fit.accepted else None
+        ),
+        scaled_mad=_scaled_mad(diagnostic_slopes),
+        minimum=(
+            float(np.min(diagnostic_slopes))
+            if diagnostic_slopes.size
+            else None
+        ),
+        maximum=(
+            float(np.max(diagnostic_slopes))
+            if diagnostic_slopes.size
+            else None
+        ),
+        accepted_image_count=night_fit.accepted_image_count,
+    )
 def _derive_repeatability_weights(
     measurements: Sequence[StellarMeasurement],
     sensitivity_star_ids: AbstractSet[StarKey],
@@ -737,11 +1040,66 @@ def _fixed_slope_zero_point(
     )
 
 
+def _nightly_image_diagnostic_offsets(
+    by_image: dict[str, list[StellarMeasurement]],
+    night_fit: NightFit,
+    config: CalibrationConfig,
+) -> tuple[ImageZeroPoint, ...]:
+    """Repeat the representative stellar offset for diagnostics and joins."""
+
+    values: list[ImageZeroPoint] = []
+    reference_star_ids = frozenset(night_fit.star_keys)
+    for source_sha256 in sorted(by_image):
+        first = by_image[source_sha256][0]
+        eligible_star_count = len(
+            {
+                row.star_key
+                for row in by_image[source_sha256]
+                if row.star_key in reference_star_ids
+                and not reference_measurement_exclusion_reasons(row, config)
+                and row.airmass <= config.max_reference_airmass
+            }
+        )
+        if not night_fit.accepted:
+            values.append(
+                ImageZeroPoint(
+                    night=first.night,
+                    source_sha256=source_sha256,
+                    catalogue_sha256=first.catalogue_sha256,
+                    channel=first.channel,
+                    model=night_fit.model,
+                    status="missing_nightly_extinction",
+                    zero_point_magnitude=None,
+                    uncertainty_magnitude=None,
+                    rms_magnitude=None,
+                    sample_count=0,
+                    extinction_mag_per_airmass=None,
+                )
+            )
+            continue
+        values.append(
+            ImageZeroPoint(
+                night=first.night,
+                source_sha256=source_sha256,
+                catalogue_sha256=first.catalogue_sha256,
+                channel=first.channel,
+                model=night_fit.model,
+                status="accepted",
+                zero_point_magnitude=night_fit.line.intercept,
+                uncertainty_magnitude=night_fit.line.intercept_uncertainty,
+                rms_magnitude=night_fit.line.rms,
+                sample_count=eligible_star_count,
+                extinction_mag_per_airmass=night_fit.line.slope,
+            )
+        )
+    return tuple(values)
+
+
 def calibrate_night(
     measurements: Sequence[StellarMeasurement],
     config: CalibrationConfig,
 ) -> NightCalibrationResult:
-    """Calibrate each catalogue/channel group in one observing night."""
+    """Calibrate one shared extinction slope per channel in one night."""
 
     if not measurements:
         raise ValueError("night calibration requires at least one measurement")
@@ -749,18 +1107,20 @@ def calibrate_night(
     if len(nights) != 1:
         raise ValueError("calibrate_night requires exactly one observing night")
 
-    grouped: dict[
-        tuple[str, str, str], list[StellarMeasurement]
-    ] = defaultdict(list)
+    grouped: dict[tuple[str, str], list[StellarMeasurement]] = defaultdict(list)
     for row in measurements:
-        grouped[(row.night, row.catalogue_sha256, row.channel)].append(row)
+        grouped[(row.night, row.channel)].append(row)
 
     all_image_fits: list[ImageFit] = []
+    all_night_fits: list[NightFit] = []
     all_sensitivity_fits: list[ImageFit] = []
     coefficients: list[NightCoefficient] = []
     zero_points: list[ImageZeroPoint] = []
     all_star_weights: list[StarWeight] = []
-    for (night, catalogue_sha256, channel), group_rows in sorted(grouped.items()):
+    for (night, channel), group_rows in sorted(grouped.items()):
+        catalogue_sha256s = sorted(
+            {row.catalogue_sha256 for row in group_rows}
+        )
         reference_ids = select_reference_star_ids(group_rows, config)
         sensitivity_ids = _select_star_ids_below_magnitude(
             group_rows, config, 5.0
@@ -773,15 +1133,32 @@ def calibrate_night(
             for source in sorted(by_image)
         ]
         all_image_fits.extend(image_fits)
-        coefficient = _night_coefficient_from_fits(
-            night=night,
-            catalogue_sha256=catalogue_sha256,
-            channel=channel,
-            model=ADOPTED_MODEL,
-            image_fits=image_fits,
-            config=config,
+        night_fit = fit_night_robust(group_rows, reference_ids, config)
+        all_night_fits.append(night_fit)
+        coefficients.extend(
+            _night_coefficient_from_shared_fit(
+                night_fit,
+                image_fits,
+                catalogue_sha256,
+            )
+            for catalogue_sha256 in catalogue_sha256s
         )
-        coefficients.append(coefficient)
+        for catalogue_sha256 in catalogue_sha256s:
+            catalogue_image_fits = [
+                fit
+                for fit in image_fits
+                if fit.catalogue_sha256 == catalogue_sha256
+            ]
+            coefficients.append(
+                _night_coefficient_from_fits(
+                    night=night,
+                    catalogue_sha256=catalogue_sha256,
+                    channel=channel,
+                    model=PER_IMAGE_REFERENCE_MODEL,
+                    image_fits=catalogue_image_fits,
+                    config=config,
+                )
+            )
 
         star_weights = _derive_repeatability_weights(
             group_rows, sensitivity_ids, image_fits, config
@@ -831,26 +1208,29 @@ def calibrate_night(
             ("full_airmass_ols", full_airmass),
         ):
             all_sensitivity_fits.extend(fits)
-            coefficients.append(
-                _night_coefficient_from_fits(
-                    night=night,
-                    catalogue_sha256=catalogue_sha256,
-                    channel=channel,
-                    model=model,
-                    image_fits=fits,
-                    config=config,
+            for catalogue_sha256 in catalogue_sha256s:
+                coefficients.append(
+                    _night_coefficient_from_fits(
+                        night=night,
+                        catalogue_sha256=catalogue_sha256,
+                        channel=channel,
+                        model=model,
+                        image_fits=[
+                            fit
+                            for fit in fits
+                            if fit.catalogue_sha256 == catalogue_sha256
+                        ],
+                        config=config,
+                    )
                 )
-            )
 
         zero_points.extend(
-            _fixed_slope_zero_point(
-                by_image[source], reference_ids, config, coefficient
-            )
-            for source in sorted(by_image)
+            _nightly_image_diagnostic_offsets(by_image, night_fit, config)
         )
 
     return NightCalibrationResult(
         adopted_model=ADOPTED_MODEL,
+        night_fits=tuple(all_night_fits),
         image_fits=tuple(all_image_fits),
         sensitivity_image_fits=tuple(all_sensitivity_fits),
         night_coefficients=tuple(coefficients),
@@ -873,3 +1253,18 @@ def correct_magnitude(
     if airmass <= 0.0:
         raise ValueError("airmass must be positive")
     return machine_mag - zero_point_mag - extinction_mag_per_airmass * airmass
+
+
+def correct_extinction_magnitude(
+    machine_mag: float,
+    extinction_mag_per_airmass: float,
+    airmass: float,
+) -> float:
+    """Remove only the shared nightly extinction term from a raw magnitude."""
+
+    values = (machine_mag, extinction_mag_per_airmass, airmass)
+    if not all(math.isfinite(value) for value in values):
+        raise ValueError("extinction correction inputs must be finite")
+    if airmass <= 0.0:
+        raise ValueError("airmass must be positive")
+    return machine_mag - extinction_mag_per_airmass * airmass

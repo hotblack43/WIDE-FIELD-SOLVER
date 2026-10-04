@@ -36,4 +36,26 @@ baseline.
 The supplied Espenak photograph remains credited to its photographer. The MMTO
 products remain subject to their archive access terms.
 
+## Current MMTO colour and response diagnostics
+
+The manuscript now retains three October 2026 diagnostics: the orthogonal
+planet-colour panels, extinction-corrected machine magnitude against Gaia
+catalogue magnitude, and the held-out same-star natural-attenuation test. The
+two stellar figures are regenerated from the saved nightly-calibration sidecar
+with:
+
+    uv run --frozen python scripts/plot_stellar_linearity.py \
+      --input-root results/nightly-extinction/20261002T-fixed-effects-final-code \
+      --catalogue v13/data/stars_gaia_dr3_g75.gaia-source.csv \
+      --output reports/wide-field-diagnostics/figures/mmto_machine_magnitude_vs_catalogue_magnitude.png
+
+    uv run --frozen python scripts/plot_stellar_natural_attenuation.py \
+      --measurements results/nightly-extinction/20261002T-fixed-effects-final-code/calibration_star_measurements.csv \
+      --output reports/wide-field-diagnostics/figures/mmto_natural_attenuation_response.png
+
+The natural-attenuation script also writes a row-level CSV and a JSON summary.
+The numerical manuscript claims are mirrored in `analysis_summary.json`. The
+planet-colour figure is currently preserved from
+`results/planet-colour-preview-20261004/planet_colour_colour_orthogonal_by_planet.png`.
+
 Overleaf project: https://www.overleaf.com/project/6aa662a9d1a00c33f9a82822

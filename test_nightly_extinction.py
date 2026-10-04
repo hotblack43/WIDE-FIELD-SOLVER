@@ -10,9 +10,11 @@ from scripts.nightly_extinction import (
     StarWeight,
     StellarMeasurement,
     calibrate_night,
+    correct_extinction_magnitude,
     correct_magnitude,
     fit_image_ols,
     fit_image_robust,
+    fit_night_robust,
     machine_magnitude,
     select_reference_star_ids,
 )
@@ -74,16 +76,14 @@ def synthetic_night(
     narrow_images: frozenset[int] = frozenset(),
 ) -> list[StellarMeasurement]:
     slopes = slopes or [0.10 + 0.01 * image for image in range(image_count)]
-    zero_points = zero_points or [
-        -6.2 + 0.04 * ((3 * image) % 7) for image in range(image_count)
-    ]
+    zero_points = zero_points or [-6.0] * image_count
     rows: list[StellarMeasurement] = []
     for image in range(image_count):
         for star in range(30):
             airmass = (
                 1.2 + 0.2 * star / 29.0
                 if image in narrow_images
-                else 1.0 + 3.0 * star / 29.0
+                else 1.0 + 3.0 * ((star + image) % 30) / 29.0
             )
             catalogue_magnitude = 2.0 + star / 100.0
             delta_magnitude = zero_points[image] + slopes[image] * airmass
@@ -144,6 +144,155 @@ def sensitivity_rows(
 
 
 class NightlyExtinctionModelTests(unittest.TestCase):
+    def test_nightly_fixed_effects_fit_recovers_shared_slope_and_star_intercepts(
+        self,
+    ) -> None:
+        import scripts.nightly_extinction as nightly
+
+        fitter = getattr(nightly, "fit_night_robust", None)
+        self.assertTrue(callable(fitter))
+        if not callable(fitter):
+            return
+        rows: list[StellarMeasurement] = []
+        for image in range(10):
+            for star in range(30):
+                airmass = 1.0 + 0.15 * image + 0.02 * star
+                catalogue_magnitude = 2.0 + star / 100.0
+                star_intercept = -10.0 + 0.10 * star
+                instrumental_magnitude = star_intercept + 0.24 * airmass
+                if image == 9 and star == 29:
+                    instrumental_magnitude += 12.0
+                rows.append(
+                    StellarMeasurement(
+                        night="2026-09-25",
+                        source_sha256=f"{image + 1:064x}",
+                        catalogue_sha256=CATALOGUE_SHA,
+                        star_id=f"night-star-{star:02d}",
+                        channel="R",
+                        catalogue_magnitude=catalogue_magnitude,
+                        count_rate_adu_per_s=(
+                            10.0 ** (-0.4 * instrumental_magnitude)
+                        ),
+                        count_rate_uncertainty_adu_per_s=0.1,
+                        airmass=airmass,
+                        saturated=False,
+                        measurement_method="ordinary_aperture",
+                        observed_utc=f"2026-09-25T{image:02d}:00:00+00:00",
+                    )
+                )
+        reference_ids = select_reference_star_ids(rows, CalibrationConfig())
+
+        result = fitter(rows, reference_ids, CalibrationConfig())
+
+        self.assertTrue(result.accepted)
+        self.assertEqual(result.status, "accepted")
+        self.assertEqual(
+            result.model,
+            "nightly_shared_slope_star_intercepts_soft_l1",
+        )
+        self.assertAlmostEqual(result.line.slope, 0.24, delta=0.002)
+        self.assertEqual(result.line.sample_count, 300)
+        self.assertEqual(result.accepted_image_count, 10)
+        intercepts = dict(result.star_intercepts)
+        self.assertAlmostEqual(
+            intercepts[(CATALOGUE_SHA, "night-star-00")], -10.0, delta=0.005
+        )
+        self.assertAlmostEqual(
+            intercepts[(CATALOGUE_SHA, "night-star-15")], -8.5, delta=0.005
+        )
+
+    def test_nightly_fixed_effects_requires_within_star_airmass_leverage(self):
+        rows = [
+            replace(
+                row,
+                airmass=1.0 + 3.0 * int(row.star_id.rsplit("-", 1)[1]) / 29.0,
+            )
+            for row in synthetic_night(10, slopes=[0.24] * 10)
+        ]
+        reference_ids = select_reference_star_ids(rows, CalibrationConfig())
+
+        result = fit_night_robust(rows, reference_ids, CalibrationConfig())
+
+        self.assertFalse(result.accepted)
+        self.assertEqual(result.status, "insufficient_within_star_airmass_span")
+
+    def test_nightly_fit_reapplies_star_counts_after_image_filtering(self):
+        rows = []
+        for image in range(10):
+            for slot in range(30):
+                star_id = "repeated" if slot == 0 and image < 2 else f"u-{image}-{slot}"
+                airmass = 1.0 + 2.0 * image / 9.0 if star_id == "repeated" else 2.0
+                instrumental_magnitude = -6.0 + 0.2 * airmass
+                rows.append(
+                    StellarMeasurement(
+                        night="2026-09-25",
+                        source_sha256=f"{image + 1:064x}",
+                        catalogue_sha256=CATALOGUE_SHA,
+                        star_id=star_id,
+                        channel="R",
+                        catalogue_magnitude=3.0,
+                        count_rate_adu_per_s=10.0
+                        ** (-0.4 * instrumental_magnitude),
+                        count_rate_uncertainty_adu_per_s=0.1,
+                        airmass=airmass,
+                        saturated=False,
+                        measurement_method="ordinary_aperture",
+                        observed_utc=f"2026-09-25T{image:02d}:00:00+00:00",
+                    )
+                )
+
+        result = fit_night_robust(
+            rows,
+            frozenset(row.star_key for row in rows),
+            replace(CalibrationConfig(), min_observations_per_star=2),
+        )
+
+        self.assertFalse(result.accepted)
+        self.assertEqual(result.status, "insufficient_accepted_images")
+        self.assertIsNone(result.line.slope)
+        self.assertIsNone(result.line.slope_uncertainty)
+
+    def test_catalogue_change_still_produces_one_shared_nightly_slope(self):
+        second_catalogue = "d" * 64
+        rows = [
+            replace(row, catalogue_sha256=second_catalogue)
+            if int(row.source_sha256, 16) > 5
+            else row
+            for row in synthetic_night(
+                10,
+                slopes=[0.24] * 10,
+                zero_points=[-6.0] * 10,
+            )
+        ]
+
+        result = calibrate_night(
+            rows,
+            replace(CalibrationConfig(), min_observations_per_star=5),
+        )
+
+        self.assertEqual(len(result.night_fits), 1)
+        fit = result.night_fits[0]
+        self.assertTrue(fit.accepted)
+        self.assertEqual(fit.catalogue_sha256s, (CATALOGUE_SHA, second_catalogue))
+        self.assertAlmostEqual(fit.line.slope, 0.24, 10)
+        adopted = [
+            item
+            for item in result.night_coefficients
+            if item.model == result.adopted_model
+        ]
+        self.assertEqual(len(adopted), 2)
+        self.assertEqual(
+            {item.catalogue_sha256 for item in adopted},
+            {CATALOGUE_SHA, second_catalogue},
+        )
+        self.assertTrue(all(item.status == "accepted" for item in adopted))
+        self.assertTrue(
+            all(
+                math.isclose(item.extinction_mag_per_airmass, 0.24, abs_tol=1e-10)
+                for item in adopted
+            )
+        )
+
     def test_machine_magnitude_uses_count_rate_not_flux(self) -> None:
         self.assertAlmostEqual(machine_magnitude(100.0), -5.0, places=12)
         self.assertAlmostEqual(machine_magnitude(10.0), -2.5, places=12)
@@ -242,11 +391,11 @@ class NightlyExtinctionModelTests(unittest.TestCase):
         self.assertEqual(span_result.line.status, "insufficient_airmass_span")
         self.assertEqual(span_result.line.sample_count, 30)
 
-    def test_nightly_median_tracks_image_extinction_while_fixed_zero_points_track_transparency(
+    def test_per_image_slopes_remain_diagnostic_beside_shared_nightly_fit(
         self,
     ) -> None:
         slopes = [0.10 + 0.01 * image for image in range(10)]
-        zero_points = [-6.2 + 0.04 * ((3 * image) % 7) for image in range(10)]
+        zero_points = [-6.0] * 10
 
         result = calibrate_night(
             synthetic_night(10, slopes=slopes, zero_points=zero_points),
@@ -254,35 +403,79 @@ class NightlyExtinctionModelTests(unittest.TestCase):
         )
 
         self.assertIsInstance(result, NightCalibrationResult)
-        self.assertEqual(result.adopted_model, "reference_theil_sen")
-        coefficient = result.night_coefficients[0]
+        self.assertEqual(
+            result.adopted_model,
+            "nightly_shared_slope_star_intercepts_soft_l1",
+        )
+        coefficients = {item.model: item for item in result.night_coefficients}
+        coefficient = coefficients[result.adopted_model]
         self.assertIsInstance(coefficient, NightCoefficient)
         self.assertEqual(coefficient.status, "accepted")
-        self.assertAlmostEqual(coefficient.extinction_mag_per_airmass, 0.145, 12)
+        self.assertAlmostEqual(
+            coefficient.extinction_mag_per_airmass, 0.145, delta=0.001
+        )
         self.assertEqual(coefficient.accepted_image_count, 10)
         self.assertAlmostEqual(coefficient.minimum, 0.10, 12)
         self.assertAlmostEqual(coefficient.maximum, 0.19, 12)
+        diagnostic = coefficients["reference_theil_sen"]
+        self.assertAlmostEqual(diagnostic.extinction_mag_per_airmass, 0.145, 12)
 
-        zero_point_by_source = {
-            item.source_sha256: item for item in result.image_zero_points
-        }
-        mean_airmass = 2.5
-        for image, (slope, true_zero_point) in enumerate(
-            zip(slopes, zero_points, strict=True)
-        ):
-            fitted = zero_point_by_source[f"{image + 1:064x}"]
+        for fitted in result.image_zero_points:
             self.assertIsInstance(fitted, ImageZeroPoint)
             self.assertEqual(fitted.status, "accepted")
-            expected = true_zero_point + (slope - 0.145) * mean_airmass
-            self.assertAlmostEqual(fitted.zero_point_magnitude, expected, 12)
+            self.assertAlmostEqual(
+                fitted.zero_point_magnitude, -6.0, delta=0.005
+            )
 
-    def test_night_requires_ten_accepted_images_without_fallback(self) -> None:
+    def test_calibrate_night_adopts_one_shared_slope_and_star_intercepts(self) -> None:
         result = calibrate_night(
-            synthetic_night(10, narrow_images=frozenset({9})),
+            synthetic_night(
+                10,
+                slopes=[0.24] * 10,
+                zero_points=[-6.0] * 10,
+            ),
             CalibrationConfig(),
         )
 
-        coefficient = result.night_coefficients[0]
+        self.assertEqual(
+            result.adopted_model,
+            "nightly_shared_slope_star_intercepts_soft_l1",
+        )
+        adopted = next(
+            item
+            for item in result.night_coefficients
+            if item.model == result.adopted_model
+        )
+        self.assertEqual(adopted.status, "accepted")
+        self.assertAlmostEqual(adopted.extinction_mag_per_airmass, 0.24, 10)
+        self.assertEqual(adopted.accepted_image_count, 10)
+        self.assertEqual(len(result.image_zero_points), 10)
+        for zero_point in result.image_zero_points:
+            self.assertEqual(zero_point.model, result.adopted_model)
+            self.assertEqual(zero_point.status, "accepted")
+            self.assertAlmostEqual(zero_point.zero_point_magnitude, -6.0, 10)
+            self.assertAlmostEqual(zero_point.extinction_mag_per_airmass, 0.24, 10)
+            self.assertEqual(zero_point.sample_count, 30)
+
+    def test_night_requires_ten_accepted_images_without_fallback(self) -> None:
+        rows = [
+            row
+            for row in synthetic_night(10)
+            if not (
+                row.source_sha256 == f"{10:064x}"
+                and row.star_id == "night-star-29"
+            )
+        ]
+        result = calibrate_night(
+            rows,
+            replace(CalibrationConfig(), min_observations_per_star=9),
+        )
+
+        coefficient = next(
+            item
+            for item in result.night_coefficients
+            if item.model == result.adopted_model
+        )
         self.assertEqual(coefficient.status, "insufficient_accepted_images")
         self.assertIsNone(coefficient.extinction_mag_per_airmass)
         self.assertEqual(coefficient.accepted_image_count, 9)
@@ -315,10 +508,13 @@ class NightlyExtinctionModelTests(unittest.TestCase):
 
         result = calibrate_night(contaminated, CalibrationConfig())
 
-        self.assertEqual(result.adopted_model, "reference_theil_sen")
+        self.assertEqual(
+            result.adopted_model,
+            "nightly_shared_slope_star_intercepts_soft_l1",
+        )
         self.assertTrue(result.image_zero_points)
         for zero_point in result.image_zero_points:
-            self.assertAlmostEqual(zero_point.zero_point_magnitude, -6.0, 12)
+            self.assertAlmostEqual(zero_point.zero_point_magnitude, -6.0, delta=0.02)
 
     def test_unknown_intrinsic_object_is_corrected_from_stellar_solution(self) -> None:
         machine_mag = 7.35
@@ -329,6 +525,11 @@ class NightlyExtinctionModelTests(unittest.TestCase):
             airmass=2.2,
         )
         self.assertAlmostEqual(corrected, 13.131, 12)
+
+        extinction_only = correct_extinction_magnitude(
+            machine_mag, extinction_mag_per_airmass=0.145, airmass=2.2
+        )
+        self.assertAlmostEqual(extinction_only, 7.031, 12)
 
     def test_weighted_and_faint_sensitivities_never_replace_reference(self) -> None:
         reference_rows = synthetic_night(10)
@@ -346,20 +547,27 @@ class NightlyExtinctionModelTests(unittest.TestCase):
             CalibrationConfig(),
         )
 
-        reference_coefficient = reference_only.night_coefficients[0]
+        reference_coefficient = next(
+            item
+            for item in reference_only.night_coefficients
+            if item.model == reference_only.adopted_model
+        )
         by_model = {item.model: item for item in with_faint.night_coefficients}
-        self.assertEqual(with_faint.adopted_model, "reference_theil_sen")
+        self.assertEqual(
+            with_faint.adopted_model,
+            "nightly_shared_slope_star_intercepts_soft_l1",
+        )
         self.assertIn("reference_ols", by_model)
         self.assertIn("bright_weighted", by_model)
         self.assertIn("faint_weighted", by_model)
         self.assertAlmostEqual(
-            by_model["reference_theil_sen"].extinction_mag_per_airmass,
+            by_model[with_faint.adopted_model].extinction_mag_per_airmass,
             reference_coefficient.extinction_mag_per_airmass,
             12,
         )
         self.assertNotAlmostEqual(
             by_model["faint_weighted"].extinction_mag_per_airmass,
-            by_model["reference_theil_sen"].extinction_mag_per_airmass,
+            by_model[with_faint.adopted_model].extinction_mag_per_airmass,
             3,
         )
         reference_zeros = [
@@ -416,16 +624,23 @@ class NightlyExtinctionModelTests(unittest.TestCase):
         by_model = {item.model: item for item in with_high_airmass.night_coefficients}
         self.assertIn("full_airmass_ols", by_model)
         self.assertAlmostEqual(
-            by_model["reference_theil_sen"].extinction_mag_per_airmass,
-            reference_only.night_coefficients[0].extinction_mag_per_airmass,
+            by_model[with_high_airmass.adopted_model].extinction_mag_per_airmass,
+            next(
+                item
+                for item in reference_only.night_coefficients
+                if item.model == reference_only.adopted_model
+            ).extinction_mag_per_airmass,
             12,
         )
         self.assertNotAlmostEqual(
             by_model["full_airmass_ols"].extinction_mag_per_airmass,
-            by_model["reference_theil_sen"].extinction_mag_per_airmass,
+            by_model[with_high_airmass.adopted_model].extinction_mag_per_airmass,
             3,
         )
-        self.assertEqual(with_high_airmass.adopted_model, "reference_theil_sen")
+        self.assertEqual(
+            with_high_airmass.adopted_model,
+            "nightly_shared_slope_star_intercepts_soft_l1",
+        )
 
 
 if __name__ == "__main__":

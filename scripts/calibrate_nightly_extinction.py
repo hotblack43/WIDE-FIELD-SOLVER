@@ -31,7 +31,7 @@ from scripts.nightly_extinction import (
     NightCalibrationResult,
     StellarMeasurement,
     calibrate_night,
-    correct_magnitude,
+    correct_extinction_magnitude,
     select_reference_star_ids,
 )
 
@@ -288,7 +288,7 @@ def load_mmto_calibration_data(
             ORDER BY recorded_at_utc, run_id
             """
         ).fetchall()
-        latest: dict[tuple[str, str], tuple[object, ...]] = {}
+        latest: dict[str, tuple[object, ...]] = {}
         for run in runs:
             source_sha256 = str(run[3] or "")
             catalogue_sha256 = str(run[4] or "")
@@ -305,20 +305,19 @@ def load_mmto_calibration_data(
                     _audit_run(run, "missing_catalogue_sha256", manifest_entries)
                 )
                 continue
-            key = source_sha256, catalogue_sha256
-            previous = latest.get(key)
+            previous = latest.get(source_sha256)
             if previous is not None:
                 audit_rows.append(
                     _audit_run(
                         previous, "superseded_successful_run", manifest_entries
                     )
                 )
-            latest[key] = run
+            latest[source_sha256] = run
 
-        for key in sorted(latest):
-            run = latest[key]
+        for source_sha256 in sorted(latest):
+            run = latest[source_sha256]
             run_id = str(run[0])
-            source_sha256, catalogue_sha256 = key
+            catalogue_sha256 = str(run[4])
             entry = manifest_entries[source_sha256]
             selected_run_ids.append(run_id)
             rows = connection.execute(
@@ -522,16 +521,7 @@ def _nightly_uncertainty_points(
 
     points: list[NightlyUncertaintyPoint] = []
     for result in results.values():
-        fits_by_group: dict[tuple[str, str, str], list[ImageFit]] = defaultdict(list)
-        for fit in result.image_fits:
-            if (
-                fit.accepted
-                and fit.channel == channel
-                and fit.source_sha256 in manifest_by_source
-            ):
-                fits_by_group[(fit.night, fit.catalogue_sha256, fit.channel)].append(
-                    fit
-                )
+        seen_nights: set[tuple[str, str]] = set()
         for coefficient in result.night_coefficients:
             if (
                 coefficient.model != result.adopted_model
@@ -541,9 +531,18 @@ def _nightly_uncertainty_points(
                 or coefficient.scaled_mad is None
             ):
                 continue
-            fits = fits_by_group.get(
-                (coefficient.night, coefficient.catalogue_sha256, channel), ()
-            )
+            night_key = (coefficient.night, coefficient.channel)
+            if night_key in seen_nights:
+                continue
+            seen_nights.add(night_key)
+            fits = [
+                fit
+                for fit in result.image_fits
+                if fit.accepted
+                and fit.night == coefficient.night
+                and fit.channel == channel
+                and fit.source_sha256 in manifest_by_source
+            ]
             times = [
                 manifest_by_source[fit.source_sha256].observed_utc for fit in fits
             ]
@@ -556,7 +555,9 @@ def _nightly_uncertainty_points(
                 NightlyUncertaintyPoint(
                     night=coefficient.night,
                     channel=channel,
-                    catalogue_sha256=coefficient.catalogue_sha256,
+                    catalogue_sha256=";".join(
+                        sorted({fit.catalogue_sha256 for fit in fits})
+                    ),
                     observed_utc=observed_utc,
                     extinction_mag_per_airmass=coefficient.extinction_mag_per_airmass,
                     scaled_mad_mag_per_airmass=coefficient.scaled_mad,
@@ -631,7 +632,10 @@ def _write_diagnostics(
         ".",
         alpha=0.7,
     )
-    axes[1].set(title="Fixed-slope image zero points", ylabel="Z [mag]")
+    axes[1].set(
+        title="Derived representative stellar offsets (diagnostic only)",
+        ylabel="median(a_star - m_catalogue) [mag]",
+    )
 
     if fit_slopes:
         axes[2].hist(fit_slopes, bins="auto")
@@ -674,7 +678,11 @@ def _write_diagnostics(
                 residual_values.append(residual)
     axes[4].plot(residual_airmass, residual_values, ".", alpha=0.15)
     axes[4].axhline(0.0, color="black", linewidth=0.8)
-    axes[4].set(title="Reference residuals", xlabel="saved airmass", ylabel="residual [mag]")
+    axes[4].set(
+        title="Diagnostic per-image Theil–Sen residuals",
+        xlabel="saved airmass",
+        ylabel="residual [mag]",
+    )
 
     magnitude_by_star: dict[tuple[str, str], float] = {}
     for row in measurements:
@@ -707,7 +715,11 @@ def _write_diagnostics(
         yerr=[item.scaled_mad for item in plotted_adopted],
         fmt=".",
     )
-    axes[7].set(title="Nightly median and scaled MAD", xlabel="night/channel", ylabel="k")
+    axes[7].set(
+        title="Shared nightly slope and diagnostic scaled MAD",
+        xlabel="night/channel",
+        ylabel="k",
+    )
 
     calibrated = sum(item.status == "accepted" for item in adopted)
     axes[8].axis("off")
@@ -727,19 +739,12 @@ def _write_diagnostics(
     plt.close(figure)
 
     channels = ("R", "G", "B")
-    accepted_by_band_night_catalogue: dict[
-        tuple[str, str, str], list[ImageFit]
-    ] = defaultdict(list)
+    accepted_by_band_night: dict[tuple[str, str], list[ImageFit]] = defaultdict(list)
     for fit in accepted_fits:
         if fit.channel in channels and fit.source_sha256 in manifest_by_source:
-            accepted_by_band_night_catalogue[
-                (fit.channel, fit.night, fit.catalogue_sha256)
-            ].append(fit)
+            accepted_by_band_night[(fit.channel, fit.night)].append(fit)
     nights = sorted(
-        {night for _, night, _ in accepted_by_band_night_catalogue}
-    )
-    catalogues = sorted(
-        {catalogue for _, _, catalogue in accepted_by_band_night_catalogue}
+        {night for _, night in accepted_by_band_night}
     )
     colour_map = plt.get_cmap("turbo", max(len(nights), 1))
     colours = {night: colour_map(index) for index, night in enumerate(nights)}
@@ -752,53 +757,43 @@ def _write_diagnostics(
         uncertainty_points = _nightly_uncertainty_points(
             results, manifest_by_source, channel
         )
-        uncertainty_by_group = {
-            (item.night, item.catalogue_sha256): item
-            for item in uncertainty_points
-        }
+        uncertainty_by_night = {item.night: item for item in uncertainty_points}
         for night in nights:
             colour = colours[night]
-            for catalogue_sha256 in catalogues:
-                fits = sorted(
-                    accepted_by_band_night_catalogue.get(
-                        (channel, night, catalogue_sha256), ()
-                    ),
-                    key=lambda fit: manifest_by_source[
-                        fit.source_sha256
-                    ].observed_utc,
+            fits = sorted(
+                accepted_by_band_night.get((channel, night), ()),
+                key=lambda fit: manifest_by_source[fit.source_sha256].observed_utc,
+            )
+            if not fits:
+                continue
+            times = [
+                manifest_by_source[fit.source_sha256].observed_utc
+                for fit in fits
+            ]
+            slopes = [fit.line.slope for fit in fits]
+            time_axis.plot(times, slopes, ".", color=colour, alpha=0.65)
+            point = uncertainty_by_night.get(night)
+            if point is not None:
+                time_axis.errorbar(
+                    [point.observed_utc],
+                    [point.extinction_mag_per_airmass],
+                    yerr=[point.scaled_mad_mag_per_airmass],
+                    fmt="o",
+                    color=colour,
+                    markeredgecolor="black",
+                    markeredgewidth=0.5,
+                    capsize=3,
                 )
-                if not fits:
-                    continue
-                times = [
-                    manifest_by_source[fit.source_sha256].observed_utc
-                    for fit in fits
-                ]
-                slopes = [fit.line.slope for fit in fits]
-                time_axis.plot(times, slopes, ".", color=colour, alpha=0.65)
-                point = uncertainty_by_group.get(
-                    (night, catalogue_sha256)
+                time_axis.hlines(
+                    point.extinction_mag_per_airmass,
+                    times[0],
+                    times[-1],
+                    color=colour,
+                    linewidth=1.2,
                 )
-                if point is not None:
-                    time_axis.errorbar(
-                        [point.observed_utc],
-                        [point.extinction_mag_per_airmass],
-                        yerr=[point.scaled_mad_mag_per_airmass],
-                        fmt="o",
-                        color=colour,
-                        markeredgecolor="black",
-                        markeredgewidth=0.5,
-                        capsize=3,
-                    )
-                    time_axis.hlines(
-                        point.extinction_mag_per_airmass,
-                        times[0],
-                        times[-1],
-                        color=colour,
-                        linewidth=1.2,
-                    )
         time_axis.axhline(0.0, color="0.35", linewidth=0.7)
         time_axis.set(
-            title=f"{channel}: per-image k and nightly median ± scaled MAD",
+            title=f"{channel}: diagnostic image k and shared nightly k ± scaled MAD",
             ylabel="k [mag / airmass]",
         )
         time_axis.tick_params(axis="x", labelbottom=False)
@@ -842,7 +837,8 @@ def _write_diagnostics(
         )
     band_figure.suptitle(
         "MMTO accepted reference-star extinction by band and observing night\n"
-        "dots: per-image Theil–Sen; circles/error bars: nightly median ± scaled MAD"
+        "dots: diagnostic per-image Theil–Sen; circles: shared-slope fixed-effects fit; "
+        "error bars: per-image scaled MAD"
     )
     band_figure.tight_layout(rect=(0.0, 0.10, 1.0, 0.94))
     band_figure.savefig(output / "extinction_by_band_and_night.pdf")
@@ -919,6 +915,83 @@ def write_calibration_outputs(
         fit_rows,
     )
 
+    shared_fit_rows: list[dict[str, object]] = []
+    for result in results.values():
+        for fit in result.night_fits:
+            shared_fit_rows.append(
+                {
+                    "night": fit.night,
+                    "channel": fit.channel,
+                    "catalogue_sha256s": ";".join(fit.catalogue_sha256s),
+                    "model": fit.model,
+                    "estimator": "scipy.optimize.least_squares",
+                    "robust_loss": "soft_l1",
+                    "robust_loss_scale_magnitude": config.nightly_robust_loss_scale,
+                    "status": fit.status,
+                    "accepted": fit.accepted,
+                    "extinction_mag_per_airmass": fit.line.slope,
+                    "extinction_uncertainty_mag_per_airmass": (
+                        fit.line.slope_uncertainty
+                    ),
+                    "residual_rms_magnitude": fit.line.rms,
+                    "measurement_count": fit.line.sample_count,
+                    "accepted_image_count": fit.accepted_image_count,
+                    "reference_star_count": len(fit.star_keys),
+                    "airmass_min": fit.line.airmass_min,
+                    "airmass_max": fit.line.airmass_max,
+                    "airmass_span": fit.line.airmass_span,
+                    "maximum_within_star_airmass_span": (
+                        fit.within_star_airmass_span
+                    ),
+                }
+            )
+    shared_fit_rows.sort(key=lambda row: (row["night"], row["channel"]))
+    _write_csv(
+        output / "nightly_shared_slope_fits.csv",
+        (
+            "night", "channel", "catalogue_sha256s", "model", "estimator",
+            "robust_loss", "robust_loss_scale_magnitude", "status", "accepted",
+            "extinction_mag_per_airmass",
+            "extinction_uncertainty_mag_per_airmass",
+            "residual_rms_magnitude",
+            "measurement_count", "accepted_image_count", "reference_star_count",
+            "airmass_min", "airmass_max", "airmass_span",
+            "maximum_within_star_airmass_span",
+        ),
+        shared_fit_rows,
+    )
+
+    catalogue_magnitude_by_star = {
+        row.star_key: row.catalogue_magnitude for row in data.measurements
+    }
+    intercept_rows = [
+        {
+            "night": fit.night,
+            "channel": fit.channel,
+            "catalogue_sha256": star_key[0],
+            "star_id": star_key[1],
+            "catalogue_magnitude": catalogue_magnitude_by_star.get(star_key),
+            "stellar_intercept_machine_magnitude": intercept,
+            "model": fit.model,
+        }
+        for result in results.values()
+        for fit in result.night_fits
+        for star_key, intercept in fit.star_intercepts
+    ]
+    intercept_rows.sort(
+        key=lambda row: (
+            row["night"], row["channel"], row["catalogue_sha256"], row["star_id"]
+        )
+    )
+    _write_csv(
+        output / "nightly_star_intercepts.csv",
+        (
+            "night", "channel", "catalogue_sha256", "star_id",
+            "catalogue_magnitude", "stellar_intercept_machine_magnitude", "model",
+        ),
+        intercept_rows,
+    )
+
     coefficient_rows = [
         {
             "night": item.night,
@@ -949,11 +1022,11 @@ def write_calibration_outputs(
         coefficient_rows,
     )
 
-    zero_rows: list[dict[str, object]] = []
+    join_rows: list[dict[str, object]] = []
     for result in results.values():
         for item in result.image_zero_points:
             entry = manifest_by_source.get(item.source_sha256)
-            zero_rows.append(
+            join_rows.append(
                 {
                     "night": item.night,
                     "channel": item.channel,
@@ -962,27 +1035,23 @@ def write_calibration_outputs(
                     "catalogue_sha256": item.catalogue_sha256,
                     "model": item.model,
                     "status": item.status,
-                    "zero_point_magnitude": item.zero_point_magnitude,
-                    "uncertainty_magnitude": item.uncertainty_magnitude,
-                    "rms_magnitude": item.rms_magnitude,
-                    "star_count": item.sample_count,
+                    "reference_star_count": item.sample_count,
                     "extinction_mag_per_airmass": item.extinction_mag_per_airmass,
                 }
             )
-    zero_rows.sort(
+    join_rows.sort(
         key=lambda row: (
             row["night"], row["channel"], row["observed_utc"], row["source_sha256"]
         )
     )
     _write_csv(
-        output / "image_zero_points.csv",
+        output / "image_extinction_joins.csv",
         (
             "night", "channel", "observed_utc", "source_sha256",
-            "catalogue_sha256", "model", "status", "zero_point_magnitude",
-            "uncertainty_magnitude", "rms_magnitude", "star_count",
+            "catalogue_sha256", "model", "status", "reference_star_count",
             "extinction_mag_per_airmass",
         ),
-        zero_rows,
+        join_rows,
     )
 
     measurements_by_key = {
@@ -994,12 +1063,23 @@ def write_calibration_outputs(
         ): row
         for row in data.measurements
     }
-    reference_ids_by_group: dict[tuple[str, str, str], frozenset[tuple[str, str]]] = {}
-    group_rows: dict[tuple[str, str, str], list[StellarMeasurement]] = defaultdict(list)
+    reference_ids_by_group: dict[tuple[str, str], frozenset[tuple[str, str]]] = {}
+    group_rows: dict[tuple[str, str], list[StellarMeasurement]] = defaultdict(list)
     for row in data.measurements:
-        group_rows[(row.night, row.catalogue_sha256, row.channel)].append(row)
+        group_rows[(row.night, row.channel)].append(row)
     for key, rows in group_rows.items():
         reference_ids_by_group[key] = select_reference_star_ids(rows, config)
+    night_fit_by_group = {
+        (fit.night, fit.channel): fit
+        for result in results.values()
+        for fit in result.night_fits
+    }
+    star_intercept_by_group_and_star = {
+        (fit.night, fit.channel, star_key): intercept
+        for result in results.values()
+        for fit in result.night_fits
+        for star_key, intercept in fit.star_intercepts
+    }
 
     audit_output: list[dict[str, object]] = []
     for audit in data.audit_rows:
@@ -1013,7 +1093,7 @@ def write_calibration_outputs(
             )
         )
         reference_ids = reference_ids_by_group.get(
-            (audit.night, audit.catalogue_sha256, audit.channel), frozenset()
+            (audit.night, audit.channel), frozenset()
         )
         star_key = (audit.catalogue_sha256, audit.star_id)
         fit_reasons: list[str] = []
@@ -1026,23 +1106,44 @@ def write_calibration_outputs(
                 fit_reasons.append("airmass_above_reference_limit")
         else:
             fit_reasons.extend(audit.exclusion_reasons)
-        fit = image_fits.get(
-            (
-                audit.night,
-                audit.source_sha256,
-                audit.catalogue_sha256,
-                audit.channel,
-            )
+        night_fit = night_fit_by_group.get(
+            (audit.night, audit.channel)
         )
+        if (
+            night_fit is not None
+            and audit.source_sha256 not in night_fit.accepted_source_sha256s
+            and "insufficient_reference_stars" not in fit_reasons
+        ):
+            fit_reasons.append("insufficient_reference_stars")
+        if (
+            night_fit is not None
+            and night_fit.accepted
+            and audit.source_sha256 in night_fit.accepted_source_sha256s
+            and star_key in reference_ids
+            and star_key not in night_fit.star_keys
+        ):
+            fit_reasons.append(
+                "insufficient_star_observations_after_image_filtering"
+            )
+        if night_fit is not None and not night_fit.accepted:
+            fit_reasons.append(night_fit.status)
         included_in_fit = bool(
-            fit is not None
-            and fit.accepted
-            and star_key in fit.star_keys
+            night_fit is not None
+            and night_fit.accepted
+            and audit.source_sha256 in night_fit.accepted_source_sha256s
+            and star_key in night_fit.star_keys
             and not fit_reasons
         )
         residual = None
-        if included_in_fit and fit is not None:
-            residual = fit.line.residuals[fit.star_keys.index(star_key)]
+        if included_in_fit and night_fit is not None and measurement is not None:
+            star_intercept = star_intercept_by_group_and_star[
+                (audit.night, audit.channel, star_key)
+            ]
+            residual = (
+                measurement.machine_magnitude
+                - star_intercept
+                - night_fit.line.slope * measurement.airmass
+            )
         weight = star_weights.get(
             (audit.night, audit.catalogue_sha256, audit.star_id, audit.channel)
         )
@@ -1102,13 +1203,10 @@ def write_calibration_outputs(
         corrected = None
         if coefficient is None or coefficient.extinction_mag_per_airmass is None:
             status = "missing_nightly_extinction"
-        elif zero_point is None or zero_point.zero_point_magnitude is None:
-            status = zero_point.status if zero_point is not None else "missing_image_zero_point"
         else:
             status = "accepted"
-            corrected = correct_magnitude(
+            corrected = correct_extinction_magnitude(
                 row.machine_magnitude,
-                zero_point.zero_point_magnitude,
                 coefficient.extinction_mag_per_airmass,
                 row.airmass,
             )
@@ -1169,17 +1267,28 @@ def write_calibration_outputs(
         "output": str(output.resolve()),
     }
     manifest_payload = {
-        "schema_version": 2,
+        "schema_version": 5,
         "created_utc": datetime.now(UTC).isoformat(),
         "adopted_model": ADOPTED_MODEL,
         "configuration": asdict(config),
         "formulae": {
             "machine_magnitude": "m_machine = -2.5 log10(count_rate_adu_per_s)",
-            "image_fit": "m_machine - m_catalogue = Z_image + k_image X",
-            "image_fit_estimator": "Theil-Sen slope with joint-median intercept",
-            "nightly_coefficient": "k_night = median_i(k_image)",
-            "fixed_slope_zero_point": "Z_fixed = median_s(delta_m - k_night X)",
-            "corrected_magnitude": "m_corrected = m_machine - Z_fixed - k_night X",
+            "nightly_fit": (
+                "m_machine(s,i) = a_star(s) + k_night X(s,i)"
+            ),
+            "nightly_fit_estimator": (
+                "soft-L1 least squares with f_scale = "
+                f"{config.nightly_robust_loss_scale:g} mag"
+            ),
+            "diagnostic_image_fit": (
+                "m_machine - m_catalogue = Z_image + k_image X"
+            ),
+            "diagnostic_image_fit_estimator": (
+                "Theil-Sen slope with joint-median intercept"
+            ),
+            "corrected_magnitude": (
+                "m_corrected = m_machine - k_night X"
+            ),
         },
         "selected_run_ids": list(data.selected_run_ids),
         "database": data.database_path,

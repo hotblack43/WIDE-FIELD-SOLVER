@@ -20,5 +20,35 @@
     "offset_median_hours": -0.0833333333333357,
     "offset_q84_hours": 3.0,
     "boundary_fraction": 0.0
+  },
+  "mmto_high_signal_response": {
+    "control_max_count_rate_adu_per_s": 3000.0,
+    "high_signal_minimum_predicted_count_rate_adu_per_s": 5000.0,
+    "held_out_measurements": 8647,
+    "star_night_groups": 1375,
+    "B": {
+      "median_residual_magnitude": 0.2777234083711946,
+      "bootstrap_95_percent_interval_magnitude": [
+        0.24524712579760255,
+        0.3107968656828195
+      ],
+      "observed_to_predicted_count_ratio": 0.7743024557374247
+    },
+    "G": {
+      "median_residual_magnitude": 0.34541632270304756,
+      "bootstrap_95_percent_interval_magnitude": [
+        0.30822047019249865,
+        0.37003149616072495
+      ],
+      "observed_to_predicted_count_ratio": 0.7275007927741663
+    },
+    "R": {
+      "median_residual_magnitude": 0.3697936150989687,
+      "bootstrap_95_percent_interval_magnitude": [
+        0.3046042538649134,
+        0.4498056455162196
+      ],
+      "observed_to_predicted_count_ratio": 0.711348719315391
+    }
   }
 }

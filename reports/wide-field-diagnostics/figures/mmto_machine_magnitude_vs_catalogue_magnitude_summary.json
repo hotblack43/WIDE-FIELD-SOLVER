@@ -1,0 +1,10 @@
+{
+  "channels": {
+    "B": 63884,
+    "G": 64075,
+    "R": 64055
+  },
+  "measurement_count": 192014,
+  "relation": "-2.5*log10(count_rate) - k*airmass - zero_point versus Gaia BP/G/RP catalogue magnitude for B/G/R respectively; linear-detector expectation has fixed slope +1",
+  "selection": "Gaia stars with BP/G/RP photometry; unsaturated ordinary-aperture measurements included in the adopted nightly extinction fit"
+}

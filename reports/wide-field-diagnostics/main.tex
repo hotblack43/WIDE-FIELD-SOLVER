@@ -432,6 +432,130 @@ problems exceed the stellar locus.
   \label{fig:mmto-scatter}
 \end{figure}
 
+\subsection{Planet colours and the high-signal photometric response}
+\label{sec:mmto-high-signal}
+
+The larger MMTO sample permits a direct check on the apparent planetary colour
+excursions.  We retained only planet measurements with an exact match among
+the unsaturated, extinction-corrected R, G, and B records.  Distance correction
+was also applied, although its common offset cancels from each colour.  The
+result contains 563 matched measurements.  To avoid placing B on both axes, we
+used
+\begin{equation}
+  x=G-R, \qquad y=B-\frac{G+R}{2}.
+  \label{eq:orthogonal-colours}
+\end{equation}
+The coefficient vectors $(0,1,-1)$ and $(1,-1/2,-1/2)$ are orthogonal in
+ordinary magnitude space and are both orthogonal to the common-brightness
+direction $(1,1,1)$.  Figure~\ref{fig:mmto-planet-colours} shows each planet on
+identical axes.  Mars, Saturn, and Uranus form approximately vertical
+distributions: $G-R$ is comparatively stable while B relative to the mean of G
+and R varies.  This identifies a one-dimensional chromatic mode but does not by
+itself identify the responsible detector plane.
+
+\begin{figure*}
+  \centering
+  \includegraphics[width=0.94\textwidth]{mmto_planet_colour_orthogonal_by_planet.png}
+  \caption{Extinction- and distance-corrected MMTO planet colours.  Each panel
+  uses the same limits; point colour gives hours after the latest local noon.
+  The vertical structure in several planets means that
+  $B-(G+R)/2$ varies more strongly than $G-R$.}
+  \label{fig:mmto-planet-colours}
+\end{figure*}
+
+We first compared extinction-corrected machine magnitude with catalogue
+magnitude for unsaturated stellar aperture measurements.  The plotted quantity
+is
+\begin{equation}
+  m_{\mathrm{corr}}=-2.5\log_{10}C-k_n X-Z_n,
+  \label{eq:corrected-machine-mag}
+\end{equation}
+where $C$ is count rate, $k_n$ is the nightly extinction coefficient, $X$ is
+airmass, and $Z_n$ aligns the nightly zero point.  A linear response has unit
+slope against catalogue magnitude.  We used Gaia BP, G, and RP for the camera
+B, G, and R planes, respectively.  These passbands are not identical, so the
+smooth B- and R-plane slopes in Fig.~\ref{fig:mmto-catalogue-linearity} cannot
+be assigned uniquely to detector non-linearity.  The comparison nevertheless
+shows that the planetary count regime lies in the sparsely sampled bright tail
+of the stellar calibration.
+
+\begin{figure*}
+  \centering
+  \includegraphics[width=\textwidth]{mmto_machine_magnitude_vs_catalogue_magnitude.png}
+  \caption{Extinction-corrected machine magnitude against the corresponding
+  Gaia catalogue magnitude for 192,014 unsaturated measurements of 317 stars.
+  The black line has the unit slope expected for a linear response; lower
+  panels give the magnitude residual.  Camera--Gaia passband differences remain
+  in this cross-star comparison.}
+  \label{fig:mmto-catalogue-linearity}
+\end{figure*}
+
+We therefore performed a held-out same-star test that does not depend on
+catalogue magnitude.  For each night and detector plane, stars that never
+exceeded 3000 ADU s$^{-1}$ were used to fit
+\begin{equation}
+  m_{si}=a_s+z_i+k_nX_{si},
+  \label{eq:faint-control-model}
+\end{equation}
+with a stellar intercept $a_s$, an offset $z_i$ for each image, and a shared
+nightly extinction coefficient $k_n$.  The fit used iteratively reweighted
+least squares with soft-L1 weights.  Every brighter star was withheld from this
+fit.  For each withheld star and night, the highest-airmass third of its
+measurements set its intercept; the model then predicted the lowest-airmass,
+highest-count third.  Thus the same star is compared with itself while the
+extinction and image offsets come only from fainter controls.
+
+The test yields 8647 held-out measurements in 1375 star--night groups.  Above a
+predicted 5000 ADU s$^{-1}$, all three planes have positive median residuals
+(Table~\ref{tab:mmto-high-signal}).  Positive residual means that the observed
+machine magnitude is too large and the recorded count rate is below the faint-
+control prediction.  The intervals resample star--night medians.  Moving the
+control ceiling from 2000 to 4000 ADU s$^{-1}$ changes the B, G, and R medians
+only over 0.276--0.285, 0.319--0.373, and 0.356--0.394 mag, respectively.
+
+\begin{table*}
+  \caption{Held-out same-star test totals and high-signal response above
+  5000 ADU s$^{-1}$.}
+  \label{tab:mmto-high-signal}
+  \centering
+  \small
+  \setlength{\tabcolsep}{4pt}
+  \begin{tabular}{lrrrrr}
+  \hline\hline
+  Plane & All test measurements & All star--nights & Median residual [mag]
+        & Bootstrap 95\% interval [mag] & Observed/predicted counts \\
+  \hline
+  B & 2036 & 325 & 0.278 & 0.245--0.311 & 0.774 \\
+  G & 3731 & 595 & 0.345 & 0.308--0.370 & 0.728 \\
+  R & 2880 & 455 & 0.370 & 0.305--0.450 & 0.711 \\
+  \hline
+  \end{tabular}
+\end{table*}
+
+\begin{figure*}
+  \centering
+  \includegraphics[width=\textwidth]{mmto_natural_attenuation_response.png}
+  \caption{Held-out same-star natural-attenuation test.  Grey points are
+  individual low-airmass tests; orange points and bars are star--night medians
+  and interquartile ranges in count-rate bins.  The blue dashed line is the
+  maximum count rate admitted to the faint-control fit.  A positive trend in
+  every plane shows that high-signal measurements contain fewer counts than the
+  independently fitted faint-star model predicts.}
+  \label{fig:mmto-natural-attenuation}
+\end{figure*}
+
+The planet median count rates---5496, 7754, and 7061 ADU s$^{-1}$ in B, G, and
+R---fall within the affected regime.  The repeatable high-signal deficit is
+therefore capable of contributing several tenths of a magnitude to the planet
+colours.  It is evidence for compression in the end-to-end photometric response,
+but does not yet isolate the sensor electronics: residual colour-dependent
+extinction, position-dependent response, and count-dependent aperture or PSF
+effects remain alternative contributors.  The test supports neither ignoring
+the effect nor assigning the full roughly one-magnitude planet excursion to the
+camera alone.
+
+\clearpage
+
 \section{Why native-colour repeated archives matter}
 \label{sec:archives}
 

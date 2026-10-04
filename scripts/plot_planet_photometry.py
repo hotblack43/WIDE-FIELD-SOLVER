@@ -21,7 +21,7 @@ from zoneinfo import ZoneInfo
 
 
 ROOT = Path(__file__).resolve().parents[1]
-ADOPTED_EXTINCTION_MODEL = "reference_theil_sen"
+ADOPTED_EXTINCTION_MODEL = "nightly_shared_slope_star_intercepts_soft_l1"
 PLANET_TYPES = {"major_planet", "minor_planet"}
 DETECTION_STATUSES = {"metadata_time_match", "selected_planet_match"}
 CSV_FIELDS = [
@@ -106,17 +106,22 @@ EXTINCTION_CORRECTED_DISTANCE_FIELDS = [
     "association_catalogue_residual_px",
     "association_catalogue_residual_arcmin",
     "nightly_extinction_night",
+    "hours_past_local_noon",
     "nightly_extinction_mag_per_airmass",
     "nightly_extinction_scaled_mad",
-    "nightly_zero_point_mag",
-    "nightly_zero_point_uncertainty_mag",
     "extinction_corrected_magnitude",
     "extinction_corrected_distance_magnitude",
     "extinction_correction_status",
     "extinction_correction_source",
     "nightly_extinction_uncertainty_mag",
+    "nightly_calibration_uncertainty_mag",
     "total_magnitude_uncertainty",
     "extinction_correction_exclusion_reason",
+]
+NIGHTLY_PHASE_SLOPE_FIELDS = [
+    "night", "planet", "camera_label", "channel", "measurement_count",
+    "hours_min", "hours_max", "hours_span", "slope_mag_per_hour",
+    "intercept_magnitude", "residual_rms_magnitude", "status",
 ]
 
 
@@ -147,13 +152,115 @@ def _mmto_observing_night(observation_time_utc):
     return night.isoformat()
 
 
+def _hours_past_local_noon(observation_time_utc, observing_night):
+    """Return elapsed hours in the Arizona local-noon observing-day bucket."""
+    normalized = _normalise_utc(observation_time_utc)
+    if normalized is None or not observing_night:
+        return None
+    observed = datetime.fromisoformat(normalized.replace("Z", "+00:00"))
+    local_noon = datetime.strptime(
+        str(observing_night), "%Y-%m-%d"
+    ).replace(hour=12, tzinfo=ZoneInfo("America/Phoenix"))
+    hours = (observed - local_noon).total_seconds() / 3600.0
+    if not 0.0 <= hours < 24.0:
+        raise ValueError(
+            f"observation {normalized} is outside Arizona observing night "
+            f"{observing_night}"
+        )
+    return hours
+
+
+def _nightly_phase_slopes(
+    rows, *, magnitude_field="extinction_corrected_magnitude"
+):
+    """Fit ordinary within-night magnitude slopes for the phase diagnostic."""
+    groups = sorted({
+        (
+            row.get("nightly_extinction_night"),
+            row.get("planet"),
+            row.get("camera_label"),
+            row.get("channel"),
+        )
+        for row in rows
+    })
+    results = []
+    for night, planet, camera, channel in groups:
+        points = [
+            row for row in rows
+            if (
+                row.get("nightly_extinction_night"),
+                row.get("planet"),
+                row.get("camera_label"),
+                row.get("channel"),
+            ) == (night, planet, camera, channel)
+        ]
+        pairs = [
+            (
+                _finite(row.get("hours_past_local_noon")),
+                _finite(row.get(magnitude_field)),
+            )
+            for row in points
+        ]
+        pairs = [(hour, magnitude) for hour, magnitude in pairs
+                 if hour is not None and magnitude is not None]
+        hours = [pair[0] for pair in pairs]
+        magnitudes = [pair[1] for pair in pairs]
+        result = {
+            "night": night,
+            "planet": planet,
+            "camera_label": camera,
+            "channel": channel,
+            "measurement_count": len(pairs),
+            "hours_min": min(hours) if hours else None,
+            "hours_max": max(hours) if hours else None,
+            "hours_span": max(hours) - min(hours) if hours else None,
+            "slope_mag_per_hour": None,
+            "intercept_magnitude": None,
+            "residual_rms_magnitude": None,
+            "status": "insufficient_measurements",
+        }
+        if len(pairs) >= 4 and result["hours_span"] > 0.0:
+            mean_hour = sum(hours) / len(hours)
+            mean_magnitude = sum(magnitudes) / len(magnitudes)
+            denominator = sum((hour - mean_hour) ** 2 for hour in hours)
+            if denominator > 0.0:
+                slope = sum(
+                    (hour - mean_hour) * (magnitude - mean_magnitude)
+                    for hour, magnitude in pairs
+                ) / denominator
+                intercept = mean_magnitude - slope * mean_hour
+                residuals = [
+                    magnitude - (intercept + slope * hour)
+                    for hour, magnitude in pairs
+                ]
+                result.update({
+                    "slope_mag_per_hour": slope,
+                    "intercept_magnitude": intercept,
+                    "residual_rms_magnitude": math.sqrt(
+                        sum(residual ** 2 for residual in residuals)
+                        / len(residuals)
+                    ),
+                    "status": "accepted",
+                })
+        results.append(result)
+    return results
+
+
+def _nightly_distance_phase_slopes(rows):
+    """Fit nightly trends after both extinction and distance correction."""
+    return _nightly_phase_slopes(
+        rows,
+        magnitude_field="extinction_corrected_distance_magnitude",
+    )
+
+
 def load_nightly_image_calibrations(directory):
-    """Load unique accepted reference coefficients and fixed image zero points."""
+    """Load accepted nightly shared-slope coefficients and exact image joins."""
     directory = Path(directory).expanduser().resolve()
     coefficient_path = directory / "nightly_extinction_coefficients.csv"
-    zero_point_path = directory / "image_zero_points.csv"
-    coefficients = {}
-    seen_coefficients = set()
+    shared_fit_path = directory / "nightly_shared_slope_fits.csv"
+    image_join_path = directory / "image_extinction_joins.csv"
+    diagnostic_mads = {}
     with coefficient_path.open(newline="", encoding="utf-8") as stream:
         for row in csv.DictReader(stream):
             if row.get("model") != ADOPTED_EXTINCTION_MODEL:
@@ -163,29 +270,80 @@ def load_nightly_image_calibrations(directory):
                 row.get("night", ""),
                 row.get("channel", ""),
             )
-            if coefficient_key in seen_coefficients:
+            if coefficient_key in diagnostic_mads:
                 raise ValueError(
                     "duplicate nightly reference coefficient for "
                     + "/".join(coefficient_key)
                 )
-            seen_coefficients.add(coefficient_key)
             if row.get("status") != "accepted":
                 continue
-            extinction = _finite(row.get("extinction_mag_per_airmass"))
             scaled_mad = _finite(row.get("scaled_mad_mag_per_airmass"))
-            if extinction is None or scaled_mad is None or scaled_mad < 0.0:
+            if scaled_mad is not None and scaled_mad < 0.0:
                 raise ValueError(
-                    "accepted nightly coefficient is incomplete for "
+                    "accepted nightly diagnostic scatter is invalid for "
                     + "/".join(coefficient_key)
                 )
-            coefficients[coefficient_key] = {
-                "extinction_mag_per_airmass": extinction,
-                "extinction_scaled_mad": scaled_mad,
+            diagnostic_mads[coefficient_key] = scaled_mad
+
+    coefficients = {}
+    seen_shared_fits = set()
+    with shared_fit_path.open(newline="", encoding="utf-8") as stream:
+        for row in csv.DictReader(stream):
+            if row.get("model") != ADOPTED_EXTINCTION_MODEL:
+                continue
+            fit_key = (row.get("night", ""), row.get("channel", ""))
+            if fit_key in seen_shared_fits:
+                raise ValueError(
+                    "duplicate nightly shared-slope fit for "
+                    + "/".join(fit_key)
+                )
+            seen_shared_fits.add(fit_key)
+            if row.get("status") != "accepted":
+                continue
+            catalogue_sha256s = tuple(
+                value
+                for value in (
+                    row.get("catalogue_sha256s")
+                    or row.get("catalogue_sha256", "")
+                ).split(";")
+                if value
+            )
+            if not catalogue_sha256s:
+                raise ValueError(
+                    "accepted nightly shared-slope fit has no catalogue identity for "
+                    + "/".join(fit_key)
+                )
+            values = {
+                "extinction_mag_per_airmass": _finite(
+                    row.get("extinction_mag_per_airmass")
+                ),
+                "extinction_uncertainty_mag_per_airmass": _finite(
+                    row.get("extinction_uncertainty_mag_per_airmass")
+                ),
             }
+            if (
+                values["extinction_mag_per_airmass"] is None
+                or values["extinction_uncertainty_mag_per_airmass"] is None
+                or values["extinction_uncertainty_mag_per_airmass"] < 0.0
+            ):
+                raise ValueError(
+                    "accepted nightly shared-slope fit is incomplete for "
+                    + "/".join(fit_key)
+                )
+            for catalogue_sha256 in catalogue_sha256s:
+                coefficient_key = (
+                    catalogue_sha256,
+                    fit_key[0],
+                    fit_key[1],
+                )
+                coefficients[coefficient_key] = {
+                    **values,
+                    "extinction_scaled_mad": diagnostic_mads.get(coefficient_key),
+                }
 
     calibrations = {}
-    seen_zero_points = set()
-    with zero_point_path.open(newline="", encoding="utf-8") as stream:
+    seen_image_joins = set()
+    with image_join_path.open(newline="", encoding="utf-8") as stream:
         for row in csv.DictReader(stream):
             if row.get("model") != ADOPTED_EXTINCTION_MODEL:
                 continue
@@ -195,27 +353,22 @@ def load_nightly_image_calibrations(directory):
                 row.get("night", ""),
                 row.get("channel", ""),
             )
-            if key in seen_zero_points:
-                raise ValueError("duplicate image zero point for " + "/".join(key))
-            seen_zero_points.add(key)
+            if key in seen_image_joins:
+                raise ValueError("duplicate image extinction join for " + "/".join(key))
+            seen_image_joins.add(key)
             if row.get("status") != "accepted":
                 continue
             coefficient_key = (key[1], key[2], key[3])
             coefficient = coefficients.get(coefficient_key)
             if coefficient is None:
                 raise ValueError(
-                    "accepted image zero point has no accepted nightly coefficient for "
+                    "accepted image join has no accepted nightly coefficient for "
                     + "/".join(key)
                 )
-            zero_point = _finite(row.get("zero_point_magnitude"))
-            zero_uncertainty = _finite(row.get("uncertainty_magnitude"))
             saved_extinction = _finite(row.get("extinction_mag_per_airmass"))
             observed_utc = _normalise_utc(row.get("observed_utc"))
             if (
-                zero_point is None
-                or zero_uncertainty is None
-                or zero_uncertainty < 0.0
-                or saved_extinction is None
+                saved_extinction is None
                 or observed_utc is None
                 or not math.isclose(
                     saved_extinction,
@@ -225,14 +378,12 @@ def load_nightly_image_calibrations(directory):
                 )
             ):
                 raise ValueError(
-                    "accepted image zero point is incomplete or inconsistent for "
+                    "accepted image extinction join is incomplete or inconsistent for "
                     + "/".join(key)
                 )
             calibrations[key] = {
                 **coefficient,
                 "observed_utc": observed_utc,
-                "zero_point_magnitude": zero_point,
-                "zero_point_uncertainty_magnitude": zero_uncertainty,
                 "extinction_correction_source": str(directory),
             }
     return calibrations
@@ -2309,11 +2460,204 @@ def _build_extinction_corrected_distance_figure(
             f"{channel} extinction-corrected magnitude at "
             "r☉₋ₚ = r⊕₋ₚ = 1 AU"
         ),
+        empty_message=(
+            "No complete extinction- and distance-corrected planet photometry"
+        ),
+        explanation=(
+            "Extinction correction: m − k_night × planet airmass.\n"
+            "Distance correction is then −5 log₁₀(r☉₋ₚ r⊕₋ₚ), distances in AU.\n"
+            "Bars combine aperture and nightly shared-slope uncertainty."
+        ),
+    )
+
+
+def _build_extinction_corrected_figure(
+    usable, camera_markers, planet_colours, *, channel
+):
+    """Build the requested extinction-corrected planet time series."""
+    return _build_distance_corrected_figure(
+        usable,
+        camera_markers,
+        planet_colours,
+        channel=channel,
+        magnitude_field="extinction_corrected_magnitude",
+        uncertainty_field="total_magnitude_uncertainty",
+        title="Detected planets: extinction-corrected magnitude versus time",
+        ylabel=f"{channel} extinction-corrected instrumental magnitude",
         empty_message="No complete extinction-corrected planet photometry",
         explanation=(
-            "Extinction correction: m − Z_fixed − k_night × planet airmass.\n"
-            "Distance correction is then −5 log₁₀(r☉₋ₚ r⊕₋ₚ), distances in AU.\n"
-            "Bars combine aperture, fixed-Z, and nightly k-stability components."
+            "For each night and band, stars solve m(s,i) = a_s + k_night X(s,i).\n"
+            "Planet correction: m − k_night × planet airmass.\n"
+            "Bars combine aperture and nightly shared-slope uncertainty."
+        ),
+    )
+
+
+def _build_extinction_corrected_local_noon_figure(
+    usable,
+    camera_markers,
+    planet_colours,
+    *,
+    channel,
+    magnitude_field="extinction_corrected_magnitude",
+    title="Detected planets: extinction-corrected magnitude by nightly local-noon phase",
+    ylabel=None,
+    explanation=None,
+    empty_message="No complete extinction-corrected planet photometry",
+):
+    """Overlay nightly corrected sequences against Arizona local-noon phase."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from matplotlib.lines import Line2D
+
+    figure = plt.figure(figsize=(15.5, 7.5), constrained_layout=True)
+    layout = figure.add_gridspec(
+        2, 2, width_ratios=(6.0, 1.55), height_ratios=(1.0, 1.0)
+    )
+    axis = figure.add_subplot(layout[:, 0])
+    planet_legend_axis = figure.add_subplot(layout[0, 1])
+    camera_legend_axis = figure.add_subplot(layout[1, 1])
+    planet_legend_axis.set_axis_off()
+    camera_legend_axis.set_axis_off()
+
+    groups = sorted({
+        (
+            row["nightly_extinction_night"],
+            row["planet"],
+            row["camera_label"],
+        )
+        for row in usable
+    })
+    for night, planet, camera in groups:
+        points = [
+            row for row in usable
+            if (
+                row["nightly_extinction_night"],
+                row["planet"],
+                row["camera_label"],
+            ) == (night, planet, camera)
+        ]
+        points.sort(key=lambda row: row["hours_past_local_noon"])
+        hours = [row["hours_past_local_noon"] for row in points]
+        magnitudes = [row[magnitude_field] for row in points]
+        uncertainties = [row["total_magnitude_uncertainty"] for row in points]
+        if len(points) > 1:
+            axis.plot(
+                hours,
+                magnitudes,
+                color=planet_colours[planet],
+                linewidth=1.0,
+                alpha=0.30,
+                zorder=2,
+            )
+        axis.errorbar(
+            hours,
+            magnitudes,
+            yerr=uncertainties,
+            fmt="none",
+            ecolor=planet_colours[planet],
+            elinewidth=0.8,
+            alpha=0.65,
+            capsize=0,
+            zorder=2,
+        )
+        axis.scatter(
+            hours,
+            magnitudes,
+            s=30,
+            color=planet_colours[planet],
+            marker=camera_markers[camera],
+            edgecolor="black",
+            linewidth=0.3,
+            alpha=0.78,
+            zorder=3,
+        )
+
+    axis.set_title(title)
+    axis.set_xlabel("Hours past 12:00 local Arizona time on the observing night")
+    axis.set_ylabel(
+        ylabel or f"{channel} extinction-corrected instrumental magnitude"
+    )
+    axis.grid(True, alpha=0.25, linewidth=0.7)
+    if usable:
+        axis.invert_yaxis()
+        planet_handles = [
+            Line2D(
+                [], [], linestyle="none", marker="o", markersize=7,
+                markerfacecolor=colour, markeredgecolor="black",
+                label=(
+                    f"{planet} "
+                    f"(n={sum(row['planet'] == planet for row in usable)})"
+                ),
+            )
+            for planet, colour in planet_colours.items()
+        ]
+        camera_handles = [
+            Line2D(
+                [], [], linestyle="none", marker=marker, markersize=7,
+                markerfacecolor="#777777", markeredgecolor="black", label=camera,
+            )
+            for camera, marker in camera_markers.items()
+        ]
+        planet_legend_axis.legend(
+            handles=planet_handles,
+            title="Planet (colour)",
+            loc="upper left",
+            frameon=True,
+        )
+        camera_legend_axis.legend(
+            handles=camera_handles,
+            title="Camera (symbol)",
+            loc="upper left",
+            frameon=True,
+        )
+    else:
+        axis.text(
+            0.5, 0.5, empty_message,
+            ha="center", va="center", transform=axis.transAxes,
+        )
+    camera_legend_axis.text(
+        0.0,
+        0.0,
+        (
+            explanation
+            or "Each faint line joins one planet, observing night, and camera only.\n"
+            "Arizona local time is UTC−7 year-round. Error bars are 1σ."
+        ),
+        transform=camera_legend_axis.transAxes,
+        fontsize=8,
+        color="#444444",
+        va="bottom",
+        wrap=True,
+    )
+    return figure, axis
+
+
+def _build_extinction_corrected_distance_local_noon_figure(
+    usable, camera_markers, planet_colours, *, channel
+):
+    """Plot local-noon phase after extinction and distance correction."""
+    return _build_extinction_corrected_local_noon_figure(
+        usable,
+        camera_markers,
+        planet_colours,
+        channel=channel,
+        magnitude_field="extinction_corrected_distance_magnitude",
+        title=(
+            "Detected planets: extinction- and distance-corrected magnitude "
+            "by nightly local-noon phase"
+        ),
+        ylabel=(
+            f"{channel} extinction- and distance-corrected magnitude at "
+            "r☉₋ₚ = r⊕₋ₚ = 1 AU"
+        ),
+        explanation=(
+            "Each faint line joins one planet, observing night, and camera only.\n"
+            "Extinction is removed before distance normalization; error bars are 1σ."
+        ),
+        empty_message=(
+            "No complete extinction- and distance-corrected planet photometry"
         ),
     )
 
@@ -2329,8 +2673,9 @@ def write_extinction_corrected_distance_outputs(
     skip_earliest_observations=0,
     distance_lookup=None,
     uncertainty_lookup=None,
+    normalize_distances=True,
 ):
-    """Apply only the explicit nightly extinction sidecar, then distances."""
+    """Apply the nightly shared stellar slope, optionally then distances."""
     if skip_earliest_observations < 0:
         raise ValueError("skip_earliest_observations must be nonnegative")
     output = Path(output)
@@ -2351,7 +2696,7 @@ def write_extinction_corrected_distance_outputs(
         if (row["source_sha256"] or row["source_path"])
         not in omitted_observations
     ]
-    if distance_lookup is None:
+    if normalize_distances and distance_lookup is None:
         distance_lookup = _horizons_distance_lookup(selected)
     if uncertainty_lookup is None:
         uncertainty_lookup = _photometric_uncertainty_lookup(
@@ -2364,10 +2709,9 @@ def write_extinction_corrected_distance_outputs(
         row = dict(original)
         row.update({
             "nightly_extinction_night": None,
+            "hours_past_local_noon": None,
             "nightly_extinction_mag_per_airmass": None,
             "nightly_extinction_scaled_mad": None,
-            "nightly_zero_point_mag": None,
-            "nightly_zero_point_uncertainty_mag": None,
             "extinction_corrected_magnitude": None,
             "extinction_corrected_distance_magnitude": None,
             "extinction_correction_status": "",
@@ -2375,6 +2719,7 @@ def write_extinction_corrected_distance_outputs(
                 Path(nightly_calibration).expanduser().resolve()
             ),
             "nightly_extinction_uncertainty_mag": None,
+            "nightly_calibration_uncertainty_mag": None,
             "total_magnitude_uncertainty": None,
             "extinction_correction_exclusion_reason": "",
         })
@@ -2405,14 +2750,7 @@ def write_extinction_corrected_distance_outputs(
             or row.get("observation_time_utc")
         )
         calibration_time = calibration["observed_utc"]
-        if identity_time is None or abs(
-            (
-                datetime.fromisoformat(identity_time.replace("Z", "+00:00"))
-                - datetime.fromisoformat(
-                    calibration_time.replace("Z", "+00:00")
-                )
-            ).total_seconds()
-        ) > 60.0:
+        if identity_time is None or identity_time != calibration_time:
             row["extinction_correction_status"] = (
                 "identity_time_disagrees_with_manifest_utc"
             )
@@ -2436,35 +2774,37 @@ def write_extinction_corrected_distance_outputs(
             continue
         extinction = calibration["extinction_mag_per_airmass"]
         scaled_mad = calibration["extinction_scaled_mad"]
-        zero_point = calibration["zero_point_magnitude"]
-        zero_uncertainty = calibration["zero_point_uncertainty_magnitude"]
+        extinction_coefficient_uncertainty = calibration[
+            "extinction_uncertainty_mag_per_airmass"
+        ]
         extinction_corrected_magnitude = (
             float(row["machine_magnitude"])
-            - zero_point
             - extinction * airmass
         )
         row.update({
             "nightly_extinction_night": night,
+            "hours_past_local_noon": _hours_past_local_noon(
+                calibration_time, night
+            ),
             "nightly_extinction_mag_per_airmass": extinction,
             "nightly_extinction_scaled_mad": scaled_mad,
-            "nightly_zero_point_mag": zero_point,
-            "nightly_zero_point_uncertainty_mag": zero_uncertainty,
             "extinction_corrected_magnitude": extinction_corrected_magnitude,
             "extinction_correction_status": "available",
             "extinction_correction_source": calibration[
                 "extinction_correction_source"
             ],
         })
-        distance = distance_lookup.get(
-            (row["planet"], row["observation_time_utc"])
-        )
-        if distance is None:
-            row["extinction_correction_exclusion_reason"] = (
-                "distance_ephemeris_unavailable"
+        if normalize_distances:
+            distance = distance_lookup.get(
+                (row["planet"], row["observation_time_utc"])
             )
-            calibration_audit.append(row)
-            continue
-        row.update(distance)
+            if distance is None:
+                row["extinction_correction_exclusion_reason"] = (
+                    "distance_ephemeris_unavailable"
+                )
+                calibration_audit.append(row)
+                continue
+            row.update(distance)
         uncertainty = uncertainty_lookup.get(
             (row["run_id"], str(row["detection_id"])), {}
         )
@@ -2479,37 +2819,43 @@ def write_extinction_corrected_distance_outputs(
             )
             calibration_audit.append(row)
             continue
-        distance_corrected = _distance_corrected_magnitude(
-            extinction_corrected_magnitude,
-            row["sun_planet_distance_au"],
-            row["earth_planet_distance_au"],
-        )
-        if distance_corrected is None:
-            row["extinction_correction_exclusion_reason"] = (
-                "distance_correction_failed"
-            )
-            calibration_audit.append(row)
-            continue
-        extinction_uncertainty = airmass * scaled_mad
+        extinction_uncertainty = airmass * extinction_coefficient_uncertainty
+        calibration_uncertainty = extinction_uncertainty
         row["nightly_extinction_uncertainty_mag"] = extinction_uncertainty
-        row["total_magnitude_uncertainty"] = math.sqrt(
-            measurement_uncertainty ** 2
-            + zero_uncertainty ** 2
-            + extinction_uncertainty ** 2
+        row["nightly_calibration_uncertainty_mag"] = calibration_uncertainty
+        row["total_magnitude_uncertainty"] = math.hypot(
+            measurement_uncertainty, calibration_uncertainty
         )
-        row["distance_corrected_magnitude"] = _distance_corrected_magnitude(
-            row["machine_magnitude"],
-            row["sun_planet_distance_au"],
-            row["earth_planet_distance_au"],
-        )
-        row["extinction_corrected_distance_magnitude"] = distance_corrected
-        row["distance_correction_mag"] = extinction_corrected_magnitude - distance_corrected
+        if normalize_distances:
+            distance_corrected = _distance_corrected_magnitude(
+                extinction_corrected_magnitude,
+                row["sun_planet_distance_au"],
+                row["earth_planet_distance_au"],
+            )
+            if distance_corrected is None:
+                row["extinction_correction_exclusion_reason"] = (
+                    "distance_correction_failed"
+                )
+                calibration_audit.append(row)
+                continue
+            row["distance_corrected_magnitude"] = _distance_corrected_magnitude(
+                row["machine_magnitude"],
+                row["sun_planet_distance_au"],
+                row["earth_planet_distance_au"],
+            )
+            row["extinction_corrected_distance_magnitude"] = distance_corrected
+            row["distance_correction_mag"] = (
+                extinction_corrected_magnitude - distance_corrected
+            )
         calibrated.append(row)
         calibration_audit.append(row)
 
-    with (
-        output / "planet_extinction_corrected_distance_measurements.csv"
-    ).open("w", newline="", encoding="utf-8") as stream:
+    measurement_name = (
+        "planet_extinction_corrected_distance_measurements.csv"
+        if normalize_distances
+        else "planet_extinction_corrected_measurements.csv"
+    )
+    with (output / measurement_name).open("w", newline="", encoding="utf-8") as stream:
         writer = csv.DictWriter(
             stream,
             fieldnames=EXTINCTION_CORRECTED_DISTANCE_FIELDS,
@@ -2528,6 +2874,23 @@ def write_extinction_corrected_distance_outputs(
         writer.writeheader()
         writer.writerows(calibration_audit)
 
+    phase_slopes = (
+        _nightly_distance_phase_slopes(calibrated)
+        if normalize_distances
+        else _nightly_phase_slopes(calibrated)
+    )
+    phase_slope_name = (
+        "planet_extinction_corrected_distance_nightly_slopes.csv"
+        if normalize_distances
+        else "planet_extinction_corrected_nightly_slopes.csv"
+    )
+    with (output / phase_slope_name).open(
+        "w", newline="", encoding="utf-8"
+    ) as stream:
+        writer = csv.DictWriter(stream, fieldnames=NIGHTLY_PHASE_SLOPE_FIELDS)
+        writer.writeheader()
+        writer.writerows(phase_slopes)
+
     camera_markers = _camera_marker_map(calibrated)
     planet_colours = {
         planet: PLANET_COLOURS[planet]
@@ -2542,15 +2905,21 @@ def write_extinction_corrected_distance_outputs(
             Path(nightly_calibration).expanduser().resolve()
         ),
         "channel": channel,
-        "quantity": "extinction-corrected, distance-corrected magnitude",
+        "quantity": (
+            "extinction-corrected, distance-corrected magnitude"
+            if normalize_distances
+            else "extinction-corrected instrumental magnitude"
+        ),
         "formula": (
-            "m_calibrated = m_machine - Z_fixed - k_night * planet_airmass; "
-            "m_calibrated_1_1 = m_calibrated "
+            "m_corrected = m_machine - k_night * planet_airmass; "
+            "m_corrected_1_1 = m_corrected "
             "- 5 log10(sun_planet_distance_AU * earth_planet_distance_AU)"
+            if normalize_distances
+            else "m_corrected = m_machine - k_night * planet_airmass"
         ),
         "calibration_policy": (
-            "Only accepted reference_theil_sen sidecar rows with the exact source SHA-256, "
-            "catalogue SHA-256, Arizona observing night, and channel are used; "
+            "Only accepted shared-slope/per-star-intercept sidecar rows with the exact source "
+            "SHA-256, catalogue SHA-256, Arizona observing night, and channel are used; "
             "there is no legacy or raw fallback."
         ),
         "planet_identity_policy": (
@@ -2559,8 +2928,9 @@ def write_extinction_corrected_distance_outputs(
             "image-derived zenith. Blind fitted-epoch identities are not used."
         ),
         "uncertainty": (
-            "Quadrature sum of empirical aperture uncertainty, fixed-image "
-            "zero-point uncertainty, and planet airmass times the nightly scaled MAD."
+            "Quadrature sum of empirical aperture uncertainty and planet airmass "
+            "times the nightly shared-slope uncertainty. "
+            "The per-image k scaled MAD remains a separate stability diagnostic."
         ),
         "plot_selection": {
             "skip_earliest_observations": skip_earliest_observations,
@@ -2585,18 +2955,74 @@ def write_extinction_corrected_distance_outputs(
         )),
         "source_detection_audit": audit,
     }
-    (output / "extinction_corrected_distance_summary.json").write_text(
+    accepted_phase_slopes = [
+        row for row in phase_slopes if row["status"] == "accepted"
+    ]
+    phase_quantity = (
+        "extinction-corrected, distance-corrected magnitude"
+        if normalize_distances
+        else "extinction-corrected magnitude"
+    )
+    summary["nightly_phase_diagnostic"] = {
+        "definition": (
+            f"Ordinary least-squares slope of {phase_quantity} versus hours "
+            "past Arizona local noon, fitted separately for each planet, "
+            "observing night, and camera. At least four measurements are required."
+        ),
+        "group_count": len(phase_slopes),
+        "accepted_group_count": len(accepted_phase_slopes),
+        "positive_slope_count": sum(
+            row["slope_mag_per_hour"] > 0.0 for row in accepted_phase_slopes
+        ),
+        "negative_slope_count": sum(
+            row["slope_mag_per_hour"] < 0.0 for row in accepted_phase_slopes
+        ),
+    }
+    summary_name = (
+        "extinction_corrected_distance_summary.json"
+        if normalize_distances
+        else "extinction_corrected_summary.json"
+    )
+    (output / summary_name).write_text(
         json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
-    figure, _ = _build_extinction_corrected_distance_figure(
+    builder = (
+        _build_extinction_corrected_distance_figure
+        if normalize_distances
+        else _build_extinction_corrected_figure
+    )
+    figure, _ = builder(calibrated, camera_markers, planet_colours, channel=channel)
+    import matplotlib.pyplot as plt
+    figure_name = (
+        "planet_extinction_corrected_distance_magnitude_vs_time.pdf"
+        if normalize_distances
+        else "planet_extinction_corrected_magnitude_vs_time.pdf"
+    )
+    figure.savefig(output / figure_name)
+    plt.close(figure)
+    phase_builder = (
+        _build_extinction_corrected_distance_local_noon_figure
+        if normalize_distances
+        else _build_extinction_corrected_local_noon_figure
+    )
+    phase_figure, _ = phase_builder(
         calibrated, camera_markers, planet_colours, channel=channel
     )
-    import matplotlib.pyplot as plt
-    figure.savefig(
-        output / "planet_extinction_corrected_distance_magnitude_vs_time.pdf"
+    phase_figure_name = (
+        "planet_extinction_corrected_distance_magnitude_vs_hours_past_local_noon.pdf"
+        if normalize_distances
+        else "planet_extinction_corrected_magnitude_vs_hours_past_local_noon.pdf"
     )
-    plt.close(figure)
+    phase_figure.savefig(output / phase_figure_name)
+    plt.close(phase_figure)
     return summary
+
+
+def write_extinction_corrected_outputs(*args, **kwargs):
+    """Write all-night planet magnitudes corrected only for nightly extinction."""
+    return write_extinction_corrected_distance_outputs(
+        *args, normalize_distances=False, **kwargs
+    )
 
 
 def main(argv=None):
@@ -2624,18 +3050,26 @@ def main(argv=None):
         ),
     )
     output_mode.add_argument(
+        "--extinction-corrected",
+        action="store_true",
+        help=(
+            "apply the nightly robust shared stellar slope to every planet "
+            "with known airmass, without distance normalization"
+        ),
+    )
+    output_mode.add_argument(
         "--extinction-corrected-distance-corrected",
         dest="extinction_corrected_distance_corrected",
         action="store_true",
         help=(
-            "apply the exact nightly reference_theil_sen sidecar zero point and "
-            "extinction, then normalize both planet distances"
+            "apply the nightly robust shared stellar slope, then normalize "
+            "both planet distances"
         ),
     )
     parser.add_argument(
         "--nightly-calibration",
         type=Path,
-        help="sidecar directory containing nightly coefficients and image zero points",
+        help="sidecar directory containing nightly shared slopes and image join rows",
     )
     parser.add_argument(
         "--skip-earliest-observations",
@@ -2648,21 +3082,25 @@ def main(argv=None):
     if args.skip_earliest_observations < 0:
         parser.error("--skip-earliest-observations must be nonnegative")
     if (
-        args.extinction_corrected_distance_corrected
+        (args.extinction_corrected or args.extinction_corrected_distance_corrected)
         and args.nightly_calibration is None
     ):
         parser.error(
-            "--extinction-corrected-distance-corrected requires "
+            "--extinction-corrected modes require "
             "--nightly-calibration DIR"
         )
     writer_arguments = {}
-    if args.extinction_corrected_distance_corrected:
+    if args.extinction_corrected or args.extinction_corrected_distance_corrected:
         rows, audit = load_mmto_metadata_planet_measurements(
             args.database,
             args.nightly_calibration,
             channel=args.channel,
         )
-        writer = write_extinction_corrected_distance_outputs
+        writer = (
+            write_extinction_corrected_outputs
+            if args.extinction_corrected
+            else write_extinction_corrected_distance_outputs
+        )
         writer_arguments["nightly_calibration"] = args.nightly_calibration
     else:
         rows, audit = load_planet_measurements(args.database, args.channel)
