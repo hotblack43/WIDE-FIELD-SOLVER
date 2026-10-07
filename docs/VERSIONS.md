@@ -15,16 +15,22 @@ tests; they are not aliases for the newest code.
 | `go8a.sh` | Frozen work snapshot | Portable result storage plus v8 capabilities |
 | `go9.sh` | Frozen | v0.9.0 consolidated runtime and reports |
 | `go10.sh` | Frozen | v0.10.0 native colour inputs and metadata-conditioned planet validation |
-| `go11.sh` | **Latest release; recommended** | v0.11.0 joint stellar/planetary epoch profile and permitted MMTO demo |
+| `go11.sh` | Latest packaged release; frozen | v0.11.0 joint stellar/planetary epoch profile and permitted MMTO demo |
+| `go12.sh` | Frozen experiment | v0.12.0 radial-model study |
+| `go13.sh` | Frozen | v0.13.0 integrated-refraction runtime |
+| `go14.sh` | Frozen | v0.14.0 lunar corroboration runtime |
+| `go15.sh` | **Recommended for new work** | v0.15.0 early combined Sun/Moon gating |
 
-For new work, use `go11.sh`. Use an earlier launcher only when reproducing an
-older result or testing an explicitly version-dependent change.
+For new work from a repository checkout, use `go15.sh`. Use an earlier launcher
+only when reproducing an older result or testing an explicitly
+version-dependent change.
 
 ## Releases versus the development line
 
 The latest packaged GitHub release is v0.11.0. Download the named `.tar.gz` or
 `.zip` asset and `SHA256SUMS` from that release; GitHub's automatic source-code
-archives are not the curated runnable package. Every earlier launcher remains a
+archives are not the curated runnable package. The recommended v0.15.0 runtime
+is currently used from a repository checkout. Every earlier launcher remains a
 separately preserved runtime.
 
 The complete launcher syntax and output-directory behaviour remain in the

@@ -7,7 +7,7 @@
 - [`uv`](https://docs.astral.sh/uv/)
 - enough free space for the image, dependencies and generated report products
 
-Python 3.12 and the solver dependencies are selected from the committed v0.9.0
+Python 3.12 and the solver dependencies are selected from the committed v0.15.0
 lock file.
 
 ## Install
@@ -15,7 +15,7 @@ lock file.
 ```bash
 git clone https://github.com/hotblack43/WIDE-FIELD-SOLVER.git
 cd WIDE-FIELD-SOLVER
-uv sync --project v9 --frozen
+uv sync --project v15 --frozen
 ```
 
 The first installation requires network access to obtain the pinned Python
@@ -25,7 +25,7 @@ are already included.
 ## Solve an image
 
 ```bash
-./go9.sh /full/path/to/image.fits
+./go15.sh /full/path/to/image.fits
 ```
 
 Accepted inputs include monochrome or RGB PNG/TIFF, ordinary FITS and
@@ -33,7 +33,7 @@ losslessly compressed `.fits.bz2` files. Multi-plane FITS files may contain
 RGB or R/G1/G2/B channels.
 
 ```bash
-./go9.sh /full/path/to/image.fits.bz2
+./go15.sh /full/path/to/image.fits.bz2
 ```
 
 Paths containing spaces must be quoted. Every invocation creates a unique run
@@ -45,7 +45,7 @@ Most FITS files need no extra arguments. When the file does not identify its
 science HDU, channel order or saturation value, provide them explicitly:
 
 ```bash
-./go9.sh image.fits \
+./go15.sh image.fits \
   --fits-hdu SCI \
   --channel-order RG1G2B \
   --saturation-level R=4095,G1=4095,G2=4095,B=4095
@@ -56,18 +56,18 @@ orientation or astrometric solution.
 
 ## Planet-search mode
 
-The normal v0.9.0 path uses a FITS, EXIF or filename observation time only after
+The normal v0.15.0 path uses a FITS, EXIF or filename observation time only after
 the stellar solution and image-derived constraints have been fixed. To suppress
 that time and request the full blind planetary search, run:
 
 ```bash
-./go9.sh image.fits --blind-planets
+./go15.sh image.fits --blind-planets
 ```
 
 ## Retaining results elsewhere
 
 ```bash
-./go9.sh image.fits --results-dir /data/wide-field-results
+./go15.sh image.fits --results-dir /data/wide-field-results
 ```
 
 The unique run folders and their shared `stars.sqlite` database remain together

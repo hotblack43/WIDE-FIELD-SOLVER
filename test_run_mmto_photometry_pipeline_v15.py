@@ -110,6 +110,36 @@ class MmtoV15PipelineTests(unittest.TestCase):
         self.assertIn("v15", completed.stdout)
         self.assertIn("--dry-run", completed.stdout)
 
+    def test_v15_analyser_ignores_inherited_virtual_environment_without_warning(self):
+        root = Path(__file__).resolve().parent
+        completed = subprocess.run(
+            [str(root / "v15" / "analyse.sh"), "--version"],
+            cwd=root,
+            env=dict(os.environ, VIRTUAL_ENV=str(root / "wrong-environment")),
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            check=False,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stdout)
+        self.assertIn("analyse_image.py 0.15.0", completed.stdout)
+        self.assertNotIn("does not match the project environment", completed.stdout)
+
+    def test_lightcurve_launcher_ignores_inherited_virtual_environment_without_warning(self):
+        root = Path(__file__).resolve().parent
+        completed = subprocess.run(
+            [str(root / "plot_mmto_lightcurves.sh"), "--help"],
+            cwd=root,
+            env=dict(os.environ, VIRTUAL_ENV=str(root / "wrong-environment")),
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            check=False,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stdout)
+        self.assertIn("usage:", completed.stdout.lower())
+        self.assertNotIn("does not match the project environment", completed.stdout)
+
     def test_backfill_flag_requires_v15_receipts(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
