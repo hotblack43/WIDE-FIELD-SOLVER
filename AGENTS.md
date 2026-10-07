@@ -36,6 +36,27 @@ evidence. Pause only when a material ambiguity would change the result, or when
 the next step would erase or overwrite user data, create an irreversible effect,
 publish externally, or require authority beyond the request.
 
+## State action honestly and react immediately
+
+Use language that distinguishes these states exactly:
+
+- Before beginning work, say `I will ... now` or `I am starting ... now`, then
+  perform that action in the same turn.
+- Say `I am continuing` only when work actually continues in that same turn,
+  with a tool call, wait, or concrete progress update following it. Never use
+  present-progress language merely to acknowledge a command.
+- If an external process is independently running, identify it as such; do not
+  imply that Codex is actively monitoring or working after yielding the turn.
+- If waiting for Peter's instruction or approval, say so explicitly. Never make
+  Peter type `go` or `yes` merely to trigger an already clear, safe next action.
+- After Peter says `go` or `yes`, state exactly what will start and start it in
+  that same turn. A status-only reply is not sufficient.
+
+When ongoing work requires more time, keep the turn active and provide concise,
+evidence-backed progress updates. If yielding instead, say what has actually
+stopped, what external process remains active, and what future action still
+requires another turn.
+
 ## End with inspection targets
 
 Every final response after repository work must end by telling the user what to
@@ -88,6 +109,13 @@ boundary; their hashes are in `docs/v10-runtime.json`. `go11.sh`,
 study are frozen at the v13 boundary; their hashes are in
 `docs/v12-runtime.json`. Develop integrated-refraction work only in `v13/` and
 its `go13.sh` and `go_v0.13.0.sh` launchers.
+
+`go13.sh`, `go_v0.13.0.sh`, and the complete `v13/` integrated-refraction
+runtime are frozen at the v14 boundary; their hashes are in
+`docs/v13-runtime.json`. `go14.sh`, `go_v0.14.0.sh`, and the complete `v14/`
+lunar-corroboration runtime are frozen at the v15 boundary; their hashes are in
+`docs/v14-runtime.json`. Develop early combined Sun/Moon gating only in `v15/`
+and its `go15.sh` and `go_v0.15.0.sh` launchers.
 
 Develop later upgrades in a new version directory with its own launchers,
 catalogue, lockfile, ephemeris data and source manifest. Never overwrite v11 or

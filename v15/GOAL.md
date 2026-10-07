@@ -1,4 +1,4 @@
-# Scientific goal: blind wide-field point-source solving
+# Scientific goal: blind stellar solving with auditable planetary time controls
 
 Owner: Peter Thejll. Scientific intent clarified on 14 September 2026.
 Read this before designing, editing, reviewing or declaring this project complete.
@@ -64,8 +64,14 @@ This is valuable because the stellar proper-motion clock can be weak. Check plan
 identifications and competing dates before claiming a clear epoch determination.
 Keep stellar and planetary epoch estimates, their assumptions and their
 uncertainties separately inspectable. A metadata-centred ephemeris lookup is not
-a blind planetary epoch solution. Do not call this objective complete until the
-blind search and its ambiguities have been implemented and tested.
+a blind planetary epoch solution. V11 uses the full global search, followed by
+common-camera/epoch profiles with proper-motion stars and at least two distinct
+moving bodies. Retain the initial stellar-only result separately. Metadata may
+not bound or select these joint profiles; compare it only after selection.
+
+`--blind-planets` must preserve the full 1850-to-present search. It is also the
+automatic fallback when no usable metadata time exists. Keep its competing dates
+and ambiguities inspectable.
 
 The Moon may corroborate or contradict planetary date proposals when its
 topocentric altitude can be derived from the proposal date and image-derived
@@ -83,19 +89,21 @@ not enter the gate; ordinary compact or dim sources do not cancel it.
 
 - Do not use observing site, latitude/longitude, timestamps, EXIF, filename dates,
   manifest entries, saved solutions or cached identities to seed, constrain,
-  select or tune a blind astrometric, photometric-zenith or planetary epoch fit.
+  select or tune the astrometric, stellar-epoch or photometric-zenith fits, or a
+  planetary or joint epoch fit.
 - A local reference catalogue and catalogue proper motions are legitimate inputs.
   Catalogue reference epoch is distinct from an image observation timestamp.
 - Names are display-only. Maintain blind pattern bootstrap from measured pixels.
-- Metadata may be revealed only after the blind results are fixed, for an
-  explicitly separate comparison. Never tune a fit after revealing the answer
-  while continuing to describe that experiment as blind.
+- Metadata comparisons must be separate from stellar/planetary selection.
+  Never retune a scientific fit after revealing a validation answer while
+  continuing to describe that experiment as blind.
 - Latitude can be checked afterward from the angle between the determined
   physical zenith and the celestial pole appropriate to the epoch. Polaris is
   an approximate pole marker; its offset must not be silently ignored. This
   site comparison is supporting validation, not the primary objective.
-- Known-epoch runs are explicit non-blind controls, never substitutes for the
-  blind default or evidence that it succeeded.
+- Metadata-conditioned planetary runs are non-blind local controls. Their fitted
+  minus metadata timing error measures conditional local accuracy, not success of
+  the full blind search.
 
 ## Current catalogue depth and labels
 
@@ -148,15 +156,28 @@ Peter explicitly designated `go4.sh` to follow the latest v4 release. Keep
 An existing image cannot have been observed in the future. Capture the current
 system time once at the start of a blind run and use it as the upper limit of
 both stellar and planetary epoch searches. Record that ceiling. This causal
-bound is explicitly allowed; the image timestamp/site metadata still must not
-seed or constrain the blind fits. Explicit fixed-epoch controls remain controls.
+bound is explicitly allowed. Image time metadata must not bound the v11
+planetary search or enter stellar, refraction, photometric-zenith or joint fits.
 
 Planet candidates must have nonnegative measured and predicted altitude relative
-to the image-derived photometric zenith, and valid detector projections. The
-Barghini reference Z is not a substitute for that zenith. Keep the limit at the
-horizon, not 10 degrees. Record source altitudes and visibility rejection reasons.
-When no photometric zenith is available, report visibility as unresolved and do
-not present unchecked geometric matches as visible planet detections.
+to the adopted zenith, and valid detector projections. On 19 September 2026 Peter
+explicitly requested the exact detector-centre ray as the default physical zenith
+for these fisheye images, without requiring a detected full horizon. This is an
+instrument assumption, not an extinction measurement or site metadata. Only very
+strong, stable extinction evidence may override it: at least 50 sources, positive
+extinction at >=10 sigma in both primary and radial-response fits, <=1 degree
+conditional angular uncertainty in each, <=1 degree separation between them,
+and all existing rank, airmass-leverage and boundary checks. Retain weaker trials
+as diagnostics. Recompute the centre ray whenever the fitted camera changes;
+propagate it through saved airmasses, visibility and solar checks. Keep stars
+below this assumed horizon in the astrometric and fixed photometric sample,
+flagging their undefined airmass rather than clipping or moving them. Conditional
+epoch intervals do not include uncertainty in the centre assumption. The Barghini
+reference Z is not a substitute for that zenith. Keep the limit at the horizon,
+not 10 degrees. Record source altitudes, zenith provenance and visibility
+rejection reasons. When no adopted image-derived zenith is available, report
+visibility as unresolved and do not present unchecked matches as visible planet
+detections.
 
 The investigator-facing PDF must explicitly identify the stellar catalogue used
 by that solve (Gaia or Tycho-2/Hipparcos), including reports from both `go.sh`
