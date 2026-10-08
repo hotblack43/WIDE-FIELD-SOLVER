@@ -2499,6 +2499,8 @@ def _build_extinction_corrected_local_noon_figure(
     planet_colours,
     *,
     channel,
+    abscissa_field="hours_past_local_noon",
+    xlabel="Hours past 12:00 local Arizona time on the observing night",
     magnitude_field="extinction_corrected_magnitude",
     title="Detected planets: extinction-corrected magnitude by nightly local-noon phase",
     ylabel=None,
@@ -2538,13 +2540,13 @@ def _build_extinction_corrected_local_noon_figure(
                 row["camera_label"],
             ) == (night, planet, camera)
         ]
-        points.sort(key=lambda row: row["hours_past_local_noon"])
-        hours = [row["hours_past_local_noon"] for row in points]
+        points.sort(key=lambda row: row[abscissa_field])
+        abscissae = [row[abscissa_field] for row in points]
         magnitudes = [row[magnitude_field] for row in points]
         uncertainties = [row["total_magnitude_uncertainty"] for row in points]
         if len(points) > 1:
             axis.plot(
-                hours,
+                abscissae,
                 magnitudes,
                 color=planet_colours[planet],
                 linewidth=1.0,
@@ -2552,7 +2554,7 @@ def _build_extinction_corrected_local_noon_figure(
                 zorder=2,
             )
         axis.errorbar(
-            hours,
+            abscissae,
             magnitudes,
             yerr=uncertainties,
             fmt="none",
@@ -2563,7 +2565,7 @@ def _build_extinction_corrected_local_noon_figure(
             zorder=2,
         )
         axis.scatter(
-            hours,
+            abscissae,
             magnitudes,
             s=30,
             color=planet_colours[planet],
@@ -2575,7 +2577,7 @@ def _build_extinction_corrected_local_noon_figure(
         )
 
     axis.set_title(title)
-    axis.set_xlabel("Hours past 12:00 local Arizona time on the observing night")
+    axis.set_xlabel(xlabel)
     axis.set_ylabel(
         ylabel or f"{channel} extinction-corrected instrumental magnitude"
     )
@@ -2660,6 +2662,191 @@ def _build_extinction_corrected_distance_local_noon_figure(
             "No complete extinction- and distance-corrected planet photometry"
         ),
     )
+
+
+def _build_extinction_corrected_distance_airmass_figure(
+    usable, camera_markers, planet_colours, *, channel
+):
+    """Plot extinction- and distance-corrected magnitude against airmass."""
+    return _build_extinction_corrected_local_noon_figure(
+        usable,
+        camera_markers,
+        planet_colours,
+        channel=channel,
+        abscissa_field="planet_airmass",
+        xlabel="Planet airmass",
+        magnitude_field="extinction_corrected_distance_magnitude",
+        title=(
+            "Detected planets: extinction- and distance-corrected magnitude "
+            "versus airmass"
+        ),
+        ylabel=(
+            f"{channel} extinction- and distance-corrected magnitude at "
+            "r☉₋ₚ = r⊕₋ₚ = 1 AU"
+        ),
+        explanation=(
+            "Each faint line joins one planet, observing night, and camera only.\n"
+            "Planet airmass comes from the saved image-derived zenith; error bars are 1σ."
+        ),
+        empty_message=(
+            "No complete extinction- and distance-corrected planet photometry"
+        ),
+    )
+
+
+def _build_raw_vs_extinction_corrected_airmass_figure(
+    usable, camera_markers, planet_colours, *, channel
+):
+    """Compare raw and stellar-k-corrected magnitude against airmass."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from matplotlib.lines import Line2D
+
+    figure = plt.figure(figsize=(18.5, 7.5), constrained_layout=True)
+    layout = figure.add_gridspec(
+        2, 3, width_ratios=(3.5, 3.5, 1.55), height_ratios=(1.0, 1.0)
+    )
+    raw_axis = figure.add_subplot(layout[:, 0])
+    corrected_axis = figure.add_subplot(layout[:, 1], sharey=raw_axis)
+    planet_legend_axis = figure.add_subplot(layout[0, 2])
+    camera_legend_axis = figure.add_subplot(layout[1, 2])
+    planet_legend_axis.set_axis_off()
+    camera_legend_axis.set_axis_off()
+
+    groups = sorted({
+        (
+            row["nightly_extinction_night"],
+            row["planet"],
+            row["camera_label"],
+        )
+        for row in usable
+    })
+    panels = (
+        (
+            raw_axis,
+            "machine_magnitude",
+            "machine_magnitude_uncertainty",
+            "Raw instrumental magnitude",
+        ),
+        (
+            corrected_axis,
+            "extinction_corrected_magnitude",
+            "total_magnitude_uncertainty",
+            "After subtracting nightly stellar kX",
+        ),
+    )
+    for axis, magnitude_field, uncertainty_field, title in panels:
+        for night, planet, camera in groups:
+            points = [
+                row for row in usable
+                if (
+                    row["nightly_extinction_night"],
+                    row["planet"],
+                    row["camera_label"],
+                ) == (night, planet, camera)
+            ]
+            points.sort(key=lambda row: row["planet_airmass"])
+            airmasses = [row["planet_airmass"] for row in points]
+            magnitudes = [row[magnitude_field] for row in points]
+            uncertainties = [row[uncertainty_field] for row in points]
+            if len(points) > 1:
+                axis.plot(
+                    airmasses,
+                    magnitudes,
+                    color=planet_colours[planet],
+                    linewidth=1.0,
+                    alpha=0.30,
+                    zorder=2,
+                )
+            axis.errorbar(
+                airmasses,
+                magnitudes,
+                yerr=uncertainties,
+                fmt="none",
+                ecolor=planet_colours[planet],
+                elinewidth=0.8,
+                alpha=0.65,
+                capsize=0,
+                zorder=2,
+            )
+            axis.scatter(
+                airmasses,
+                magnitudes,
+                s=30,
+                color=planet_colours[planet],
+                marker=camera_markers[camera],
+                edgecolor="black",
+                linewidth=0.3,
+                alpha=0.78,
+                zorder=3,
+            )
+        axis.set_title(title)
+        axis.set_xlabel("Planet airmass")
+        axis.grid(True, alpha=0.25, linewidth=0.7)
+    raw_axis.set_ylabel(f"{channel} instrumental magnitude")
+    figure.suptitle(
+        "Planet extinction diagnostic: before and after the nightly stellar correction"
+    )
+
+    if usable:
+        raw_axis.invert_yaxis()
+        planet_handles = [
+            Line2D(
+                [], [], linestyle="none", marker="o", markersize=7,
+                markerfacecolor=colour, markeredgecolor="black",
+                label=(
+                    f"{planet} "
+                    f"(n={sum(row['planet'] == planet for row in usable)})"
+                ),
+            )
+            for planet, colour in planet_colours.items()
+        ]
+        camera_handles = [
+            Line2D(
+                [], [], linestyle="none", marker=marker, markersize=7,
+                markerfacecolor="#777777", markeredgecolor="black", label=camera,
+            )
+            for camera, marker in camera_markers.items()
+        ]
+        planet_legend_axis.legend(
+            handles=planet_handles,
+            title="Planet (colour)",
+            loc="upper left",
+            frameon=True,
+        )
+        camera_legend_axis.legend(
+            handles=camera_handles,
+            title="Camera (symbol)",
+            loc="upper left",
+            frameon=True,
+        )
+    else:
+        for axis in (raw_axis, corrected_axis):
+            axis.text(
+                0.5,
+                0.5,
+                "No complete extinction-corrected planet photometry",
+                ha="center",
+                va="center",
+                transform=axis.transAxes,
+            )
+    camera_legend_axis.text(
+        0.0,
+        0.0,
+        (
+            "Distance normalization is deliberately omitted, so the panels differ "
+            "only by -k_night × airmass.\n"
+            "Each faint line joins one planet, observing night, and camera only. "
+            "Error bars are 1σ."
+        ),
+        transform=camera_legend_axis.transAxes,
+        fontsize=8,
+        color="#444444",
+        va="bottom",
+        wrap=True,
+    )
+    return figure, (raw_axis, corrected_axis)
 
 
 def write_extinction_corrected_distance_outputs(
@@ -3015,6 +3202,22 @@ def write_extinction_corrected_distance_outputs(
     )
     phase_figure.savefig(output / phase_figure_name)
     plt.close(phase_figure)
+    if normalize_distances:
+        airmass_figure, _ = _build_extinction_corrected_distance_airmass_figure(
+            calibrated, camera_markers, planet_colours, channel=channel
+        )
+        airmass_figure.savefig(
+            output
+            / "planet_extinction_corrected_distance_magnitude_vs_airmass.pdf"
+        )
+        plt.close(airmass_figure)
+        comparison_figure, _ = _build_raw_vs_extinction_corrected_airmass_figure(
+            calibrated, camera_markers, planet_colours, channel=channel
+        )
+        comparison_figure.savefig(
+            output / "planet_raw_vs_extinction_corrected_magnitude_vs_airmass.pdf"
+        )
+        plt.close(comparison_figure)
     return summary
 
 

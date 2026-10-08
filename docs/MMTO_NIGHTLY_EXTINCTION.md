@@ -130,6 +130,14 @@ Each planet band directory contains:
   the same final quantity overlaid by elapsed time since 12:00 Arizona local
   time, with lines joining measurements only within one
   planet/night/camera sequence;
+- `planet_extinction_corrected_distance_magnitude_vs_airmass.pdf`: the same
+  final quantity against saved planet airmass, using the local-noon plot's
+  planet colours, camera symbols, uncertainty bars, and within-sequence lines;
+- `planet_raw_vs_extinction_corrected_magnitude_vs_airmass.pdf`: a two-panel
+  diagnostic comparing raw instrumental magnitude with `m_machine - kX` on a
+  shared inverted magnitude scale. Distance normalization is deliberately
+  omitted from both panels so their only numerical difference is the nightly
+  stellar extinction correction;
 - `planet_extinction_corrected_distance_measurements.csv`: the plotted raw
   magnitude, planet airmass, nightly `k`, extinction-corrected magnitude,
   distance-normalized magnitude, distances, local-noon phase, and
@@ -149,6 +157,22 @@ Arizona local noon. `planet_colour_colour.csv` preserves the exact joined
 corrected magnitudes and derived indices. These products use
 `extinction_corrected_distance_magnitude` in all three bands and omit a point
 when any corrected band is unavailable.
+
+The same directory also contains
+`planet_brightness_matched_stellar_extinction.pdf` and its auditable CSV. For
+each planet/night/channel/camera sequence, this diagnostic uses only stellar
+measurements from the exact source-image hashes containing that planet. A star
+is matched when its median count rate over those images is within 0.5 mag of
+the planet's median count rate. Measurements above airmass 5 are excluded
+before fitting. The planet and each matched star must then have at least 10
+retained measurements and an airmass span of at least 0.5. Independent
+Theil--Sen raw magnitude-versus-airmass slopes are measured for the planet and
+each star; the plot compares the planet slope with the median and interquartile
+range of the matched-star slopes. It also shows the adopted all-reference-star
+nightly `k`. Planet colours and camera symbols are the same as in the other
+planet figures. The CSV retains sequences that fail a sample, airmass-span, or
+matched-star gate with an explicit status, and records how many planet
+measurements were removed by the upper-airmass cut.
 
 The standard `plot_ALL_planets.sh` and `go_mmto_photometry.sh` products apply
 the two corrections in this order:
@@ -188,13 +212,38 @@ because iterating the image and repeated-star gates leaves fewer than 10
 accepted images; no fallback coefficient is substituted.
 
 The correction does not force planet sequences to become flat. In the G data,
-the median stellar `k` for the sampled Mars and Saturn nights is about
-0.22 mag/airmass, whereas their raw aperture magnitudes vary by only about
-0.05--0.07 mag/airmass. Their corrected residual trends therefore have the
-opposite sign. This is evidence that the bright-planet aperture measurements do
-not obey the same linear response as the selected stellar measurements; it is
-not evidence that `k X_planet` was omitted. Colour response, bright-source
-nonlinearity, and the constant-night approximation remain outside this model.
+the median adopted all-reference-star `k` for the sampled Mars and Saturn
+nights is about 0.22 mag/airmass, whereas their raw aperture magnitudes vary by
+only about 0.03--0.05 mag/airmass. Their corrected residual trends therefore
+have the opposite sign. The brightness-matched diagnostic narrows the
+difference: same-frame stars at the planets' count rates have median G slopes
+of about 0.04 and 0.03 mag/airmass for Mars and Saturn respectively. Thus the
+over-correction is not evidence that `k X_planet` was omitted, nor is it a
+generic star-versus-planet difference. It is associated with the measured
+brightness regime used to estimate the slope. The diagnostic alone does not
+separate detector response from aperture-photometry response.
+
+## Brightness-matched stellar diagnostic (2026-10-08)
+
+The thresholded real-data diagnostic is
+`results/planet-brightness-matched-extinction-n10-x5-20261008/`. It audits 273
+planet/night/channel/camera sequences after removing 73 planet measurements
+above airmass 5. Eighty-seven sequences pass the retained-sample,
+airmass-span, and matched-star gates; 175 have fewer than 10 retained planet
+measurements, three have less than 0.5 airmass span, and eight have no
+qualifying brightness-matched star. The accepted R, G, and B counts are 30,
+27, and 30.
+
+Across those accepted sequences, the median raw-planet, brightness-matched
+stellar, and adopted nightly slopes are respectively +0.022, -0.052, and
++0.226 mag/airmass in R; +0.038, +0.050, and +0.218 in G; and +0.026, +0.072,
+and +0.297 in B. Twenty-nine raw planet slopes and 31 matched-star median
+slopes remain negative. Thus the stricter sample and upper-airmass gates remove
+short and extreme-airmass fits but do not make negative slopes disappear; the
+same behavior is present in equally bright stars. These are sequence medians,
+not replacement calibration coefficients. The earlier exploratory four-point,
+unbounded-airmass product remains preserved in
+`results/planet-brightness-matched-extinction-20261008/`.
 
 ## Local-noon phase diagnostic (2026-10-03)
 

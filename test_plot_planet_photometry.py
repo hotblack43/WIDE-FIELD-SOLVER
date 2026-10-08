@@ -1196,6 +1196,103 @@ class PlanetPhotometryLoadingTests(unittest.TestCase):
         self.assertEqual(list(axis.lines[0].get_ydata()), [-3.0, -2.8])
         self.assertIn("distance-corrected", axis.get_ylabel())
 
+    def test_distance_airmass_plot_uses_combined_magnitude_and_existing_style(self):
+        import matplotlib.pyplot as plt
+        import scripts.plot_planet_photometry as planet_plot
+
+        builder = getattr(
+            planet_plot,
+            "_build_extinction_corrected_distance_airmass_figure",
+            None,
+        )
+        self.assertTrue(callable(builder))
+        if not callable(builder):
+            return
+        rows = [
+            {
+                "nightly_extinction_night": "2026-09-19",
+                "planet": "Mars",
+                "camera_label": "MMTO skycam",
+                "planet_airmass": airmass,
+                "extinction_corrected_magnitude": extinction_magnitude,
+                "extinction_corrected_distance_magnitude": distance_magnitude,
+                "total_magnitude_uncertainty": 0.02,
+            }
+            for airmass, extinction_magnitude, distance_magnitude in (
+                (2.0, -5.0, -3.0),
+                (1.2, -4.9, -2.8),
+            )
+        ]
+        colour = planet_plot.PLANET_COLOURS["Mars"]
+
+        figure, axis = builder(
+            rows,
+            {"MMTO skycam": "s"},
+            {"Mars": colour},
+            channel="G",
+        )
+        self.addCleanup(plt.close, figure)
+
+        self.assertEqual(list(axis.lines[0].get_xdata()), [1.2, 2.0])
+        self.assertEqual(list(axis.lines[0].get_ydata()), [-2.8, -3.0])
+        self.assertEqual(axis.lines[0].get_color(), colour)
+        self.assertEqual(axis.get_xlabel(), "Planet airmass")
+        self.assertIn("distance-corrected", axis.get_ylabel())
+        self.assertEqual(len(axis.collections), 2)
+
+    def test_airmass_diagnostic_compares_raw_with_only_extinction_correction(self):
+        import matplotlib.pyplot as plt
+        import scripts.plot_planet_photometry as planet_plot
+
+        builder = getattr(
+            planet_plot,
+            "_build_raw_vs_extinction_corrected_airmass_figure",
+            None,
+        )
+        self.assertTrue(callable(builder))
+        if not callable(builder):
+            return
+        rows = [
+            {
+                "nightly_extinction_night": "2026-09-19",
+                "planet": "Mars",
+                "camera_label": "MMTO skycam",
+                "planet_airmass": airmass,
+                "machine_magnitude": raw_magnitude,
+                "machine_magnitude_uncertainty": 0.01,
+                "extinction_corrected_magnitude": corrected_magnitude,
+                "extinction_corrected_distance_magnitude": distance_magnitude,
+                "total_magnitude_uncertainty": 0.03,
+            }
+            for airmass, raw_magnitude, corrected_magnitude, distance_magnitude in (
+                (2.0, -5.0, -5.4, -3.0),
+                (1.2, -4.9, -5.14, -2.8),
+            )
+        ]
+
+        figure, axes = builder(
+            rows,
+            {"MMTO skycam": "s"},
+            {"Mars": planet_plot.PLANET_COLOURS["Mars"]},
+            channel="G",
+        )
+        self.addCleanup(plt.close, figure)
+        raw_axis, corrected_axis = axes
+
+        self.assertEqual(list(raw_axis.lines[0].get_xdata()), [1.2, 2.0])
+        self.assertEqual(list(raw_axis.lines[0].get_ydata()), [-4.9, -5.0])
+        self.assertEqual(
+            list(corrected_axis.lines[0].get_ydata()), [-5.14, -5.4]
+        )
+        self.assertNotIn(-3.0, corrected_axis.lines[0].get_ydata())
+        self.assertTrue(
+            raw_axis.get_shared_y_axes().joined(raw_axis, corrected_axis)
+        )
+        self.assertEqual(raw_axis.get_xlabel(), "Planet airmass")
+        self.assertEqual(corrected_axis.get_xlabel(), "Planet airmass")
+        self.assertIn("Raw", raw_axis.get_title())
+        self.assertIn("After", corrected_axis.get_title())
+
     def test_combined_empty_plots_name_both_corrections(self):
         import matplotlib.pyplot as plt
         import scripts.plot_planet_photometry as planet_plot
@@ -1619,6 +1716,21 @@ class PlanetPhotometryLoadingTests(unittest.TestCase):
                 / (
                     "planet_extinction_corrected_distance_magnitude_"
                     "vs_hours_past_local_noon.pdf"
+                )
+            ).is_file()
+        )
+        self.assertTrue(
+            (
+                output
+                / "planet_raw_vs_extinction_corrected_magnitude_vs_airmass.pdf"
+            ).is_file()
+        )
+        self.assertTrue(
+            (
+                output
+                / (
+                    "planet_extinction_corrected_distance_magnitude_"
+                    "vs_airmass.pdf"
                 )
             ).is_file()
         )

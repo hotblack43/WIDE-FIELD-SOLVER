@@ -107,17 +107,25 @@ for channel in R G B; do
     )
 
     ((++run_number))
-    printf '\n[%d/4] %s channel: extinction- and distance-corrected photometry\n' \
+    printf '\n[%d/5] %s channel: extinction- and distance-corrected photometry\n' \
         "$run_number" "$channel"
     "${common[@]}" \
         --extinction-corrected-distance-corrected \
         --nightly-calibration "$NIGHTLY_CALIBRATION"
 done
 
-printf '\n[4/4] Combined planetary colour-colour diagram\n'
+printf '\n[4/5] Combined planetary colour-colour diagram\n'
 uv run --project "$ROOT_DIR" --frozen python \
     "$ROOT_DIR/scripts/plot_planet_colours.py" \
     --input-root "$OUTPUT" \
+    --output "$OUTPUT"
+
+printf '\n[5/5] Brightness-matched stellar extinction diagnostic\n'
+uv run --project "$ROOT_DIR" --frozen python \
+    "$ROOT_DIR/scripts/plot_brightness_matched_planet_extinction.py" \
+    --stellar-measurements \
+    "$NIGHTLY_CALIBRATION/calibration_star_measurements.csv" \
+    --planet-root "$OUTPUT" \
     --output "$OUTPUT"
 
 printf '\nAll planet plots completed.\n'

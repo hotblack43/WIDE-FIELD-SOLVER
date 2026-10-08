@@ -57,7 +57,7 @@ class PlotAllPlanetsLauncherTests(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stdout)
         invocations = self.uv_log.read_text(encoding="utf-8").splitlines()
-        self.assertEqual(len(invocations), 4)
+        self.assertEqual(len(invocations), 5)
         self.assertTrue(all(
             f"run --project {ROOT} --frozen" in line
             for line in invocations
@@ -89,6 +89,18 @@ class PlotAllPlanetsLauncherTests(unittest.TestCase):
         self.assertEqual(len(colour_runs), 1)
         self.assertIn(f"--input-root {self.output}", colour_runs[0])
         self.assertIn(f"--output {self.output}", colour_runs[0])
+        matched_runs = [
+            line for line in invocations
+            if "scripts/plot_brightness_matched_planet_extinction.py" in line
+        ]
+        self.assertEqual(len(matched_runs), 1)
+        self.assertIn(
+            f"--stellar-measurements "
+            f"{self.nightly_calibration / 'calibration_star_measurements.csv'}",
+            matched_runs[0],
+        )
+        self.assertIn(f"--planet-root {self.output}", matched_runs[0])
+        self.assertIn(f"--output {self.output}", matched_runs[0])
         self.assertIn("All planet plots completed", result.stdout)
         self.assertTrue((self.output / "plot_ALL_planets.log").is_file())
 
