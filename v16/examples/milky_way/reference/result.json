@@ -1,0 +1,291 @@
+{
+  "status": "point_star_fit_converged",
+  "source": "examples/milky_way/input.jpeg",
+  "source_sha256": "f06569c1397e92d60740d55cf9910113418f8bfc01ee0d9b24aa6cd1f8d467c2",
+  "model": "Barghini_2019_O_Z_FET",
+  "metadata_used": false,
+  "trails_used": false,
+  "catalogue_sha256": "63a3b3e2667bbdc7ce25a7eb14f05618b3168aa9df2e17b6c4c491b573fb8965",
+  "camera": {
+    "model": "Barghini_2019_equations_5_6_11",
+    "parameters": {
+      "a0": 0.004286904861963087,
+      "x_o": 776.8381915868734,
+      "y_o": 712.5203541792644,
+      "x_z": 784.9555527182204,
+      "y_z": 721.2610149949329,
+      "v": 0.0018112471994174112,
+      "s": 0.09026065611485462,
+      "d": 0.0016689423202016491
+    },
+    "normalised_parameters": [
+      0.004286904861963087,
+      0.7286232178548993,
+      0.6682973093646501,
+      0.7362367696241944,
+      0.6764954753130585,
+      0.6580909990202883,
+      0.09026065611485462,
+      1.779380758281627
+    ],
+    "reference_rotation": [
+      [
+        -0.6834514551357552,
+        -0.12223064258405598,
+        0.7196900572373556
+      ],
+      [
+        0.09038119400960255,
+        -0.9924652739297037,
+        -0.08272798687891675
+      ],
+      [
+        0.7243792847964513,
+        0.008505883677103915,
+        0.6893491870602689
+      ]
+    ],
+    "shape": [
+      1444,
+      1569
+    ],
+    "reference_Z": "fixed celestial direction from current blind bootstrap; not local zenith",
+    "monotonic_on_detector": true
+  },
+  "stages": [
+    {
+      "radius_fraction": 0.3,
+      "magnitude": 5.0,
+      "gate_px": 12.0,
+      "matches": 272,
+      "fitted": true,
+      "success": true,
+      "nfev": 275,
+      "cost": 201.929038524604
+    },
+    {
+      "radius_fraction": 0.3,
+      "magnitude": 5.0,
+      "gate_px": 12.0,
+      "matches": 271,
+      "fitted": true,
+      "success": true,
+      "nfev": 9,
+      "cost": 106.95698929149489
+    },
+    {
+      "radius_fraction": 0.3,
+      "magnitude": 5.0,
+      "gate_px": 12.0,
+      "matches": 271,
+      "fitted": true,
+      "success": true,
+      "nfev": 3,
+      "cost": 106.95698929148912
+    },
+    {
+      "radius_fraction": 0.4,
+      "magnitude": 5.5,
+      "gate_px": 12.0,
+      "matches": 755,
+      "fitted": true,
+      "success": true,
+      "nfev": 56,
+      "cost": 291.3010173671587
+    },
+    {
+      "radius_fraction": 0.4,
+      "magnitude": 5.5,
+      "gate_px": 12.0,
+      "matches": 755,
+      "fitted": true,
+      "success": true,
+      "nfev": 7,
+      "cost": 270.8553555900911
+    },
+    {
+      "radius_fraction": 0.4,
+      "magnitude": 5.5,
+      "gate_px": 12.0,
+      "matches": 755,
+      "fitted": true,
+      "success": true,
+      "nfev": 6,
+      "cost": 271.1038385208859
+    },
+    {
+      "radius_fraction": 0.5,
+      "magnitude": 6.0,
+      "gate_px": 10.0,
+      "matches": 1663,
+      "fitted": true,
+      "success": true,
+      "nfev": 76,
+      "cost": 759.3971037867782
+    },
+    {
+      "radius_fraction": 0.5,
+      "magnitude": 6.0,
+      "gate_px": 10.0,
+      "matches": 1663,
+      "fitted": true,
+      "success": true,
+      "nfev": 13,
+      "cost": 633.8536807911851
+    },
+    {
+      "radius_fraction": 0.5,
+      "magnitude": 6.0,
+      "gate_px": 10.0,
+      "matches": 1663,
+      "fitted": true,
+      "success": true,
+      "nfev": 4,
+      "cost": 633.6433739264672
+    },
+    {
+      "radius_fraction": 0.65,
+      "magnitude": 6.5,
+      "gate_px": 8.0,
+      "matches": 2670,
+      "fitted": true,
+      "success": true,
+      "nfev": 19,
+      "cost": 1099.1897160213125
+    },
+    {
+      "radius_fraction": 0.65,
+      "magnitude": 6.5,
+      "gate_px": 8.0,
+      "matches": 2670,
+      "fitted": true,
+      "success": true,
+      "nfev": 5,
+      "cost": 1099.1314378724035
+    },
+    {
+      "radius_fraction": 0.65,
+      "magnitude": 6.5,
+      "gate_px": 8.0,
+      "matches": 2670,
+      "fitted": true,
+      "success": true,
+      "nfev": 9,
+      "cost": 1099.1314378724035
+    },
+    {
+      "radius_fraction": 1.0,
+      "magnitude": 7.0,
+      "gate_px": 6.0,
+      "matches": 3472,
+      "fitted": true,
+      "success": true,
+      "nfev": 11,
+      "cost": 1109.1104366284158
+    },
+    {
+      "radius_fraction": 1.0,
+      "magnitude": 7.0,
+      "gate_px": 6.0,
+      "matches": 3472,
+      "fitted": true,
+      "success": true,
+      "nfev": 4,
+      "cost": 1109.1000484134534
+    },
+    {
+      "radius_fraction": 1.0,
+      "magnitude": 7.0,
+      "gate_px": 6.0,
+      "matches": 3472,
+      "fitted": true,
+      "success": true,
+      "nfev": 2,
+      "cost": 1109.100048413244
+    },
+    {
+      "radius_fraction": 1.0,
+      "magnitude": 7.5,
+      "gate_px": 4.0,
+      "matches": 3655,
+      "fitted": true,
+      "success": true,
+      "nfev": 6,
+      "cost": 1075.8982223836815
+    },
+    {
+      "radius_fraction": 1.0,
+      "magnitude": 7.5,
+      "gate_px": 4.0,
+      "matches": 3655,
+      "fitted": true,
+      "success": true,
+      "nfev": 5,
+      "cost": 1075.851727001877
+    },
+    {
+      "radius_fraction": 1.0,
+      "magnitude": 7.5,
+      "gate_px": 4.0,
+      "matches": 3655,
+      "fitted": true,
+      "success": true,
+      "nfev": 3,
+      "cost": 1075.8517270018438
+    },
+    {
+      "radius_fraction": 1.0,
+      "magnitude": 7.5,
+      "gate_px": 3.0,
+      "matches": 3653,
+      "fitted": true,
+      "success": true,
+      "nfev": 4,
+      "cost": 1060.841516657887
+    },
+    {
+      "radius_fraction": 1.0,
+      "magnitude": 7.5,
+      "gate_px": 3.0,
+      "matches": 3653,
+      "fitted": true,
+      "success": true,
+      "nfev": 6,
+      "cost": 1060.841516657845
+    },
+    {
+      "radius_fraction": 1.0,
+      "magnitude": 7.5,
+      "gate_px": 3.0,
+      "matches": 3653,
+      "fitted": true,
+      "success": true,
+      "nfev": 9,
+      "cost": 1060.8415166572054
+    }
+  ],
+  "final_fit": {
+    "success": true,
+    "nfev": 8,
+    "cost": 1060.8415166571972
+  },
+  "fit": {
+    "count": 3653,
+    "rms_px": 0.39789212340991864,
+    "median_px": 0.24894430254792,
+    "p90_px": 0.6058576426027359
+  },
+  "detection_count": 3688,
+  "withheld_stars": 0,
+  "unmatched_dots": 35,
+  "limitation": "All stars are available for fitting; no stars are withheld. Residuals describe the fitted associations, selected with a 3-pixel matching gate; they are not independent validation or a completeness measurement. No date, terrestrial orientation, proper-motion epoch or atmospheric-refraction solution is claimed.",
+  "elapsed_seconds": 12.893510501016863,
+  "broad_or_saturated_objects": 962,
+  "broad_or_saturated_without_star_match": 7,
+  "code_sha256": {
+    "point_star_detection.py": "9c5030ead2360383fb44aeb60489f3a46d298e4a280cdc5ba47383b416ec9f62",
+    "point_star_barghini.py": "3555db4116f4539c6bfd40d763cc8edf31838c5cc1939d97b0490515e6e2a5ba",
+    "barghini_model.py": "fd591084b407034907f03c3f9cca05126037fc06691c374c3cda3fc884d085af",
+    "point_star_names.py": "f002caf12ab22bb8dd113e1128232d35160e6ce6b29df3c177918150d70c9cd5"
+  }
+}
