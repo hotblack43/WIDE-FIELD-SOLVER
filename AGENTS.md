@@ -114,8 +114,11 @@ its `go13.sh` and `go_v0.13.0.sh` launchers.
 runtime are frozen at the v14 boundary; their hashes are in
 `docs/v13-runtime.json`. `go14.sh`, `go_v0.14.0.sh`, and the complete `v14/`
 lunar-corroboration runtime are frozen at the v15 boundary; their hashes are in
-`docs/v14-runtime.json`. Develop early combined Sun/Moon gating only in `v15/`
-and its `go15.sh` and `go_v0.15.0.sh` launchers.
+`docs/v14-runtime.json`. `go15.sh`, `go_v0.15.0.sh`, the complete `v15/`
+early combined Sun/Moon runtime, and its MMTO pipeline are frozen at the v16
+boundary; their hashes are in `docs/v15-runtime.json`. Develop planet-only
+empirical-extinction work only in `v16/` and its `go16.sh`, `go_v0.16.0.sh`,
+and `go_mmto_photometry_v16.sh` launchers.
 
 Develop later upgrades in a new version directory with its own launchers,
 catalogue, lockfile, ephemeris data and source manifest. Never overwrite v11 or

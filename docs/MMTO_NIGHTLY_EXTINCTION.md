@@ -245,6 +245,72 @@ not replacement calibration coefficients. The earlier exploratory four-point,
 unbounded-airmass product remains preserved in
 `results/planet-brightness-matched-extinction-20261008/`.
 
+## Planet-only nightly airmass correction (2026-10-10)
+
+The direct planet-only diagnostic fits each observing night, channel, planet,
+and camera independently.  It reads the raw distance-normalized planet
+magnitude, not the stellar-extinction-corrected magnitude or the saved stellar
+coefficient.  A Theil--Sen line is accepted only with at least 10 planet
+measurements, airmass span at least 0.5, and airmass no greater than 5.  The
+accepted correction is referenced to airmass 1:
+
+```text
+m_planet_only = m_distance - k_planet,night,band (X_planet - 1)
+```
+
+Because one planet track cannot distinguish atmospheric extinction from
+detector position, high-signal response, or a time-dependent transparency
+change, `k_planet` is recorded as an empirical planet airmass slope rather than
+an atmospheric extinction coefficient.  Failed sequences remain in the fit
+and measurement audits; no stellar or raw fallback is substituted.
+
+Run the comparison directly from the verified MMTO downloader manifest and
+saved blind solutions with:
+
+```sh
+./plot_planet_empirical_extinction.sh \
+  --database results/stars.sqlite \
+  --manifest raw_allsky_samples/manifest.sqlite \
+  --output results/planet-empirical-extinction-NEW-UNIQUE-NAME \
+  --store-coefficients
+```
+
+The v16 `go_mmto_photometry_v16.sh` pipeline always runs this stage with
+`--store-coefficients`. The standalone command remains read-only unless that
+flag is supplied.
+
+Each R/G/B directory contains `planet_only_airmass_before_after.pdf` and
+`planet_only_extinction_distance_corrected_magnitude_vs_hours_past_local_noon.pdf`.
+The latter reproduces the local-noon-phase view in which the original residual
+trend was identified, now using the final planet-only extinction- and
+distance-corrected magnitude.  The directories also contain the accepted
+corrected measurements, input/correction audits, and the explicitly named
+`planet_nightly_empirical_extinction_coefficients.csv`. Its coefficient column
+is `planet_empirical_extinction_coefficient_mag_per_airmass`. The 2026-10-10
+v16 product is
+`results/planet-empirical-extinction-v16-final-snapshot-20261010/`. The manifest
+contains 1,530 verified MMTO images; 888 have successful saved blind solutions.
+The diagnostic accepts 36 R, 32 G, and 36 B sequences and corrects 687 R, 508 G,
+and 687 B measurements.  Image selection no longer depends on an accepted
+stellar-extinction sidecar.  The saved stellar-only camera geometry and
+photometric zenith are used solely to predict and associate planet positions and
+derive planet airmass.  The nightly correction itself uses only each planet's
+distance-normalized magnitudes and planet airmasses.
+
+Stored generations are recorded in
+`planet_empirical_extinction_generations`; their complete accepted and rejected
+fit rows are in `planet_nightly_empirical_extinction_coefficients`. Use
+`latest_planet_nightly_empirical_extinction_coefficients` for the newest row per
+sequence or `latest_accepted_planet_empirical_extinction_coefficients` for the
+accepted subset of those newest rows. This prevents a superseded accepted fit
+from appearing current after a newer rejected fit.
+
+At startup, the program makes one standalone SQLite backup named
+`input_manifest_snapshot.sqlite` inside the output directory. All three
+channels read that same immutable snapshot. Its path and SHA-256 are recorded
+in the parent summary and in the database generation, so concurrent downloader
+updates cannot mix channel selections or invalidate the recorded provenance.
+
 ## Local-noon phase diagnostic (2026-10-03)
 
 The G-band diagnostic in

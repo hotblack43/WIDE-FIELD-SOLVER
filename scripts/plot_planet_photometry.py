@@ -533,6 +533,64 @@ def load_mmto_metadata_planet_measurements(
             )
         selected_calibrations[pair] = (night, calibration)
 
+    return _load_mmto_selected_planet_measurements(
+        database,
+        selected_calibrations,
+        channel=channel,
+        selection_mode="source_catalogue",
+        selection_count_key="accepted_sidecar_images",
+        missing_run_key="accepted_sidecar_images_without_successful_run",
+        association_provider=association_provider,
+    )
+
+
+def load_mmto_manifest_planet_measurements(
+    database,
+    manifest,
+    channel="G",
+    *,
+    association_provider=None,
+):
+    """Re-identify planets in every verified MMTO manifest image.
+
+    Selection depends only on the MMTO downloader manifest and the latest
+    successful saved blind solution for each image hash.  In particular, no
+    stellar-extinction sidecar is read or used to decide which images enter.
+    """
+    if channel not in {"R", "G", "B"}:
+        raise ValueError("channel must be R, G or B")
+    from scripts.calibrate_nightly_extinction import read_mmto_manifest
+
+    entries = read_mmto_manifest(Path(manifest))
+    selected = {
+        source_sha256: ({
+            "observed_utc": entry.observed_utc.isoformat(),
+            "night": entry.night,
+        })
+        for source_sha256, entry in entries.items()
+    }
+    return _load_mmto_selected_planet_measurements(
+        database,
+        selected,
+        channel=channel,
+        selection_mode="source",
+        selection_count_key="verified_manifest_images",
+        missing_run_key="verified_manifest_images_without_successful_run",
+        association_provider=association_provider,
+    )
+
+
+def _load_mmto_selected_planet_measurements(
+    database,
+    selected_observations,
+    *,
+    channel,
+    selection_mode,
+    selection_count_key,
+    missing_run_key,
+    association_provider=None,
+):
+    """Shared read-only extraction for explicitly selected MMTO images."""
     associate = association_provider or _associate_saved_mmto_planets
     audit = Counter()
     rows = []
@@ -548,20 +606,24 @@ def load_mmto_metadata_planet_measurements(
         ):
             if int(run[5]) != 0:
                 continue
-            pair = str(run[3] or ""), str(run[4] or "")
-            if pair in selected_calibrations:
-                latest[pair] = run
-        audit["accepted_sidecar_images"] = len(selected_calibrations)
-        audit["selected_latest_successful_runs"] = len(latest)
-        audit["accepted_sidecar_images_without_successful_run"] = (
-            len(selected_calibrations) - len(latest)
-        )
-
-        for pair in sorted(latest):
-            run_id, recorded, source_path, source_sha256, catalogue_sha256, _ = (
-                latest[pair]
+            source_sha256 = str(run[3] or "")
+            pair = source_sha256, str(run[4] or "")
+            selection_key = (
+                source_sha256 if selection_mode == "source" else pair
             )
-            _, calibration = selected_calibrations[pair]
+            if selection_key in selected_observations:
+                latest[selection_key] = run
+        audit[selection_count_key] = len(selected_observations)
+        audit["selected_latest_successful_runs"] = len(latest)
+        audit[missing_run_key] = len(selected_observations) - len(latest)
+
+        for selection_key in sorted(latest):
+            run_id, recorded, source_path, source_sha256, catalogue_sha256, _ = (
+                latest[selection_key]
+            )
+            selected = selected_observations[selection_key]
+            if isinstance(selected, tuple):
+                _, selected = selected
 
             def product(name):
                 saved = connection.execute(
@@ -630,7 +692,7 @@ def load_mmto_metadata_planet_measurements(
                     camera_record,
                     detections,
                     zenith,
-                    calibration["observed_utc"],
+                    selected["observed_utc"],
                     positional_sigma,
                 )
             except (ImportError, KeyError, TypeError, ValueError):
@@ -711,7 +773,9 @@ def load_mmto_metadata_planet_measurements(
                     "stellar_fit_status": "",
                     "stellar_catalogue_passband": "",
                     "stellar_calibration_status": (
-                        "not_used_extinction_sidecar_applied_downstream"
+                        "not_used"
+                        if selection_mode == "source"
+                        else "not_used_extinction_sidecar_applied_downstream"
                     ),
                     "stellar_calibration_source": "",
                     "photometry_usable": usable,

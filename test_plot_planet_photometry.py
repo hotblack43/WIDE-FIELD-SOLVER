@@ -1531,6 +1531,119 @@ class PlanetPhotometryLoadingTests(unittest.TestCase):
         self.assertEqual(rows[0]["association_positional_sigma_arcmin"], 5.5)
         self.assertEqual(rows[0]["association_separation_arcmin"], 1.2)
 
+    def test_manifest_loader_includes_planet_without_extinction_sidecar(self):
+        import scripts.plot_planet_photometry as planet_plot
+
+        source_sha = "b" * 64
+        self.add_run(
+            "manifest-run", source_sha, "2026-09-20T02:01:00Z",
+            observation="1909-12-05T18:41:15 UTC",
+            source_path="/raw_allsky_samples/mmto/MMTO.fits",
+        )
+        with closing(sqlite3.connect(self.database)) as connection, connection:
+            connection.execute(
+                "INSERT INTO products VALUES (?,?,?)",
+                (
+                    "manifest-run", "stellar_only_result.json",
+                    json.dumps({
+                        "camera": {"shape": [100, 120]},
+                        "fit": {"rms_arcmin": 5.5},
+                    }),
+                ),
+            )
+            connection.execute(
+                "INSERT INTO products VALUES (?,?,?)",
+                (
+                    "manifest-run", "photometric_zenith.json",
+                    json.dumps({"zenith_unit_vector": [0.0, 0.0, 1.0]}),
+                ),
+            )
+            detection = {
+                "detection_id": "3", "x_px": "51.0", "y_px": "42.0",
+                "flux_above_background": "2000.0", "saturated": "False",
+                "source_class": "compact",
+            }
+            connection.execute(
+                "INSERT INTO measurements VALUES (?,?,?,?,?,?)",
+                (
+                    "manifest-run", "dots/star_candidates.csv", 1, "", "3",
+                    json.dumps(detection),
+                ),
+            )
+            photometry = {
+                **detection,
+                "saturation_known": "True",
+                "exposure_seconds": "20.0",
+                "exposure_source": "fits:PRIMARY:EXPOSURE",
+                "G_flux": "4000.0",
+                "G_count_rate_adu_per_s": "200.0",
+                "G_saturated": "False",
+                "G_measurement_method": "aperture",
+            }
+            connection.execute(
+                "INSERT INTO measurements VALUES (?,?,?,?,?,?)",
+                (
+                    "manifest-run", "source_photometry.csv", 1, "", "3",
+                    json.dumps(photometry),
+                ),
+            )
+
+        manifest = Path(self.temporary.name) / "manifest.sqlite"
+        with closing(sqlite3.connect(manifest)) as connection, connection:
+            connection.execute(
+                """
+                CREATE TABLE downloads (
+                    remote_url TEXT PRIMARY KEY,
+                    source_id TEXT NOT NULL,
+                    camera_id TEXT NOT NULL,
+                    observed_utc TEXT NOT NULL,
+                    local_path TEXT,
+                    sha256 TEXT,
+                    download_status TEXT NOT NULL,
+                    validation_status TEXT NOT NULL
+                )
+                """
+            )
+            connection.execute(
+                "INSERT INTO downloads VALUES (?,?,?,?,?,?,?,?)",
+                (
+                    "https://skycam.mmto.arizona.edu/skycam/archive/MMTO.fits",
+                    "mmto", "mmto-skycam", "2026-09-20T01:00:00+00:00",
+                    "/raw_allsky_samples/mmto/MMTO.fits", source_sha,
+                    "downloaded", "verified",
+                ),
+            )
+
+        def associate(
+            camera_record, detections, zenith, observed_utc,
+            positional_sigma_arcmin,
+        ):
+            return {
+                "status": "metadata_time_associated",
+                "time_utc": observed_utc,
+                "matches": [{
+                    "planet": "Saturn", "detection_id": 3,
+                    "measured_altitude_deg": 45.0,
+                    "source_class": "compact",
+                }],
+                "predicted_without_source": [],
+            }
+
+        rows, audit = planet_plot.load_mmto_manifest_planet_measurements(
+            self.database,
+            manifest,
+            channel="G",
+            association_provider=associate,
+        )
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["planet"], "Saturn")
+        self.assertEqual(rows[0]["observation_time_utc"], "2026-09-20T01:00:00Z")
+        self.assertEqual(rows[0]["count_rate_adu_per_s"], 200.0)
+        self.assertEqual(audit["verified_manifest_images"], 1)
+        self.assertEqual(audit["selected_latest_successful_runs"], 1)
+        self.assertEqual(audit["verified_manifest_images_without_successful_run"], 0)
+
     def test_extinction_audit_retains_unusable_metadata_matches(self):
         import scripts.plot_planet_photometry as planet_plot
 

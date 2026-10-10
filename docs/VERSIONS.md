@@ -19,9 +19,10 @@ tests; they are not aliases for the newest code.
 | `go12.sh` | Frozen experiment | v0.12.0 radial-model study |
 | `go13.sh` | Frozen | v0.13.0 integrated-refraction runtime |
 | `go14.sh` | Frozen | v0.14.0 lunar corroboration runtime |
-| `go15.sh` | **Recommended for new work** | v0.15.0 early combined Sun/Moon gating |
+| `go15.sh` | Frozen | v0.15.0 early combined Sun/Moon gating |
+| `go16.sh` | **Recommended for new work** | v0.16.0 planet-only empirical extinction in the MMTO workflow |
 
-For new work from a repository checkout, use `go15.sh`. Use an earlier launcher
+For new work from a repository checkout, use `go16.sh`. Use an earlier launcher
 only when reproducing an older result or testing an explicitly
 version-dependent change.
 
@@ -29,9 +30,10 @@ version-dependent change.
 
 The latest packaged GitHub release is v0.11.0. Download the named `.tar.gz` or
 `.zip` asset and `SHA256SUMS` from that release; GitHub's automatic source-code
-archives are not the curated runnable package. The recommended v0.15.0 runtime
-is currently used from a repository checkout. Every earlier launcher remains a
-separately preserved runtime.
+archives are not the curated runnable package. The recommended v0.16.0 runtime
+is currently used from a repository checkout and adds the MMTO planet-only
+empirical-extinction stage. Every earlier launcher remains a separately
+preserved runtime.
 
 The complete launcher syntax and output-directory behaviour remain in the
 repository's `REFERENCE.md`.

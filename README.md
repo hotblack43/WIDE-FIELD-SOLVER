@@ -6,7 +6,7 @@ Peter Thejll and Chris Flynn
 
 [![Solver regression](https://github.com/hotblack43/WIDE-FIELD-SOLVER/actions/workflows/tests.yml/badge.svg)](https://github.com/hotblack43/WIDE-FIELD-SOLVER/actions/workflows/tests.yml)
 [![Python 3.12](https://img.shields.io/badge/Python-3.12-312E81)](pyproject.toml)
-[![Recommended runtime](https://img.shields.io/badge/runtime-v0.15.0-C026D3)](v15/README.md)
+[![Recommended runtime](https://img.shields.io/badge/runtime-v0.16.0-C026D3)](v16/README.md)
 [![MMTO astrometry](https://img.shields.io/badge/MMTO_RMS-0.327_px-F2B134)](docs/SCIENTIFIC_STATUS.md)
 [![License: BSD 3-Clause](https://img.shields.io/badge/license-BSD_3--Clause-312E81)](LICENSE)
 
@@ -65,27 +65,27 @@ The tested platform is Linux. Install
 ```bash
 git clone https://github.com/hotblack43/WIDE-FIELD-SOLVER.git
 cd WIDE-FIELD-SOLVER
-uv sync --project v15 --frozen
-./go15.sh /full/path/to/image.fits
+uv sync --project v16 --frozen
+./go16.sh /full/path/to/image.fits
 ```
 
 Compressed FITS input is accepted directly:
 
 ```bash
-./go15.sh /full/path/to/image.fits.bz2
+./go16.sh /full/path/to/image.fits.bz2
 ```
 
 Canon CR2 input is decoded from the native 14-bit Bayer sensor data, not its
 embedded JPEG preview:
 
 ```bash
-./go15.sh /full/path/to/image.cr2
+./go16.sh /full/path/to/image.cr2
 ```
 
 Shell-expanded wildcards process a batch sequentially with the same options:
 
 ```bash
-./go15.sh raw_allsky_samples/mmto/mmto-skycam/*/*.fits.bz2 \
+./go16.sh raw_allsky_samples/mmto/mmto-skycam/*/*.fits.bz2 \
   --results-dir /path/to/results
 ```
 
@@ -122,7 +122,7 @@ zenith or observation epoch. Instrumental count rates are not calibrated fluxes.
 Metadata is not allowed to seed or tune the stellar astrometric fit; when used
 later for planetary analysis it is labelled as metadata-conditioned. See
 [the durable scientific goal](GOAL.md) and
-[the detailed v0.15.0 feature inventory](v15/docs/FEATURE_STATUS.md).
+[the detailed v0.16.0 feature inventory](v16/docs/FEATURE_STATUS.md).
 
 ## Citation, releases and reuse
 
@@ -132,7 +132,7 @@ and redistribute it under those terms. If you use WIDE-FIELD SOLVER in
 scientific work, please use the repository's [`CITATION.cff`](CITATION.cff);
 GitHub's **Cite this repository** menu supplies APA and BibTeX forms.
 
-For a current repository checkout, `go15.sh` is the recommended launcher. The
+For a current repository checkout, `go16.sh` is the recommended launcher. The
 latest packaged GitHub release remains v0.11.0; its complete `go11.sh` runtime
 is frozen by `docs/v11-runtime.json`. Historical solvers remain available for
 reproducible comparison and are protected by recorded manifests and regression
