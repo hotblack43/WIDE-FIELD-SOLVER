@@ -31,6 +31,15 @@ Or designate several files, including a quoted wildcard:
 The launcher expands and validates every input before starting. A missing
 file, unsupported suffix or wildcard with no matches rejects the whole batch.
 
+For each successful image, the selected results directory receives three
+ordinary, root-level files whose names start with the searchable input-image
+name and end in `__report.pdf`, `__solution.fits`, and
+`__solution_annotated.fits`. These are ordinary copies of the same bytes
+retained in the detailed `runs/` record; they are not stretched or resampled.
+Copies are used because the KNALDGAS exFAT destination does not support hard
+links. Repeated analyses receive distinct run identifiers and do not overwrite
+earlier products.
+
 ## Linear science and rich display
 
 Detection and centroiding use one linear image:

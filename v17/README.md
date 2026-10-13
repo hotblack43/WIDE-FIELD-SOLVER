@@ -92,6 +92,12 @@ tables, measured-source photometry, association residuals and a FITS astrometric
 solution. The persistent `stars.sqlite` database in the chosen results directory
 collects available measurements across runs.
 
+The primary PDF and two FITS products are also copied directly under the chosen
+results directory. Their flat filenames include the input-image name and end in
+`__report.pdf`, `__solution.fits`, and `__solution_annotated.fits`, so ordinary
+filename substring searches do not require traversing `runs/`. Copies remain
+portable to exFAT filesystems, which do not support hard links.
+
 `lunar_evidence.json` records the image-level bright resolved-Moon classification
 and the above/below-horizon audit for retained dates. Planet-search performance
 also records how many positional visits the combined celestial gate rejected

@@ -17,6 +17,7 @@ CHANGES = [
     "Accept explicitly selected KNALDGAS linear RGB FITS inputs through versioned launchers.",
     "Retain linear luminance astrometry and native per-channel RGB photometry.",
     "Prioritize bright Bayer labels while marking every identified catalogue star.",
+    "Publish searchable PDF and FITS copies directly in the selected results directory.",
 ]
 
 

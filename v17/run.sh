@@ -152,6 +152,28 @@ for image in "${images[@]}"; do
         failed=$((failed + 1))
         continue
     fi
+
+    flat_prefix="${run_dir##*/}"
+    flat_failed=0
+    for product in report.pdf solution.fits solution_annotated.fits; do
+        source_product="$output/$product"
+        flat_product="$results_root/${flat_prefix}__${product}"
+        if [[ ! -f "$source_product" ]]; then
+            echo "Analysis finished without $product. See $run_dir/run.log" >&2
+            flat_failed=1
+            continue
+        fi
+        if ! cp --reflink=auto -- "$source_product" "$flat_product"; then
+            echo "Cannot publish flat product: $flat_product" >&2
+            flat_failed=1
+            continue
+        fi
+        printf 'Flat product: %s\n' "$flat_product"
+    done
+    if [[ $flat_failed -ne 0 ]]; then
+        failed=$((failed + 1))
+        continue
+    fi
     succeeded=$((succeeded + 1))
     printf '\nImages and reports: %s\n' "$output"
     printf 'Report: %s\n' "$report"
