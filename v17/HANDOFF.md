@@ -1,8 +1,9 @@
 # V17 planet empirical-extinction handoff
 
-Use `./go16.sh IMAGE` or `./go_v0.17.0.sh IMAGE` for the independent v17
-runtime. Use `./go_mmto_photometry_v17.sh` to process verified MMTO archive
-images lacking v17 receipts and then regenerate the photometry suite, including
+Use `./go17.sh IMAGE` or `./go_v0.17.0.sh IMAGE` for the independent v17
+runtime. Use `./go_fits_v17.sh IMAGE_OR_PATTERN...` for explicitly selected
+KNALDGAS linear RGB FITS files. The frozen v16 MMTO pipeline can still process
+verified MMTO archive images lacking v16 receipts and regenerate its photometry suite, including
 the required planet-only empirical-extinction products and database rows.
 The original `go_mmto_photometry.sh` remains pinned to v11.
 

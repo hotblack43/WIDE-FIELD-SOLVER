@@ -288,6 +288,7 @@ def _read_fits(path, *, fits_hdu=None, channel_order=None):
                        fits_hdu_selection=('named_colour_extensions' if selected is not None
                                            else str(chosen_index)),
                        exposure=exposure,
+                       origin=primary.get('ORIGIN'),
                        colour_space=primary.get('COLSPACE'),
                        transfer=primary.get('TRANSFER'),
                        photometric_linear=primary.get('PHOTLINE'),

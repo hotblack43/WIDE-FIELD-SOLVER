@@ -19,6 +19,29 @@ from point_star_report import (formula_page, observation_metadata, report_sectio
 
 
 class ReportTests(unittest.TestCase):
+    def test_knaldgas_overlay_identifies_linear_science_and_report_only_stretch(self):
+        from point_star_report import write_report_sky_overlay
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            values = np.full((3, 30, 40), 2100, dtype=np.int16)
+            hdu = fits.PrimaryHDU(values)
+            hdu.header['ORIGIN'] = 'KNALDGAS'
+            hdu.header['COLSPACE'] = 'LINEAR_SRGB'
+            hdu.header['TRANSFER'] = 'LINEAR'
+            hdu.header['PHOTLINE'] = True
+            hdu.header['PEDESTAL'] = 1870
+            hdu.writeto(root/'source.fits')
+            with patch('point_star_plotting.arrange_source_labels', return_value={}), \
+                    patch('point_star_report.save_png') as save:
+                write_report_sky_overlay(
+                    root, dict(source=str(root/'source.fits')), dict(planets={}, photometry={})
+                )
+            text = ' '.join(item.get_text() for item in save.call_args.args[0].axes[0].texts)
+            self.assertIn('KNALDGAS linear FITS', text)
+            self.assertIn('Display stretch only', text)
+            self.assertIn('native samples retained for science', text)
+
     def test_sky_overlay_marks_every_identified_star_but_limits_text_labels(self):
         from PIL import Image
         from point_star_report import write_report_sky_overlay

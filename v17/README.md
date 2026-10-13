@@ -1,8 +1,8 @@
 # Wide-Field Solver v0.17.0
 
-V17 preserves v15 and adds the planet-only nightly empirical-extinction stage
-to the MMTO photometry workflow. The self-contained point-star solver retains
-the v15 astrometric and celestial-gating behaviour.
+V17 is the independent KNALDGAS linear-RGB runtime. It preserves the frozen
+v16 astrometric and photometric science path while adding selectable FITS
+launchers, Bayer-priority labels and a marker for every identified star.
 
 ## Overview
 
@@ -46,11 +46,11 @@ licence.
 
 ## Solve your own image
 
-Pass one or more input files to the v0.16 launcher:
+Pass one or more input files to the v0.17 launcher:
 
 ```sh
-./go16.sh /full/path/to/image.fits.bz2
-./go16.sh first.fits second.cr2 --results-dir /full/path/to/results
+./go17.sh /full/path/to/image.fits.bz2
+./go17.sh first.fits second.fits.bz2 --results-dir /full/path/to/results
 ```
 
 By default, output goes to `results/` beside the release. Use `--results-dir`
@@ -63,31 +63,27 @@ attempted.
 Supported inputs include compressed and uncompressed FITS, Canon CR2, and
 native-depth PNG and TIFF images. Colour FITS may contain RGB or `R/G1/G2/B`
 planes in common plane-first, plane-last or named-extension layouts. Use
-`./go16.sh --help` for FITS HDU, channel-order, saturation and observation-time
+`./go17.sh --help` for FITS HDU, channel-order, saturation and observation-time
 options.
 
-## Routine MMTO processing
+## Select KNALDGAS images
 
-Run the incremental MMTO queue from the repository root with:
-
-```sh
-./go_mmto_photometry_v17.sh
-```
-
-The routine queue uses night-level LIFO ordering: it selects the newest night
-containing images without v17 receipts and processes only that night. Later
-runs skip retained v17 receipts and work backward to the next-newest incomplete
-night. A newly downloaded night takes priority on the following run. Earlier
-receipts do not mark an image complete for v17, so spare capacity gradually
-builds genuine v17 historical coverage without scheduling the whole archive as
-one routine job. Whole-archive processing remains separate and explicit:
+Use direct paths, multiple arguments, or a quoted wildcard. The quoted form is
+expanded by the launcher, which validates the entire batch before starting:
 
 ```sh
-./go_mmto_photometry_v17.sh --backfill-v17
+./go_fits_v17.sh \
+  /media/pth/Sandisk8TB/KNALDGAS/FITS_RGB_MMTO/R6m2/example_RGB.fits.bz2 \
+  --results-dir /media/pth/Sandisk8TB/KNALDGAS/SOLVER_RESULTS_RGB_MMTO_V17
+
+./go_fits_v17.sh \
+  '/media/pth/Sandisk8TB/KNALDGAS/FITS_RGB_MMTO/R6m2/*_RGB.fits.bz2' \
+  --results-dir /media/pth/Sandisk8TB/KNALDGAS/SOLVER_RESULTS_RGB_MMTO_V17
 ```
 
-Use `--dry-run` first to inspect either queue without processing images or
-writing products.
+The launcher accepts `.fits`, `.fit`, `.fts` and their `.bz2` forms. It does not
+convert RAW files implicitly. See [docs/KNALDGAS.md](docs/KNALDGAS.md) for the
+linear science path and RAW-to-FITS provenance.
 
 ## Outputs
 

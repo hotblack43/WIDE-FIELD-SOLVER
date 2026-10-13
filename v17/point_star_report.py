@@ -585,8 +585,11 @@ def write_report_sky_overlay(output, result, science, maximum_labels=40):
 
     fig, ax = plt.subplots(figsize=(8, 8), dpi=190)
     ax.imshow(rgb)
-    if loaded.provenance().get('display_method') != 'native_uint8_rgb':
-        ax.text(.99, .01, 'Display stretch only — native samples retained for science',
+    provenance = loaded.provenance()
+    if provenance.get('display_method') != 'native_uint8_rgb':
+        source_note = ('KNALDGAS linear FITS — ' if provenance.get('origin') == 'KNALDGAS'
+                       else '')
+        ax.text(.99, .01, source_note + 'Display stretch only — native samples retained for science',
                 transform=ax.transAxes, ha='right', va='bottom', color='white', fontsize=6.5,
                 bbox=dict(boxstyle='round,pad=.2', fc='black', ec='none', alpha=.65))
     height, width = rgb.shape[:2]

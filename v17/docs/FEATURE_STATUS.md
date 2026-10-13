@@ -1,6 +1,14 @@
 # Point-source feature status, version 0.17.0
 
-**Planet-only empirical extinction (10 October 2026):** the v17 MMTO pipeline
+**Independent KNALDGAS runtime (13 October 2026):** v17 accepts explicitly
+selected KNALDGAS linear `R,G,B` FITS files through `go17.sh` and
+`go_fits_v17.sh`, including quoted wildcard patterns. Astrometry uses the
+unchanged linear luminance projection and photometry uses the unchanged native
+R, G and B planes. Reports apply gamma only for display, mark every identified
+star and reserve at most 40 text labels, prioritising Bayer alpha, beta, gamma
+and later Greek rounds. Naming remains post-fit and display-only.
+
+**Planet-only empirical extinction (10 October 2026):** the inherited v16 MMTO pipeline
 adds a required fourth stage that fits each planet/night/channel/camera sequence
 from planet measurements alone. Accepted Theil--Sen fits require at least 10
 points, at least 0.5 airmass span, and airmass no greater than 5. The exported
@@ -12,16 +20,16 @@ distance-corrected magnitude versus hours since Arizona local noon. One
 standalone downloader-manifest snapshot is captured before channel processing;
 all bands use it and its SHA-256 is retained with the generation.
 
-**LIFO MMTO operation (6 October 2026):** the ordinary
-`go_mmto_photometry_v17.sh` queue selects the newest MMTO night containing at
-least one image without a v17 receipt. It processes only that night per run.
-Later runs skip every retained v17 receipt and move backward to the next-newest
+**LIFO MMTO operation (6 October 2026):** the frozen
+`go_mmto_photometry_v16.sh` queue selects the newest MMTO night containing at
+least one image without a v16 receipt. It processes only that night per run.
+Later runs skip every retained v16 receipt and move backward to the next-newest
 incomplete night; a newly downloaded night takes priority on the following run.
-Earlier receipts do not masquerade as v17 completion. Retained failed v17 attempts
+Earlier receipts do not masquerade as v16 completion. Retained failed v16 attempts
 do count as receipts, matching the established operational no-automatic-retry
 policy. Thus routine operation keeps current observations first while using
 spare capacity to build historical v17 coverage without scheduling all known
-images as one job. The explicit `--backfill-v17` mode remains separate
+images as one job. The explicit `--backfill-v16` mode remains separate
 from routine LIFO operation.
 
 **Early combined Sun/Moon horizon gate (6 October 2026):** v15 classifies the

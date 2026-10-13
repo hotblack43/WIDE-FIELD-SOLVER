@@ -25,6 +25,7 @@ class ScientificImageTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder)/'knaldgas_rgb.fits'
             hdu = fits.PrimaryHDU(planes)
+            hdu.header['ORIGIN'] = 'KNALDGAS'
             hdu.header['COLSPACE'] = 'LINEAR_SRGB'
             hdu.header['TRANSFER'] = 'LINEAR'
             hdu.header['PEDESTAL'] = 1870
@@ -42,6 +43,11 @@ class ScientificImageTests(unittest.TestCase):
         self.assertEqual(image.provenance()['colour_space'], 'LINEAR_SRGB')
         self.assertEqual(image.provenance()['transfer'], 'LINEAR')
         self.assertTrue(image.provenance()['photometric_linear'])
+        self.assertEqual(image.provenance()['origin'], 'KNALDGAS')
+        expected_luminance = np.moveaxis(planes.astype(float), 0, -1) @ np.array(
+            [.2126, .7152, .0722]
+        )
+        np.testing.assert_allclose(image.luminance, expected_luminance)
 
     def test_cr2_uses_native_raw_decoder_not_pillow_preview(self):
         planes = {name: np.full((3, 4), value, dtype=np.uint16)
