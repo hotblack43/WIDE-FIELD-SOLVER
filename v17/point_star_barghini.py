@@ -672,6 +672,10 @@ def annotate_stars(image_path, records, output, count=40, *, names_cache=None, o
     (output/'display_names.json').write_text(json.dumps(names, ensure_ascii=False, indent=2)+'\n')
     fig, ax = plt.subplots(figsize=(13, 12))
     ax.imshow(rgb)
+    if records:
+        measured = np.asarray([[float(r['x_px']), float(r['y_px'])] for r in records])
+        ax.scatter(measured[:, 0], measured[:, 1], s=6, marker='o', facecolors='none',
+                   edgecolors='#7ee8fa', linewidths=.35, alpha=.62)
     for r in selected:
         x, y = float(r['x_px']), float(r['y_px'])
         ax.plot(x, y, 'o', ms=8, mfc='none', mec='#ffe66d', mew=1.)
@@ -685,7 +689,9 @@ def annotate_stars(image_path, records, output, count=40, *, names_cache=None, o
                     bbox=dict(boxstyle='round,pad=.2', fc='black', ec='none', alpha=.6),
                     arrowprops=dict(arrowstyle='-', color='#ffe66d', lw=.6))
     ax.set_xlim(-.5, rgb.shape[1]-.5); ax.set_ylim(rgb.shape[0]-.5, -.5)
-    ax.set_title(f'Barghini point-star solution — {len(selected)} identified stars')
+    ax.set_title(
+        f'Barghini point-star solution — {len(records)} identified; {len(selected)} labelled'
+    )
     ax.axis('off')
     fig.tight_layout(); save_png(fig, output/f'identified_{len(selected)}_stars.png', dpi=160); plt.close(fig)
     (output/'labelled_stars.json').write_text(json.dumps(dict(

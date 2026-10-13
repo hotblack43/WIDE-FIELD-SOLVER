@@ -569,8 +569,12 @@ def write_report_sky_overlay(output, result, science, maximum_labels=40):
     loaded = load_recorded_image(image_path, output)
     rgb = report_display_rgb(loaded)
     labelled_path = output/'labelled_stars.json'
-    labelled = json.loads(labelled_path.read_text()).get('stars', []) if labelled_path.is_file() else []
+    label_payload = json.loads(labelled_path.read_text()) if labelled_path.is_file() else {}
+    labelled = label_payload.get('stars', [])
     labelled = labelled[:maximum_labels]
+    identified = label_payload.get('identified_stars', labelled)
+    identified_count = len(identified)
+    labelled_count = sum(plot_label(row) is not None for row in labelled)
     planet_result = _joint_display_planets(result, science)
     joint_fit = bool(planet_result.get('joint_epoch_status'))
     metadata_planets = planet_result.get('metadata_matches') or []
@@ -586,6 +590,12 @@ def write_report_sky_overlay(output, result, science, maximum_labels=40):
                 transform=ax.transAxes, ha='right', va='bottom', color='white', fontsize=6.5,
                 bbox=dict(boxstyle='round,pad=.2', fc='black', ec='none', alpha=.65))
     height, width = rgb.shape[:2]
+    if identified:
+        measured = np.asarray(
+            [[float(row['x_px']), float(row['y_px'])] for row in identified], dtype=float
+        )
+        ax.scatter(measured[:, 0], measured[:, 1], s=7, marker='o', facecolors='none',
+                   edgecolors='#7ee8fa', linewidths=.35, alpha=.62, zorder=2)
     for index, row in enumerate(labelled):
         x, y = float(row['x_px']), float(row['y_px'])
         ax.plot(x, y, 'o', ms=6.5, mfc='none', mec='#ffe45e', mew=.9)
@@ -620,9 +630,12 @@ def write_report_sky_overlay(output, result, science, maximum_labels=40):
                     marker='s', ms=10, mfc='none', mec='#00e5ff', mew=.8,
                     label='joint fit prediction')
     from matplotlib.lines import Line2D
-    handles = [Line2D([], [], marker='o', linestyle='none', markersize=6,
+    handles = [Line2D([], [], marker='o', linestyle='none', markersize=3.5,
+                      markerfacecolor='none', markeredgecolor='#7ee8fa',
+                      label=f'{identified_count} identified catalogue stars'),
+               Line2D([], [], marker='o', linestyle='none', markersize=6,
                       markerfacecolor='none', markeredgecolor='#ffe45e',
-                      label='identified catalogue star')]
+                      label=f'{labelled_count} labelled stars')]
     if planets:
         handles.append(Line2D([], [], marker='o' if joint_fit else '*', linestyle='none', markersize=11,
                               markerfacecolor='none', markeredgecolor='#ff3bd5', markeredgewidth=1.,
@@ -648,6 +661,8 @@ def write_report_sky_overlay(output, result, science, maximum_labels=40):
         item.set_color('white')
     ax.set_xlim(-.5, width-.5)
     ax.set_ylim(height-.5, -.5)
+    ax.set_title(f'{identified_count} identified; {labelled_count} labelled',
+                 color='white', fontsize=10, pad=4)
     ax.axis('off')
     fig.tight_layout(pad=.05)
     from point_star_plotting import arrange_source_labels

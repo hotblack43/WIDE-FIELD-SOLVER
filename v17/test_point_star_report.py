@@ -19,6 +19,70 @@ from point_star_report import (formula_page, observation_metadata, report_sectio
 
 
 class ReportTests(unittest.TestCase):
+    def test_sky_overlay_marks_every_identified_star_but_limits_text_labels(self):
+        from PIL import Image
+        from point_star_report import write_report_sky_overlay
+
+        identified = [
+            dict(star_id=f'Gaia DR3 {index}', x_px=20. + index*6., y_px=40. + index*5.)
+            for index in range(55)
+        ]
+        labels = [
+            dict(star_id=f'named-{index}', display_name=f'Star {index:02d}',
+                 x_px=20. + index*6., y_px=40. + index*5.)
+            for index in range(45)
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            Image.new('RGB', (500, 400)).save(root/'source.png')
+            (root/'labelled_stars.json').write_text(json.dumps(dict(
+                identified_count=55,
+                labelled_count=45,
+                identified_stars=identified,
+                stars=labels,
+            )))
+            with patch('point_star_plotting.arrange_source_labels', return_value={}), \
+                    patch('point_star_report.save_png') as save:
+                write_report_sky_overlay(
+                    root, dict(source=str(root/'source.png')), dict(planets={}, photometry={})
+                )
+
+            ax = save.call_args.args[0].axes[0]
+            marker_offsets = [collection.get_offsets() for collection in ax.collections]
+            self.assertTrue(any(len(offsets) == 55 for offsets in marker_offsets))
+            labels_drawn = [text.get_text() for text in ax.texts
+                            if text.get_text().startswith('Star ')]
+            self.assertEqual(len(labels_drawn), 40)
+            legend = ' '.join(text.get_text() for text in ax.get_legend().get_texts())
+            self.assertIn('55 identified', legend)
+            self.assertIn('40 labelled', legend)
+            self.assertIn('55 identified; 40 labelled', ax.get_title())
+
+    def test_sky_overlay_reports_fewer_than_40_available_aliases_honestly(self):
+        from PIL import Image
+        from point_star_report import write_report_sky_overlay
+
+        identified = [dict(star_id=f'Gaia DR3 {index}', x_px=20.+index, y_px=30.+index)
+                      for index in range(12)]
+        labels = [dict(star_id=f'named-{index}', display_name=f'Named {index}',
+                       x_px=20.+index, y_px=30.+index) for index in range(3)]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            Image.new('RGB', (200, 180)).save(root/'source.png')
+            (root/'labelled_stars.json').write_text(json.dumps(dict(
+                identified_count=12, labelled_count=3,
+                identified_stars=identified, stars=labels,
+            )))
+            with patch('point_star_plotting.arrange_source_labels', return_value={}), \
+                    patch('point_star_report.save_png') as save:
+                write_report_sky_overlay(
+                    root, dict(source=str(root/'source.png')), dict(planets={}, photometry={})
+                )
+            ax = save.call_args.args[0].axes[0]
+            legend = ' '.join(text.get_text() for text in ax.get_legend().get_texts())
+            self.assertIn('12 identified', legend)
+            self.assertIn('3 labelled', legend)
+
     def test_sky_overlay_defaults_to_40_distinct_catalogue_labels(self):
         from PIL import Image
         from point_star_report import write_report_sky_overlay
