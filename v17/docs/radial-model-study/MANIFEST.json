@@ -1,0 +1,8 @@
+{
+  "association_summary_rows": 1310,
+  "model_rows": 2592,
+  "note": "Association and planet files are per-image/radial-bin aggregates; full row-level evidence remains in the ignored results directory.",
+  "operational_rows": 432,
+  "planet_summary_rows": 1267,
+  "source_study": "radial-model-study-v12-corrected"
+}

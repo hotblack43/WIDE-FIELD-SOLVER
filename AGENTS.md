@@ -27,6 +27,14 @@ uv run --frozen python -m unittest discover -v
 Keep `uv.lock` committed. Document numerical changes and their reasons. Leave
 the historical comparison with solve-field factual and bounded by its tests.
 
+## Prefer high-dynamic-range source images
+
+Peter is strongly interested in high-dynamic-range imaging. When both rendered
+JPEGs and original camera raw files are available, preserve and use the raw
+files (such as CR2 or CR3) by default because they retain the camera's higher
+bit-depth measurements. Treat JPEGs as previews or derived products, not as a
+substitute for available raw data.
+
 ## Default to action
 
 When the requested outcome is clear and the next step is local, reversible and
@@ -119,6 +127,11 @@ early combined Sun/Moon runtime, and its MMTO pipeline are frozen at the v16
 boundary; their hashes are in `docs/v15-runtime.json`. Develop planet-only
 empirical-extinction work only in `v16/` and its `go16.sh`, `go_v0.16.0.sh`,
 and `go_mmto_photometry_v16.sh` launchers.
+
+`go16.sh`, `go_v0.16.0.sh`, `go_fits_v16.sh`, and the complete `v16/`
+planet-only empirical-extinction runtime are frozen at the v17 boundary; their
+hashes are in `docs/v16-runtime.json`. Develop KNALDGAS linear-RGB work only in
+`v17/` and its `go17.sh`, `go_v0.17.0.sh`, and `go_fits_v17.sh` launchers.
 
 Develop later upgrades in a new version directory with its own launchers,
 catalogue, lockfile, ephemeris data and source manifest. Never overwrite v11 or
