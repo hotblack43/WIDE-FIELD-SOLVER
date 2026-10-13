@@ -195,6 +195,50 @@ class BarghiniPointTests(unittest.TestCase):
         ]
         self.assertEqual(len(select_labels(rows)), 40)
 
+    def test_named_labels_use_bayer_rounds_then_magnitude(self):
+        rows = [
+            dict(x_px=10., y_px=10., magnitude=2., residual_arcmin=.2,
+                 source_class='compact', star_id='alpha-faint'),
+            dict(x_px=20., y_px=20., magnitude=-1., residual_arcmin=.2,
+                 source_class='broad_blob', saturated='True', star_id='alpha-bright'),
+            dict(x_px=30., y_px=30., magnitude=-2., residual_arcmin=.2,
+                 source_class='compact', star_id='beta'),
+            dict(x_px=40., y_px=40., magnitude=-3., residual_arcmin=.2,
+                 source_class='compact', star_id='ordinary'),
+        ]
+        names = {
+            'alpha-faint': {'display_name': 'α Cyg'},
+            'alpha-bright': {'display_name': 'α Ori'},
+            'beta': {'display_name': 'β Ori'},
+            'ordinary': {'display_name': 'Sirius'},
+        }
+
+        selected = select_labels(rows, 4, names=names)
+
+        self.assertEqual(
+            [row['star_id'] for row in selected],
+            ['alpha-bright', 'alpha-faint', 'beta', 'ordinary'],
+        )
+
+    def test_named_labels_exclude_bad_matches_and_unresolved_gaia_ids(self):
+        rows = [
+            dict(x_px=10., y_px=10., magnitude=-2., residual_arcmin=10.,
+                 source_class='compact', star_id='bad'),
+            dict(x_px=20., y_px=20., magnitude=-1., residual_arcmin=.2,
+                 source_class='compact', star_id='Gaia DR3 123'),
+            dict(x_px=30., y_px=30., magnitude=1., residual_arcmin=.2,
+                 source_class='compact', star_id='named'),
+        ]
+        names = {
+            'bad': {'display_name': 'α Ori'},
+            'Gaia DR3 123': {'display_name': 'Gaia DR3 123'},
+            'named': {'display_name': '51 Peg'},
+        }
+
+        selected = select_labels(rows, 40, names=names)
+
+        self.assertEqual([row['star_id'] for row in selected], ['named'])
+
     def test_equidistant_coordinates_and_inverse(self):
         camera = BarghiniCamera.initial((800, 1000), 500., np.eye(3))
         xy = np.array([[499.5, 399.5], [599.5, 399.5], [499.5, 499.5]])

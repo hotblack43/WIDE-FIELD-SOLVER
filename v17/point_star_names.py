@@ -10,6 +10,16 @@ GREEK = {'alf': 'α', 'bet': 'β', 'gam': 'γ', 'del': 'δ', 'eps': 'ε', 'zet':
          'rho': 'ρ', 'sig': 'σ', 'tau': 'τ', 'ups': 'υ', 'phi': 'φ', 'khi': 'χ',
          'chi': 'χ', 'psi': 'ψ', 'ome': 'ω'}
 SUPERSCRIPT = str.maketrans('0123456789', '⁰¹²³⁴⁵⁶⁷⁸⁹')
+GREEK_ORDER = tuple('αβγδεζηθικλμνξοπρστυφχψω')
+GREEK_RANK = {letter: rank for rank, letter in enumerate(GREEK_ORDER)}
+
+
+def bayer_label_key(display_name):
+    """Return the Bayer-round rank for an ordinary rendered designation."""
+    match = re.fullmatch(r'([α-ω])([⁰¹²³⁴⁵⁶⁷⁸⁹]*)(?:\s+)(.+)', display_name or '')
+    if match is None or match[1] not in GREEK_RANK:
+        return None
+    return GREEK_RANK[match[1]], f'{match[3].casefold()} {match[2]}'
 
 
 def choose_display_name(identifiers, fallback):

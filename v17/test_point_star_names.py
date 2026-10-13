@@ -4,10 +4,18 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from point_star_names import choose_display_name, resolve_names
+from point_star_names import bayer_label_key, choose_display_name, resolve_names
 
 
 class StarNameTests(unittest.TestCase):
+    def test_bayer_key_follows_greek_order_and_preserves_components(self):
+        self.assertEqual(bayer_label_key('α² Cap A')[0], 0)
+        self.assertEqual(bayer_label_key('β Ori')[0], 1)
+        self.assertEqual(bayer_label_key('γ And')[0], 2)
+        self.assertLess(bayer_label_key('δ Cyg'), bayer_label_key('ω Cyg'))
+        self.assertIsNone(bayer_label_key('Betelgeuse'))
+        self.assertIsNone(bayer_label_key('51 Peg'))
+
     def test_offline_names_use_cache_and_fallback_without_network(self):
         with tempfile.TemporaryDirectory() as directory:
             cache = Path(directory)/'names.json'
@@ -34,6 +42,21 @@ class StarNameTests(unittest.TestCase):
                 names = resolve_names(['Gaia DR3 9007199254740993'],
                                       cache_path=cache, offline=True)
             self.assertEqual(names['Gaia DR3 9007199254740993']['display_name'], 'α Ori')
+
+    def test_network_failure_keeps_cached_aliases_and_unresolved_fallbacks(self):
+        with tempfile.TemporaryDirectory() as directory:
+            cache = Path(directory)/'names.json'
+            cache.write_text(json.dumps({'HIP 27989': {
+                'display_name': 'α Ori', 'name_source': 'bundled'}}))
+            with patch('astroquery.simbad.Simbad', side_effect=RuntimeError('offline')):
+                names = resolve_names(
+                    ['HIP 27989', 'Gaia DR3 9007199254740993'], cache_path=cache
+                )
+        self.assertEqual(names['HIP 27989']['display_name'], 'α Ori')
+        self.assertEqual(
+            names['Gaia DR3 9007199254740993']['display_name'],
+            'Gaia DR3 9007199254740993',
+        )
 
     def test_plot_labels_omit_unresolved_gaia_identifiers(self):
         from point_star_names import plot_label

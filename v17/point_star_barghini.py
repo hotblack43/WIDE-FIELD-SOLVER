@@ -608,12 +608,29 @@ def resolved_association_gate_arcmin(camera, physical_floor_arcmin):
     return max(float(physical_floor_arcmin), sampling)
 
 
-def select_labels(rows, count=40):
-    """Prefer bright, well-matched dots, then maximise spatial coverage."""
+def select_labels(rows, count=40, *, names=None):
+    """Choose post-fit display labels, using Bayer rounds when names are known."""
     def accurate(row):
         if row.get('residual_arcmin') not in (None, ''):
             return float(row['residual_arcmin']) < LABEL_RESIDUAL_LIMIT_ARCMIN
         return float(row['residual_px']) < 1.
+    if names is not None:
+        from point_star_names import bayer_label_key, plot_label
+        named = []
+        for row in rows:
+            if not accurate(row):
+                continue
+            name = names.get(row['star_id'], {})
+            display_name = name.get('display_name', row['star_id'])
+            candidate = dict(row, display_name=display_name)
+            if plot_label(candidate) is None:
+                continue
+            bayer = bayer_label_key(display_name)
+            group = (0, bayer[0]) if bayer is not None else (1, 0)
+            named.append((group, float(row['magnitude']), row['star_id'], row))
+        named.sort(key=lambda item: (item[0], item[1], item[2]))
+        return [item[3] for item in named[:max(0, count)]]
+
     good = [r for r in rows if accurate(r) and r.get('source_class', 'compact') == 'compact']
     bright = [r for r in good if float(r['magnitude']) <= 4.5]
     candidates = bright if len(bright) >= count else good
@@ -637,9 +654,18 @@ def annotate_stars(image_path, records, output, count=40, *, names_cache=None, o
     import matplotlib.pyplot as plt
     rgb = load_recorded_image(image_path, output).display_rgb
     from point_star_names import plot_label, resolve_names
-    selected = [dict(r) for r in select_labels(records, count)]
-    names = resolve_names([r['star_id'] for r in selected],
+    def accurate(row):
+        if row.get('residual_arcmin') not in (None, ''):
+            return float(row['residual_arcmin']) < LABEL_RESIDUAL_LIMIT_ARCMIN
+        return float(row['residual_px']) < 1.
+
+    display_candidates = sorted(
+        (r for r in records if accurate(r)),
+        key=lambda r: (float(r['magnitude']), r['star_id']),
+    )[:max(160, 4*count)]
+    names = resolve_names([r['star_id'] for r in display_candidates],
                           cache_path=names_cache, offline=offline)
+    selected = [dict(r) for r in select_labels(records, count, names=names)]
     for r in selected:
         r.update(display_name=names[r['star_id']]['display_name'],
                  name_source=names[r['star_id']]['name_source'])
@@ -663,8 +689,12 @@ def annotate_stars(image_path, records, output, count=40, *, names_cache=None, o
     ax.axis('off')
     fig.tight_layout(); save_png(fig, output/f'identified_{len(selected)}_stars.png', dpi=160); plt.close(fig)
     (output/'labelled_stars.json').write_text(json.dumps(dict(
-        selection=('bright compact catalogue matches; angular residual < '
-                   f'{LABEL_RESIDUAL_LIMIT_ARCMIN:g} arcmin; farthest-point spatial coverage'),
+        selection=('post-fit ordinary aliases; Bayer alpha, beta, gamma and later Greek rounds; '
+                   'magnitude order within each round; angular residual < '
+                   f'{LABEL_RESIDUAL_LIMIT_ARCMIN:g} arcmin'),
+        identified_count=len(records),
+        labelled_count=len(selected),
+        identified_stars=[dict(r) for r in records],
         stars=selected), ensure_ascii=False, indent=2)+'\n')
 
 
