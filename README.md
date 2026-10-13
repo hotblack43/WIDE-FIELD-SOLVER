@@ -75,6 +75,23 @@ Compressed FITS input is accepted directly:
 ./go16.sh /full/path/to/image.fits.bz2
 ```
 
+Canon CR2/CR3 collections can be converted to linear, MMTO-layout colour FITS
+without retaining TIFF intermediates:
+
+```bash
+uv run --frozen python scripts/convert_cr3_mmto_rgb.py \
+  --root /path/to/raw-collection \
+  --output /path/to/FITS_RGB_MMTO \
+  --min-exposure 1
+```
+
+The resulting `.fits.bz2` files contain a signed 15-bit, plane-first `R,G,B`
+cube.  Camera white balance and the camera colour matrix are applied linearly;
+the FITS header records `PHOTLINE=T`.  Report figures receive a separate
+display-only gamma rendering, while source detection and photometry retain the
+linear FITS samples.  `--min-exposure 1` keeps one-second and longer frames and
+excludes shorter exposures without deleting their RAW originals.
+
 Canon CR2 input is decoded from the native 14-bit Bayer sensor data, not its
 embedded JPEG preview:
 

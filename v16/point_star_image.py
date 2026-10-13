@@ -287,7 +287,11 @@ def _read_fits(path, *, fits_hdu=None, channel_order=None):
         details = dict(decoder='astropy.io.fits', fits_hdus=records,
                        fits_hdu_selection=('named_colour_extensions' if selected is not None
                                            else str(chosen_index)),
-                       exposure=exposure)
+                       exposure=exposure,
+                       colour_space=primary.get('COLSPACE'),
+                       transfer=primary.get('TRANSFER'),
+                       photometric_linear=primary.get('PHOTLINE'),
+                       display_pedestal=primary.get('PEDESTAL'))
         return planes, layout, details, levels, black_levels
 
 
@@ -309,6 +313,24 @@ def _display(planes, rgb):
         scaled[finite] = (values[finite]-low)*255./(high-low)
         display[..., index] = np.clip(np.rint(scaled), 0, 255).astype(np.uint8)
     return display, 'finite_0.5_99.5_percentile_per_channel'
+
+
+def report_display_rgb(image):
+    """Render linear sRGB for reports without changing scientific samples."""
+    metadata = image.provenance()
+    if (image.rgb is None
+            or metadata.get('colour_space') != 'LINEAR_SRGB'
+            or metadata.get('transfer') != 'LINEAR'
+            or metadata.get('photometric_linear') is not True):
+        return image.display_rgb.copy()
+    pedestal = float(metadata.get('display_pedestal') or 0.)
+    levels = [record.get('level') for record in metadata.get('saturation', {}).values()
+              if record.get('level') is not None]
+    ceiling = max(levels) if levels else float(np.nanmax(image.rgb))
+    span = max(float(ceiling) - pedestal, 1.)
+    signal = np.clip((np.asarray(image.rgb, dtype=float) - pedestal) / span, 0., 1.)
+    encoded = pedestal + span*np.power(signal, 1./2.2)
+    return _display(image.planes, encoded)[0]
 
 
 def fits_image_suffix(path):

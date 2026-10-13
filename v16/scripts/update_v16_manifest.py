@@ -17,6 +17,7 @@ CHANGES = [
     "Retain the v15 early Sun/Moon celestial gate unchanged.",
     "Add required planet-only nightly empirical extinction diagnostics to the v16 MMTO photometry pipeline.",
     "Store explicitly named planet empirical extinction coefficients as immutable generations in the shared results database.",
+    "Render explicitly marked linear-sRGB inputs richly in reports while preserving native linear samples for detection and photometry.",
 ]
 
 

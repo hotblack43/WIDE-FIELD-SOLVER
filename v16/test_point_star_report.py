@@ -752,6 +752,9 @@ class ReportTests(unittest.TestCase):
             self.assertLess(positions[0].x0, positions[1].x0)
             self.assertLess(positions[1].x0, positions[2].x0)
             self.assertGreater(figure.get_figwidth(), figure.get_figheight())
+            footer = ' '.join(text.get_text() for text in figure.texts)
+            self.assertIn('native camera B/G/R', footer)
+            self.assertNotIn('JPEG', footer)
             for axis, channel, catalogue_band in zip(
                     figure.axes, ('R', 'G', 'B'), ('Gaia RP', 'Gaia G', 'Gaia BP')):
                 self.assertTrue(axis.yaxis_inverted())

@@ -18,7 +18,7 @@ from scipy.optimize import least_squares
 
 from point_star_plotting import save_png
 from point_star_names import plot_label
-from point_star_image import load_recorded_image
+from point_star_image import load_recorded_image, report_display_rgb
 
 
 OMR_FEEDS = {'murdoc', 'gtc1', 'gtc2', 'liverpool', 'magic', 'warwick'}
@@ -567,7 +567,7 @@ def write_report_sky_overlay(output, result, science, maximum_labels=40):
         return target
     image_path = source
     loaded = load_recorded_image(image_path, output)
-    rgb = loaded.display_rgb
+    rgb = report_display_rgb(loaded)
     labelled_path = output/'labelled_stars.json'
     labelled = json.loads(labelled_path.read_text()).get('stars', []) if labelled_path.is_file() else []
     labelled = labelled[:maximum_labels]
@@ -879,9 +879,10 @@ def photometry_page(output):
         ax.invert_xaxis()
         ax.invert_yaxis()
     fig.text(.5, .045,
-             'Gaia BP/G/RP and camera JPEG B/G/R are different, broad passbands. '
-             'These plots are diagnostics, not calibrated standard magnitudes; '
-             'colour terms, extinction, vignetting, saturation and JPEG response can add scatter.',
+             'Gaia BP/G/RP and native camera B/G/R are different, broad passbands. '
+             'Instrumental magnitudes use native linear FITS samples, not the report display '
+             'stretch. These plots are diagnostics, not calibrated standard magnitudes; '
+             'colour terms, extinction, vignetting and saturation can add scatter.',
              ha='center', va='center', fontsize=8.3, color='.3', wrap=True)
     return fig
 

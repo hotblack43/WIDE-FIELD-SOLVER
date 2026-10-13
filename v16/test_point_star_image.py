@@ -12,11 +12,37 @@ from astropy.io import fits
 from PIL import Image
 import tifffile
 
-from point_star_image import ImageLayoutError, load_recorded_image, load_scientific_image
+from point_star_image import (ImageLayoutError, load_recorded_image,
+                              load_scientific_image, report_display_rgb)
 from point_star_raw import CameraRawImage
 
 
 class ScientificImageTests(unittest.TestCase):
+    def test_linear_srgb_fits_gets_gamma_only_in_report_display(self):
+        ramp = np.linspace(1870, 2300, 10000).reshape(100, 100)
+        planes = np.stack([ramp, ramp * 1.02, ramp * 1.04]).astype(np.int16)
+        planes[:, -1, :] = 32767
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder)/'knaldgas_rgb.fits'
+            hdu = fits.PrimaryHDU(planes)
+            hdu.header['COLSPACE'] = 'LINEAR_SRGB'
+            hdu.header['TRANSFER'] = 'LINEAR'
+            hdu.header['PEDESTAL'] = 1870
+            hdu.header['PHOTLINE'] = True
+            hdu.writeto(path)
+            image = load_scientific_image(path)
+            originals = {name: plane.copy() for name, plane in image.planes.items()}
+
+            report_rgb = report_display_rgb(image)
+
+        self.assertGreater(float(np.median(report_rgb)),
+                           float(np.median(image.display_rgb)) + 10.)
+        for name, original in originals.items():
+            np.testing.assert_array_equal(image.planes[name], original)
+        self.assertEqual(image.provenance()['colour_space'], 'LINEAR_SRGB')
+        self.assertEqual(image.provenance()['transfer'], 'LINEAR')
+        self.assertTrue(image.provenance()['photometric_linear'])
+
     def test_cr2_uses_native_raw_decoder_not_pillow_preview(self):
         planes = {name: np.full((3, 4), value, dtype=np.uint16)
                   for name, value in zip(('R', 'G1', 'G2', 'B'),

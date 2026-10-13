@@ -549,3 +549,14 @@ astrometric fit and neither centroid nor ephemeris symbol is cosmetically moved.
 Its channel aperture measurements, exposure-normalized count rates and any
 saturation/wing diagnostics are appended to `source_photometry.csv` and
 `identified_source_photometry.csv`.
+**Linear KNALDGAS RGB import (13 October 2026):**
+`scripts/convert_cr3_mmto_rgb.py` converts Canon CR2/CR3 originals through
+LibRaw into half-resolution, camera-white-balanced, camera-matrix linear sRGB.
+It writes an MMTO-compatible primary `R,G,B` cube as positive signed 15-bit
+FITS, with a documented 1,870-ADU pedestal, exposure/camera provenance,
+checksums and optional bzip2 compression.  The stored FITS samples remain
+linear (`PHOTLINE=T`, `TRANSFER=LINEAR`).  For these explicitly marked inputs,
+only the investigator-facing sky overlay applies a gamma-2.2 display rendering;
+detection and photometry continue to use the unchanged linear samples.
+The converter's inclusive `--min-exposure` option supports reproducible
+selection of useful integrations; the KNALDGAS batch uses one second.
