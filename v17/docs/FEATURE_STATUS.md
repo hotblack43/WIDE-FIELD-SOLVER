@@ -8,6 +8,14 @@ R, G and B planes. Reports apply gamma only for display, mark every identified
 star and reserve at most 40 text labels, prioritising Bayer alpha, beta, gamma
 and later Greek rounds. Naming remains post-fit and display-only.
 
+The representative 30-second KNALDGAS frame
+`20261012_214858_ISO100_30.000s_RGB.fits.bz2` validates the boundary with 542
+associations and 0.360813906-pixel RMS. Its measured detector centroids and
+native R/G/B aperture fluxes match the frozen v16 run exactly. The v17 report
+labels 40 stars in alpha/beta/gamma/delta rounds, marks all 542 associations,
+and reports no remaining text-layout conflict. The unchanged input SHA-256 is
+`b78098f253b4c6c81125ef84e55bfb65f64bb9b5a7a47a78ab985a1a657efa0d`.
+
 **Planet-only empirical extinction (10 October 2026):** the inherited v16 MMTO pipeline
 adds a required fourth stage that fits each planet/night/channel/camera sequence
 from planet measurements alone. Accepted Theil--Sen fits require at least 10
