@@ -91,6 +91,10 @@ the FITS header records `PHOTLINE=T`.  Report figures receive a separate
 display-only gamma rendering, while source detection and photometry retain the
 linear FITS samples.  `--min-exposure 1` keeps one-second and longer frames and
 excludes shorter exposures without deleting their RAW originals.
+Useful EXIF provenance is retained in the FITS header, including exposure,
+ISO, f-number, focal length, UTC observation time, focus mode/range and lens
+fields when the camera supplies them. A focus distance is never invented when
+it is absent from the RAW metadata.
 
 Canon CR2 input is decoded from the native 14-bit Bayer sensor data, not its
 embedded JPEG preview:

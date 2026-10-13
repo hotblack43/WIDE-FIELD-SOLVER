@@ -43,9 +43,9 @@ class ExplicitFitsV17LauncherTests(unittest.TestCase):
 
         self.assertEqual(completed.returncode, 0, completed.stderr)
         self.assertIn("FITS [FITS ...]", completed.stdout)
-        self.assertIn("astrometry_overlay.png", completed.stdout)
-        self.assertIn("report_sky_overlay.png", completed.stdout)
-        self.assertIn("solution_annotated.fits", completed.stdout)
+        self.assertIn("INPUT__report.pdf", completed.stdout)
+        self.assertIn("INPUT__solution.fits", completed.stdout)
+        self.assertIn("INPUT__solution_annotated.fits", completed.stdout)
         self.assertIn("KNALDGAS linear RGB", completed.stdout)
 
     def test_direct_fits_and_compressed_fits_are_forwarded_together(self):
@@ -74,7 +74,7 @@ class ExplicitFitsV17LauncherTests(unittest.TestCase):
             self.assertEqual(completed.returncode, 0, completed.stderr)
             self.assertEqual(
                 capture.read_bytes().split(b"\0")[:-1],
-                [os.fsencode(first), os.fsencode(second)],
+                [b"--flat-only", os.fsencode(first), os.fsencode(second)],
             )
 
     def test_quoted_wildcard_expands_and_forwards_native_v17_options(self):
@@ -114,6 +114,7 @@ class ExplicitFitsV17LauncherTests(unittest.TestCase):
             self.assertEqual(
                 forwarded,
                 [
+                    b"--flat-only",
                     os.fsencode(first),
                     os.fsencode(second),
                     b"--results-dir",

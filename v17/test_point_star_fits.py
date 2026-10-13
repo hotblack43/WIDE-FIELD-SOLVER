@@ -145,6 +145,55 @@ class FitsExportTests(unittest.TestCase):
             self.assertTrue(np.issubdtype(hdus[0].data.dtype, np.floating))
             self.assertEqual(hdus[0].header['WFSMODE'], 'DERIVED_LUMINANCE')
 
+    def test_observation_metadata_and_fitted_plate_scale_reach_both_exports(self):
+        planes = np.stack([np.full((180, 240), value, dtype=np.int16)
+                           for value in (2000, 3000, 4000)])
+        input_header = fits.Header()
+        input_header['ORIGIN'] = 'KNALDGAS'
+        input_header['EXPTIME'] = 30.0
+        input_header['EXPOSURE'] = 30.0
+        input_header['ISOSPEED'] = 100
+        input_header['APERTURE'] = 2.8
+        input_header['FOCALLEN'] = 15.0
+        input_header['INSTRUME'] = 'Canon EOS R6m2'
+        input_header['LENSMOD'] = 'RF15mm F2.8 FISHEYE STM'
+        input_header['FOCUSMOD'] = 3
+        input_header['HYPERFOC'] = 2.67476625363634
+        input_header['DATE-OBS'] = '2026-10-12T19:48:58.490000'
+        image = self.out/'metadata.fits'
+        fits.PrimaryHDU(planes, header=input_header).writeto(image)
+        self.result['plate_scale'] = {
+            'centre_arcmin_per_px': 2.65548803399911,
+            'sampled_median_arcmin_per_px': 2.6481656947319507,
+            'sampled_min_arcmin_per_px': 2.638303161655315,
+            'sampled_max_arcmin_per_px': 2.65548803399911,
+            'sample_count': 9,
+        }
+
+        record = self.api.write_fits(image, self.out, self.result, self.science)
+
+        self.assertEqual(record['status'], 'exported')
+        for path, hdu_name in ((self.out/record['file'], 'PRIMARY'),
+                               (self.out/record['annotated_file'], 'RED')):
+            with fits.open(path) as hdus:
+                header = hdus[hdu_name].header
+                self.assertEqual(header['ORIGIN'], 'KNALDGAS')
+                self.assertEqual(header['EXPTIME'], 30.0)
+                self.assertEqual(header['EXPOSURE'], 30.0)
+                self.assertEqual(header['ISOSPEED'], 100)
+                self.assertEqual(header['APERTURE'], 2.8)
+                self.assertEqual(header['FOCALLEN'], 15.0)
+                self.assertEqual(header['INSTRUME'], 'Canon EOS R6m2')
+                self.assertEqual(header['LENSMOD'], 'RF15mm F2.8 FISHEYE STM')
+                self.assertEqual(header['FOCUSMOD'], 3)
+                self.assertAlmostEqual(header['HYPERFOC'], 2.67476625363634)
+                self.assertEqual(header['DATE-OBS'], '2026-10-12T19:48:58.490000')
+                self.assertAlmostEqual(header['PIXSCALE'], 159.3292820399466)
+                self.assertAlmostEqual(header['PSCMED'], 158.88994168391704)
+                self.assertAlmostEqual(header['PSCMIN'], 158.2981896993189)
+                self.assertAlmostEqual(header['PSCMAX'], 159.3292820399466)
+                self.assertEqual(header['PSCSAMP'], 9)
+
     @unittest.skipUnless(shutil.which('solve-field'),'astrometry.net solve-field is not installed')
     def test_solve_field_accepts_plain_rgb_export_without_extension_flag(self):
         _,path=self.export(rgb=True)

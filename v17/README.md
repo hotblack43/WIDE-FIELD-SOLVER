@@ -85,18 +85,20 @@ The launcher accepts `.fits`, `.fit`, `.fts` and their `.bz2` forms. It does not
 convert RAW files implicitly. See [docs/KNALDGAS.md](docs/KNALDGAS.md) for the
 linear science path and RAW-to-FITS provenance.
 
+This KNALDGAS launcher uses flat-only publication. Its temporary analysis
+workspace is removed after each input, and rerunning an input replaces the same
+three input-based product names instead of creating another run directory.
+
 ## Outputs
 
-Each successful run contains a PDF report, machine-readable JSON and CSV
-tables, measured-source photometry, association residuals and a FITS astrometric
-solution. The persistent `stars.sqlite` database in the chosen results directory
-collects available measurements across runs.
-
-The primary PDF and two FITS products are also copied directly under the chosen
-results directory. Their flat filenames include the input-image name and end in
+`go17.sh` retains the complete per-run diagnostics and persistent measurement
+database. `go_fits_v17.sh` instead publishes only the primary PDF and two FITS
+products directly under the chosen results directory. Their stable filenames
+include the input-image name and end in
 `__report.pdf`, `__solution.fits`, and `__solution_annotated.fits`, so ordinary
-filename substring searches do not require traversing `runs/`. Copies remain
-portable to exFAT filesystems, which do not support hard links.
+filename substring searches do not require traversing `runs/`. The solved FITS
+headers retain useful camera/EXIF provenance and record fitted centre and sampled
+plate scales in arcseconds per pixel.
 
 `lunar_evidence.json` records the image-level bright resolved-Moon classification
 and the above/below-horizon audit for retained dates. Planet-search performance

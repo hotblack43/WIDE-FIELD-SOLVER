@@ -19,10 +19,10 @@ Forwarded v17 options:
   --saturation-level VALUE_OR_CHANNEL_MAP
   --blind-planets
 
-Each successful solve writes and reports these annotated products:
-  astrometry_overlay.png
-  report_sky_overlay.png
-  solution_annotated.fits
+Each successful solve writes these stable files directly in --results-dir:
+  INPUT__report.pdf
+  INPUT__solution.fits
+  INPUT__solution_annotated.fits
 EOF
 }
 
@@ -36,7 +36,7 @@ if [[ $# -eq 0 ]]; then
     exit 2
 fi
 
-forwarded=()
+forwarded=("--flat-only")
 input_count=0
 
 append_fits() {

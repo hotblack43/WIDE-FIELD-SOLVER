@@ -35,12 +35,34 @@ def normalise_metadata(record: dict[str, object]) -> dict[str, object]:
         "focal_length": (None if record.get("FocalLength") is None
                          else float(record["FocalLength"])),
         "date_original": record.get("DateTimeOriginal"),
+        "subsec_original": (None if record.get("SubSecTimeOriginal") is None
+                            else str(record["SubSecTimeOriginal"])),
         "offset_original": record.get("OffsetTimeOriginal"),
+        "lens_model": record.get("LensModel"),
+        "lens_info": record.get("LensInfo"),
+        "focus_mode": record.get("FocusMode"),
+        "focus_range": record.get("FocusRange"),
+        "hyperfocal_distance": record.get("HyperfocalDistance"),
+        "circle_of_confusion": record.get("CircleOfConfusion"),
+        "af_area_mode": record.get("AFAreaMode"),
+        "white_balance": record.get("WhiteBalance"),
+        "colour_temperature": record.get("ColorTemperature"),
+        "camera_temperature": record.get("CameraTemperature"),
+        "exposure_mode": record.get("ExposureMode"),
+        "exposure_program": record.get("ExposureProgram"),
+        "metering_mode": record.get("MeteringMode"),
+        "image_stabilization": record.get("ImageStabilization"),
+        "long_exposure_noise_reduction": record.get("LongExposureNoiseReduction"),
+        "high_iso_noise_reduction": record.get("HighISONoiseReduction"),
+        "orientation": record.get("Orientation"),
     }
     date = metadata["date_original"]
     offset = metadata["offset_original"]
     if date and offset:
-        local = datetime.strptime(f"{date}{offset}", "%Y:%m:%d %H:%M:%S%z")
+        subsecond = str(metadata["subsec_original"] or "").strip()
+        stamp = f"{date}.{subsecond}{offset}" if subsecond else f"{date}{offset}"
+        pattern = "%Y:%m:%d %H:%M:%S.%f%z" if subsecond else "%Y:%m:%d %H:%M:%S%z"
+        local = datetime.strptime(stamp, pattern)
         metadata["date_obs"] = local.astimezone(timezone.utc).strftime(
             "%Y-%m-%dT%H:%M:%S.%f"
         )
@@ -138,18 +160,45 @@ def write_mmto_fits(
         header["CAMMAKE"] = str(metadata["make"])
     if metadata.get("exposure") is not None:
         header["EXPOSURE"] = float(metadata["exposure"])
+        header["EXPTIME"] = (float(metadata["exposure"]), "Exposure time, seconds")
     if metadata.get("iso") is not None:
         header["ISOSPEED"] = int(metadata["iso"])
     if metadata.get("f_number") is not None:
         header["APERTURE"] = float(metadata["f_number"])
     if metadata.get("focal_length") is not None:
         header["FOCAL"] = float(metadata["focal_length"])
+        header["FOCALLEN"] = (float(metadata["focal_length"]), "Lens focal length, mm")
     if metadata.get("date_original"):
         header["DATEORIG"] = str(metadata["date_original"])
     if metadata.get("offset_original"):
         header["UTCOFFST"] = str(metadata["offset_original"])
+    if metadata.get("subsec_original"):
+        header["SUBSEC"] = str(metadata["subsec_original"])
     if metadata.get("date_obs"):
         header["DATE-OBS"] = str(metadata["date_obs"])
+    optional_cards = (
+        ("LENSMOD", "lens_model", "Lens model"),
+        ("LENSINFO", "lens_info", "ExifTool LensInfo"),
+        ("FOCUSMOD", "focus_mode", "ExifTool numeric focus mode"),
+        ("FOCUSRNG", "focus_range", "ExifTool numeric focus range"),
+        ("HYPERFOC", "hyperfocal_distance", "ExifTool hyperfocal distance, m"),
+        ("CIRCCONF", "circle_of_confusion", "ExifTool circle of confusion, mm"),
+        ("AFAREAMD", "af_area_mode", "ExifTool numeric AF area mode"),
+        ("WHITEBAL", "white_balance", "ExifTool numeric white balance mode"),
+        ("COLORTMP", "colour_temperature", "Colour temperature, K"),
+        ("CAMTEMP", "camera_temperature", "Camera temperature, deg C"),
+        ("EXPMODE", "exposure_mode", "ExifTool numeric exposure mode"),
+        ("EXPPROG", "exposure_program", "ExifTool numeric exposure program"),
+        ("METERING", "metering_mode", "ExifTool numeric metering mode"),
+        ("IMGSTAB", "image_stabilization", "ExifTool numeric image stabilization"),
+        ("LENR", "long_exposure_noise_reduction", "Long-exposure noise reduction"),
+        ("HINR", "high_iso_noise_reduction", "High-ISO noise reduction"),
+        ("ORIENTAT", "orientation", "ExifTool numeric orientation"),
+    )
+    for keyword, field, comment in optional_cards:
+        value = metadata.get(field)
+        if value not in (None, ""):
+            header[keyword] = (value, comment)
     header.add_history("LibRaw half-size demosaic with camera white balance and colour matrix.")
     header.add_history("Linear sRGB; one common affine scale preserves inter-channel ratios.")
     header.add_history("Positive 15-bit signed-integer convention follows MMTO colour FITS.")
@@ -218,7 +267,12 @@ def filter_by_exposure(
 def extract_metadata(source: Path) -> dict[str, object]:
     command = [
         "exiftool", "-j", "-n", "-Make", "-Model", "-ExposureTime", "-ISO",
-        "-FNumber", "-FocalLength", "-DateTimeOriginal", "-OffsetTimeOriginal",
+        "-FNumber", "-FocalLength", "-DateTimeOriginal", "-SubSecTimeOriginal",
+        "-OffsetTimeOriginal", "-LensModel", "-LensInfo", "-FocusMode",
+        "-FocusRange", "-HyperfocalDistance", "-CircleOfConfusion", "-AFAreaMode",
+        "-WhiteBalance", "-ColorTemperature", "-CameraTemperature", "-ExposureMode",
+        "-ExposureProgram", "-MeteringMode", "-ImageStabilization",
+        "-LongExposureNoiseReduction", "-HighISONoiseReduction", "-Orientation",
         str(Path(source).resolve()),
     ]
     completed = subprocess.run(command, check=True, capture_output=True, text=True)

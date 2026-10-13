@@ -70,6 +70,36 @@ class V17FlatOutputTests(unittest.TestCase):
                 nested = next((results / "runs").glob(f"*/analysis/{path.name.rsplit('__', 1)[1]}"))
                 self.assertNotEqual(path.stat().st_ino, nested.stat().st_ino)
 
+    def test_flat_only_reuses_stable_names_without_creating_run_folders(self):
+        """Restoring timestamp/run nesting must break the KNALDGAS flat workflow."""
+        with tempfile.TemporaryDirectory(prefix="v17 stable flat ") as temporary:
+            root = Path(temporary) / "repo"
+            self.make_package(root)
+            image = root / "20261012 sky RGB.fits.bz2"
+            image.write_bytes(b"image")
+            results = Path(temporary) / "results"
+            command = [str(root / "v17/run.sh"), "--flat-only", str(image),
+                       "--results-dir", str(results)]
+
+            first = subprocess.run(command, cwd="/tmp", text=True,
+                                   capture_output=True, check=False)
+            second = subprocess.run(command, cwd="/tmp", text=True,
+                                    capture_output=True, check=False)
+
+            self.assertEqual(first.returncode, 0, first.stdout + first.stderr)
+            self.assertEqual(second.returncode, 0, second.stdout + second.stderr)
+            self.assertFalse((results / "runs").exists())
+            self.assertFalse((results / "stars.sqlite").exists())
+            self.assertEqual(
+                sorted(path.name for path in results.iterdir()),
+                [
+                    "20261012_sky_RGB__report.pdf",
+                    "20261012_sky_RGB__solution.fits",
+                    "20261012_sky_RGB__solution_annotated.fits",
+                ],
+            )
+            self.assertIn(str(results / "20261012_sky_RGB__report.pdf"), second.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -18,6 +18,8 @@ CHANGES = [
     "Retain linear luminance astrometry and native per-channel RGB photometry.",
     "Prioritize bright Bayer labels while marking every identified catalogue star.",
     "Publish searchable PDF and FITS copies directly in the selected results directory.",
+    "Reuse stable KNALDGAS product names without persistent nested run directories.",
+    "Propagate useful EXIF provenance and fitted plate scales into solved FITS headers.",
 ]
 
 

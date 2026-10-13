@@ -203,6 +203,27 @@ def _fits_hdu_record(hdu, index, header=None):
                 bscale=header.get('BSCALE', 1), bzero=header.get('BZERO', 0))
 
 
+FITS_OBSERVATION_KEYS = (
+    'ORIGIN', 'INSTRUME', 'CAMMAKE', 'LENSMOD', 'LENSINFO', 'EXPTIME',
+    'EXPOSURE', 'ISOSPEED', 'APERTURE', 'FOCALLEN', 'FOCAL', 'DATE-OBS',
+    'DATEORIG', 'UTCOFFST', 'SUBSEC', 'FOCUSMOD', 'FOCUSRNG', 'HYPERFOC',
+    'CIRCCONF', 'AFAREAMD', 'WHITEBAL', 'COLORTMP', 'CAMTEMP', 'EXPMODE',
+    'EXPPROG', 'METERING', 'IMGSTAB', 'LENR', 'HINR', 'ORIENTAT',
+)
+
+
+def _fits_observation_metadata(primary, plane_headers):
+    """Retain only useful observing metadata; never retain input astrometry."""
+    sources = [primary, *plane_headers.values()]
+    metadata = {}
+    for keyword in FITS_OBSERVATION_KEYS:
+        for header in sources:
+            if keyword in header:
+                metadata[keyword] = header[keyword]
+                break
+    return metadata
+
+
 def _read_fits(path, *, fits_hdu=None, channel_order=None):
     with fits.open(path, memmap=False) as hdus:
         original_headers = [hdu.header.copy() for hdu in hdus]
@@ -292,7 +313,9 @@ def _read_fits(path, *, fits_hdu=None, channel_order=None):
                        colour_space=primary.get('COLSPACE'),
                        transfer=primary.get('TRANSFER'),
                        photometric_linear=primary.get('PHOTLINE'),
-                       display_pedestal=primary.get('PEDESTAL'))
+                       display_pedestal=primary.get('PEDESTAL'),
+                       fits_observation_metadata=_fits_observation_metadata(
+                           primary, plane_headers))
         return planes, layout, details, levels, black_levels
 
 

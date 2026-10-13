@@ -64,6 +64,16 @@ class MMTOColourConversionTests(unittest.TestCase):
             "f_number": 2.8,
             "focal_length": 15.0,
             "date_original": "2026:10:12 21:48:58",
+            "subsec_original": "49",
+            "offset_original": "+02:00",
+            "date_obs": "2026-10-12T19:48:58.490000",
+            "lens_info": "15 15 0 0",
+            "focus_mode": 3,
+            "focus_range": 1,
+            "hyperfocal_distance": 2.67476625363634,
+            "circle_of_confusion": 0.0300426785884178,
+            "colour_temperature": 5200,
+            "camera_temperature": 22,
         }
         with tempfile.TemporaryDirectory() as directory:
             source = Path(directory) / "frame.CR3"
@@ -83,7 +93,19 @@ class MMTOColourConversionTests(unittest.TestCase):
                 self.assertEqual(header["ORIGIN"], "KNALDGAS")
                 self.assertEqual(header["INSTRUME"], "Canon EOS R6m2")
                 self.assertEqual(header["EXPOSURE"], 30.0)
+                self.assertEqual(header["EXPTIME"], 30.0)
                 self.assertEqual(header["ISOSPEED"], 100)
+                self.assertEqual(header["APERTURE"], 2.8)
+                self.assertEqual(header["FOCALLEN"], 15.0)
+                self.assertEqual(header["LENSINFO"], "15 15 0 0")
+                self.assertEqual(header["FOCUSMOD"], 3)
+                self.assertEqual(header["FOCUSRNG"], 1)
+                self.assertAlmostEqual(header["HYPERFOC"], 2.67476625363634)
+                self.assertAlmostEqual(header["CIRCCONF"], 0.0300426785884178)
+                self.assertEqual(header["COLORTMP"], 5200)
+                self.assertEqual(header["CAMTEMP"], 22)
+                self.assertEqual(header["SUBSEC"], "49")
+                self.assertEqual(header["DATE-OBS"], "2026-10-12T19:48:58.490000")
                 self.assertEqual(header["BITCAMPX"], 15)
                 self.assertEqual(header["PEDESTAL"], 1870)
                 self.assertEqual(header["COLSPACE"], "LINEAR_SRGB")
@@ -104,7 +126,25 @@ class MMTOColourConversionTests(unittest.TestCase):
             "FNumber": 2.8,
             "FocalLength": 15,
             "DateTimeOriginal": "2026:10:12 21:48:58",
+            "SubSecTimeOriginal": 49,
             "OffsetTimeOriginal": "+02:00",
+            "LensInfo": "15 15 0 0",
+            "LensModel": "RF15mm F2.8 FISHEYE STM",
+            "FocusMode": 3,
+            "FocusRange": 1,
+            "HyperfocalDistance": 2.67476625363634,
+            "CircleOfConfusion": 0.0300426785884178,
+            "AFAreaMode": 0,
+            "WhiteBalance": 0,
+            "ColorTemperature": 5200,
+            "CameraTemperature": 22,
+            "ExposureMode": 1,
+            "ExposureProgram": 1,
+            "MeteringMode": 3,
+            "ImageStabilization": 257,
+            "LongExposureNoiseReduction": 0,
+            "HighISONoiseReduction": 0,
+            "Orientation": 1,
         }
 
         metadata = converter.normalise_metadata(record)
@@ -113,7 +153,13 @@ class MMTOColourConversionTests(unittest.TestCase):
         self.assertEqual(metadata["model"], "Canon EOS R6m2")
         self.assertEqual(metadata["exposure"], 30.0)
         self.assertEqual(metadata["iso"], 100)
-        self.assertEqual(metadata["date_obs"], "2026-10-12T19:48:58.000000")
+        self.assertEqual(metadata["date_obs"], "2026-10-12T19:48:58.490000")
+        self.assertEqual(metadata["lens_model"], "RF15mm F2.8 FISHEYE STM")
+        self.assertEqual(metadata["focus_mode"], 3)
+        self.assertEqual(metadata["focus_range"], 1)
+        self.assertAlmostEqual(metadata["hyperfocal_distance"], 2.67476625363634)
+        self.assertEqual(metadata["colour_temperature"], 5200)
+        self.assertEqual(metadata["camera_temperature"], 22)
 
     def test_bzip2_product_is_verified_and_uncompressed_input_is_removed(self):
         converter = load_converter()

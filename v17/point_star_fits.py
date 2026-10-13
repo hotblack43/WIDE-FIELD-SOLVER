@@ -378,8 +378,29 @@ def load_saved_sky_mask(output, shape):
                       valid_fraction=float(mask.mean()))
 
 
+def observation_header(metadata, plate_scale=None):
+    """Build provenance-only observing cards; these never influence the fit."""
+    header = fits.Header()
+    for keyword, value in (metadata.get('fits_observation_metadata') or {}).items():
+        if value is not None:
+            header[keyword] = value
+    scale = plate_scale or {}
+    scale_cards = (
+        ('PIXSCALE', 'centre_arcmin_per_px', 'Fitted centre scale, arcsec/pixel'),
+        ('PSCMED', 'sampled_median_arcmin_per_px', 'Fitted sampled median, arcsec/pixel'),
+        ('PSCMIN', 'sampled_min_arcmin_per_px', 'Fitted sampled minimum, arcsec/pixel'),
+        ('PSCMAX', 'sampled_max_arcmin_per_px', 'Fitted sampled maximum, arcsec/pixel'),
+    )
+    for keyword, field, comment in scale_cards:
+        if scale.get(field) is not None:
+            header[keyword] = (float(scale[field]) * 60., comment)
+    if scale.get('sample_count') is not None:
+        header['PSCSAMP'] = (int(scale['sample_count']), 'Plate-scale sample count')
+    return header
+
+
 def write_fits(image_path, output, result, science):
-    """Export without modifying the solution or using observation metadata."""
+    """Export provenance without letting observation metadata modify the solution."""
     output=Path(output)
     output.mkdir(parents=True,exist_ok=True)
     target=output/'solution.fits'
@@ -401,6 +422,8 @@ def write_fits(image_path, output, result, science):
                 planes[name] = pixels.astype(np.uint8)
         sky_mask,mask_info=load_saved_sky_mask(output,scientific.shape)
         header,validation=validated_header(camera,valid_mask=sky_mask)
+        observing=observation_header(scientific.provenance(),result.get('plate_scale'))
+        header.extend(observing,update=True)
         rows=collect_overlays(output,camera,science)
         region,text,layout=overlay_products(rows,camera.shape)
         rgb=len(planes)>1
@@ -414,7 +437,8 @@ def write_fits(image_path, output, result, science):
         compatible.header['WFSORIG']=''.join(planes) if rgb else 'MONO'
         compatible.header['WFSMODE']='DERIVED_LUMINANCE' if rgb else 'ORIGINAL'
         compatible.header['COMMENT']='2-D primary image for solve-field; overlays are in solution_annotated.fits'
-        primary=fits.PrimaryHDU() if rgb else fits.PrimaryHDU(next(iter(planes.values())),header)
+        primary=(fits.PrimaryHDU(header=observing)
+                 if rgb else fits.PrimaryHDU(next(iter(planes.values())),header))
         primary.header['WFSRGB']=rgb
         primary.header['WFSREG']='DS9TEXT'
         primary.header['COMMENT']='For full labels/styles: v5/view_fits.sh solution_annotated.fits'
