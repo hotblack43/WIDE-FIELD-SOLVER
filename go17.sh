@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Independent early celestial-gate development runtime.
+set -euo pipefail
+repo="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+exec "$repo/v17/run.sh" "$@"

@@ -62,6 +62,16 @@ class V17BoundaryTests(unittest.TestCase):
             ),
             "0.17.0",
         )
+        for launcher in ("go17.sh", "go_v0.17.0.sh"):
+            with self.subTest(launcher=launcher):
+                answer = subprocess.run(
+                    [str(ROOT / launcher), "--version"],
+                    cwd="/tmp",
+                    text=True,
+                    capture_output=True,
+                )
+                self.assertEqual(answer.returncode, 0, answer.stderr)
+                self.assertIn("0.17.0", answer.stdout)
     def test_v17_owns_runtime_assets(self):
         for relative in (
             "uv.lock",
