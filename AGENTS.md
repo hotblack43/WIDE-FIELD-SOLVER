@@ -133,6 +133,14 @@ planet-only empirical-extinction runtime are frozen at the v17 boundary; their
 hashes are in `docs/v16-runtime.json`. Develop KNALDGAS linear-RGB work only in
 `v17/` and its `go17.sh`, `go_v0.17.0.sh`, and `go_fits_v17.sh` launchers.
 
+V17 remains the independent KNALDGAS line. Develop the MMTO bounded-backlog
+continuation only in `v18/` and its `go18.sh`, `go_v0.18.0.sh`, and
+`go_mmto_photometry_v18.sh` launchers. V18 is based directly on frozen v16;
+successful v16 receipts count as completed MMTO analyses. Preserve the v18
+per-invocation work cap: scan the complete date range for the backlog overview,
+then download and analyse only the two newest observing nights containing an
+image without a successful v16 or v18 receipt. V17 receipts never count.
+
 Develop later upgrades in a new version directory with its own launchers,
 catalogue, lockfile, ephemeris data and source manifest. Never overwrite v11 or
 another preserved runtime. All versions must work without `.worktrees`; update

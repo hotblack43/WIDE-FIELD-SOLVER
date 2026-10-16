@@ -143,7 +143,7 @@ zenith or observation epoch. Instrumental count rates are not calibrated fluxes.
 Metadata is not allowed to seed or tune the stellar astrometric fit; when used
 later for planetary analysis it is labelled as metadata-conditioned. See
 [the durable scientific goal](GOAL.md) and
-[the detailed v0.16.0 feature inventory](v16/docs/FEATURE_STATUS.md).
+[the detailed v0.18.0 feature inventory](v18/docs/FEATURE_STATUS.md).
 
 ## Citation, releases and reuse
 
@@ -153,7 +153,9 @@ and redistribute it under those terms. If you use WIDE-FIELD SOLVER in
 scientific work, please use the repository's [`CITATION.cff`](CITATION.cff);
 GitHub's **Cite this repository** menu supplies APA and BibTeX forms.
 
-For a current repository checkout, `go16.sh` is the recommended launcher. The
+For current MMTO work, `go18.sh` and `go_mmto_photometry_v18.sh` are the
+recommended launchers. The independent v17 launcher remains specific to
+KNALDGAS inputs. The
 latest packaged GitHub release remains v0.11.0; its complete `go11.sh` runtime
 is frozen by `docs/v11-runtime.json`. Historical solvers remain available for
 reproducible comparison and are protected by recorded manifests and regression
@@ -293,3 +295,20 @@ or selected operational failures. It never requeues `solver_failed` jobs.
 Each attempt records the exact hashes of `go10.sh` and
 `v10/SOURCE_MANIFEST.json` used for provenance; those hashes are evidence, not
 input to the blind solution.
+
+### Bounded MMTO v18 backlog
+
+`go_mmto_photometry_v18.sh` is the comprehensive MMTO path. It checks every
+Arizona observing night from 2026-06-30 through the current night, newest
+first, using the established Sun-below--12-degree and 20-minute cadence rules.
+The complete scan identifies the two newest nights containing any selected
+image without a successful v16 or v18 receipt. Each invocation downloads only
+missing frames from those nights, then analyses only their verified incomplete
+images. Repeated invocations therefore move the download-and-analysis backlog
+backward without one large transfer or solver queue. V17 is not part of this
+MMTO lineage and its receipts never count.
+
+```bash
+./go_mmto_photometry_v18.sh --dry-run
+./go_mmto_photometry_v18.sh
+```

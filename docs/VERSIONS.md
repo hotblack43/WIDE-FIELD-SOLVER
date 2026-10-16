@@ -20,20 +20,24 @@ tests; they are not aliases for the newest code.
 | `go13.sh` | Frozen | v0.13.0 integrated-refraction runtime |
 | `go14.sh` | Frozen | v0.14.0 lunar corroboration runtime |
 | `go15.sh` | Frozen | v0.15.0 early combined Sun/Moon gating |
-| `go16.sh` | **Recommended for new work** | v0.16.0 planet-only empirical extinction in the MMTO workflow |
+| `go16.sh` | Frozen | v0.16.0 planet-only empirical extinction in the MMTO workflow |
+| `go17.sh` | Independent development line | v0.17.0 KNALDGAS linear-RGB work |
+| `go18.sh` | **Recommended MMTO runtime** | v0.18.0 two-night-at-a-time acquisition and resumable analysis from 2026-06-30 |
 
-For new work from a repository checkout, use `go16.sh`. Use an earlier launcher
-only when reproducing an older result or testing an explicitly
-version-dependent change.
+For bounded MMTO archive work from a repository checkout, use
+`go_mmto_photometry_v18.sh`. Use `go17.sh` only for its independent KNALDGAS
+line, and use earlier launchers when reproducing older results.
 
 ## Releases versus the development line
 
 The latest packaged GitHub release is v0.11.0. Download the named `.tar.gz` or
 `.zip` asset and `SHA256SUMS` from that release; GitHub's automatic source-code
-archives are not the curated runnable package. The recommended v0.16.0 runtime
-is currently used from a repository checkout and adds the MMTO planet-only
-empirical-extinction stage. Every earlier launcher remains a separately
-preserved runtime.
+archives are not the curated runnable package. The recommended MMTO v0.18.0
+runtime is currently used from a repository checkout and adds bounded,
+resumable acquisition and analysis around the frozen v16 scientific model.
+Each invocation scans the complete backlog, then downloads and analyses only
+the two newest observing nights lacking complete successful v16/v18 receipts.
+Every earlier launcher remains separate.
 
 The complete launcher syntax and output-directory behaviour remain in the
 repository's `REFERENCE.md`.
