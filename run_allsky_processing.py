@@ -54,7 +54,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--archive", type=Path, default=REPO_ROOT / "raw_allsky_samples"
     )
     parser.add_argument(
-        "--results-dir", type=Path, default=REPO_ROOT / "results/mmto-automatic"
+        "--results-dir", type=Path, default=REPO_ROOT / "results"
     )
     parser.add_argument("--repo-root", type=Path, default=REPO_ROOT)
     parser.add_argument(

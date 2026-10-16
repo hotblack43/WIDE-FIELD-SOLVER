@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 import unittest
 
-from allsky_download.cron import cron_download_arguments, processing_cron_lines
+from allsky_download.cron_v20 import cron_download_arguments, processing_cron_lines
 from allsky_download.cli import build_parser
 from allsky_download.model import Candidate
 from allsky_download.registry import SourceRegistry
@@ -20,7 +20,8 @@ class CronTests(unittest.TestCase):
         self.assertNotIn("/usr/bin/flock", command)
         self.assertNotIn("/tmp/wide-field-raw-allsky-mmto.lock", command)
         self.assertIn("/opt/uv run --frozen python run_allsky_processing.py", command)
-        self.assertIn("/opt/wide-field-solver/results/mmto-automatic", command)
+        self.assertIn("--results-dir /opt/wide-field-solver/results ", command)
+        self.assertNotIn("mmto-automatic", command)
 
     def test_mmto_uses_same_noon_bounded_night_before_and_after_midnight(self):
         evening = cron_download_arguments(

@@ -619,9 +619,6 @@ def main(argv=None):
                         help='faint Gaia G limit for same-exposure RGB colour diagrams')
     args = parser.parse_args(argv)
     databases = args.database or [ROOT/'results/stars.sqlite']
-    automatic_database = ROOT/'results/mmto-automatic/stars.sqlite'
-    if args.database is None and automatic_database.is_file():
-        databases.append(automatic_database)
     keys = list(PLOT_REGISTRY) if args.plots == 'all' else args.plots.split(',')
     if not keys or any(k not in PLOT_REGISTRY for k in keys):
         parser.error('Choose plot keys from: '+', '.join(PLOT_REGISTRY))

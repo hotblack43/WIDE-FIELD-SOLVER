@@ -2,11 +2,10 @@
 
 Run `./go_plot_things_1.sh` from any directory. It regenerates
 `results/inspection/inspection.pdf` and matching PNG/CSV/JSON products.
-By default it combines `results/stars.sqlite` and, when present,
-`results/mmto-automatic/stars.sqlite`, then uses the latest successful
-usable-provenance solution for every distinct MMTO image across those databases,
-solver versions and configurations. Repeat `--database PATH` to use a different
-explicit set of databases.
+By default it reads the sole canonical database, `results/stars.sqlite`, then
+uses the latest successful usable-provenance solution for every distinct MMTO
+image across solver versions and configurations. Repeat `--database PATH` only
+to request a deliberate comparison with an external database.
 This makes the plots an all-night observational view rather than a single-release
 comparison. Each image is still represented only once, and the solver version and
 configuration used for every measurement remain recorded in the CSV and JSON.

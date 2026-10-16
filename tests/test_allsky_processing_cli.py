@@ -15,6 +15,7 @@ from allsky_download.http import DownloadedFile
 from allsky_download.manifest import Manifest
 from allsky_download.model import Candidate
 from allsky_download.processing import ProcessingQueue
+import run_allsky_processing as processing_cli
 
 
 REPO = Path(__file__).resolve().parent.parent
@@ -22,6 +23,10 @@ SCRIPT = REPO / "run_allsky_processing.py"
 
 
 class ProcessingCliTests(unittest.TestCase):
+    def test_default_results_directory_is_the_canonical_repository_directory(self):
+        args = processing_cli.build_parser().parse_args(["status"])
+        self.assertEqual(args.results_dir, REPO / "results")
+
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name)

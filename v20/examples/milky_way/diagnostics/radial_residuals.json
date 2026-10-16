@@ -1,0 +1,76 @@
+{
+  "centre_xy_px": [
+    784.0,
+    721.5
+  ],
+  "radius_definition": "distance from geometric image centre",
+  "count": 3653,
+  "rms_px": 0.39789212340991864,
+  "maximum_residual_px": 2.2112063405477445,
+  "maximum_measured_radius_px": 734.7544776363856,
+  "radial_sign": "predicted minus measured; positive points away from image centre",
+  "selection": "All fitted associations, with no extra clipping; no stars withheld. The solver selected associations with a 3-pixel gate before its final fit. Unmatched sources and empty radial regions have no evaluated residual.",
+  "bins": [
+    {
+      "radius_low_px": 0.0,
+      "radius_high_px": 200.0,
+      "count": 405,
+      "rms_px": 0.5364975659765362,
+      "median_px": 0.4385299113072875,
+      "p90_px": 0.8056860994236683,
+      "maximum_px": 1.6866461814558174,
+      "mean_radial_offset_px": 0.3286873704764382
+    },
+    {
+      "radius_low_px": 200.0,
+      "radius_high_px": 400.0,
+      "count": 1179,
+      "rms_px": 0.3789393299695889,
+      "median_px": 0.23337370433099688,
+      "p90_px": 0.5616720402592491,
+      "maximum_px": 1.8819139759194896,
+      "mean_radial_offset_px": -0.0684601197773008
+    },
+    {
+      "radius_low_px": 400.0,
+      "radius_high_px": 600.0,
+      "count": 1548,
+      "rms_px": 0.3426277963187462,
+      "median_px": 0.20355870280433083,
+      "p90_px": 0.4918048622075042,
+      "maximum_px": 1.7038750589723506,
+      "mean_radial_offset_px": 0.014693563469419838
+    },
+    {
+      "radius_low_px": 600.0,
+      "radius_high_px": 800.0,
+      "count": 521,
+      "rms_px": 0.46103661921562483,
+      "median_px": 0.3059592107099053,
+      "p90_px": 0.7106090972918813,
+      "maximum_px": 2.2112063405477445,
+      "mean_radial_offset_px": -0.04023068688959871
+    },
+    {
+      "radius_low_px": 800.0,
+      "radius_high_px": 1000.0,
+      "count": 0,
+      "rms_px": null,
+      "median_px": null,
+      "p90_px": null,
+      "maximum_px": null,
+      "mean_radial_offset_px": null
+    },
+    {
+      "radius_low_px": 1000.0,
+      "radius_high_px": 1200.0,
+      "count": 0,
+      "rms_px": null,
+      "median_px": null,
+      "p90_px": null,
+      "maximum_px": null,
+      "mean_radial_offset_px": null
+    }
+  ],
+  "unmatched_detections_shown": 35
+}

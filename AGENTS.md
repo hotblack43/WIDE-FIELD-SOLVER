@@ -141,6 +141,14 @@ per-invocation work cap: scan the complete date range for the backlog overview,
 then download and analyse only the two newest observing nights containing an
 image without a successful v16 or v18 receipt. V17 receipts never count.
 
+`go19.sh`, `go_v0.19.0.sh`, and the complete `v19/` variable-star runtime are
+frozen at the v20 boundary; their hashes are in `docs/v19-runtime.json`.
+Develop bounded backward MMTO acquisition only in `v20/` and its `go20.sh`,
+`go_v0.20.0.sh`, and `go_mmto_photometry_v20.sh` launchers. V20 must list one
+MMTO observing night at a time, select no more than the requested image cap,
+and treat every existing solver receipt as completed work regardless of solver
+version or exit code.
+
 Develop later upgrades in a new version directory with its own launchers,
 catalogue, lockfile, ephemeris data and source manifest. Never overwrite v11 or
 another preserved runtime. All versions must work without `.worktrees`; update

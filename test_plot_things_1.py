@@ -517,6 +517,11 @@ class RunSelectionTests(unittest.TestCase):
         self.assertEqual({Path(row['source_database']).name for row in rows},
                          {'automatic.sqlite'})
 
+class CanonicalDatabaseDefaultTests(unittest.TestCase):
+    def test_default_plot_code_does_not_open_the_retired_automatic_database(self):
+        source = (Path(__file__).resolve().parent / "scripts/plot_things_1.py").read_text()
+        self.assertNotIn("results/mmto-automatic/stars.sqlite", source)
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -153,7 +153,7 @@ and redistribute it under those terms. If you use WIDE-FIELD SOLVER in
 scientific work, please use the repository's [`CITATION.cff`](CITATION.cff);
 GitHub's **Cite this repository** menu supplies APA and BibTeX forms.
 
-For current MMTO work, `go18.sh` and `go_mmto_photometry_v18.sh` are the
+For current MMTO work, `go20.sh` and `go_mmto_photometry_v20.sh` are the
 recommended launchers. The independent v17 launcher remains specific to
 KNALDGAS inputs. The
 latest packaged GitHub release remains v0.11.0; its complete `go11.sh` runtime
@@ -246,9 +246,11 @@ New files downloaded by the recurring MMTO command are atomically added to a
 durable FIFO queue in `raw_allsky_samples/manifest.sqlite`. Existing files and
 checksum-verified `REUSE` events are deliberately not bulk-enqueued. A separate
 worker takes at most one image per invocation and calls the frozen root
-`go10.sh` with that image only. It writes automated runs to
-`results/mmto-automatic/`; neither `go10.sh` nor `v10/` is modified, and the
-frozen `go11.sh`/`v11/` release is explicitly outside this queue.
+`go10.sh` with that image only. Every automated receipt is written to the one
+canonical `results/stars.sqlite`; neither `go10.sh` nor `v10/` is modified, and
+the frozen `go11.sh`/`v11/` release is explicitly outside this queue. Historical
+analysis directories below `results/mmto-automatic/runs/` remain preserved, but
+that directory is not a second operational database.
 
 The processing worker is normally scheduled every two minutes under
 `/tmp/wide-field-solver-mmto-processing.lock`, independently of acquisition.
@@ -296,19 +298,19 @@ Each attempt records the exact hashes of `go10.sh` and
 `v10/SOURCE_MANIFEST.json` used for provenance; those hashes are evidence, not
 input to the blind solution.
 
-### Bounded MMTO v18 backlog
+### Bounded MMTO v20 backward walk
 
-`go_mmto_photometry_v18.sh` is the comprehensive MMTO path. It checks every
-Arizona observing night from 2026-06-30 through the current night, newest
-first, using the established Sun-below--12-degree and 20-minute cadence rules.
-The complete scan identifies the two newest nights containing any selected
-image without a successful v16 or v18 receipt. Each invocation downloads only
-missing frames from those nights, then analyses only their verified incomplete
-images. Repeated invocations therefore move the download-and-analysis backlog
-backward without one large transfer or solver queue. V17 is not part of this
-MMTO lineage and its receipts never count.
+`go_mmto_photometry_v20.sh` requests one Arizona observing-night directory at
+a time using the established Sun-below--12-degree and 20-minute cadence rules.
+It stops discovery as soon as it has selected 40 unfinished images by default,
+downloads only selected manifest gaps, and records a durable results-local
+cursor for the next run. Any prior solver receipt marks the source checksum as
+done, irrespective of solver version or scientific success. Existing verified
+downloads without receipts are analysed first. The default historical floor is
+2026-06-30 and can be changed explicitly with `--oldest-night`.
 
 ```bash
-./go_mmto_photometry_v18.sh --dry-run
-./go_mmto_photometry_v18.sh
+./go_mmto_photometry_v20.sh --dry-run
+./go_mmto_photometry_v20.sh
+./go_mmto_photometry_v20.sh --max-images 12
 ```
