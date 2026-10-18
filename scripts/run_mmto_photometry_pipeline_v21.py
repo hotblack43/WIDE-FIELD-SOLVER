@@ -400,6 +400,17 @@ def _stage_commands(
         ],
     ))
     stages.append((
+        "same_sidereal_transmission",
+        [
+            "uv", "run", "--frozen", "python",
+            str(Path(repo_root) / "scripts" / "map_mmto_sidereal_transmission_v21.py"),
+            "--database", str(Path(database)),
+            "--manifest", str(Path(manifest)),
+            "--nightly-calibration", str(Path(output) / "nightly-extinction-v21"),
+            "--output", str(Path(output) / "same-sidereal-transmission"),
+        ],
+    ))
+    stages.append((
         "known_site_time_validation",
         [
             "uv", "run", "--frozen", "python",

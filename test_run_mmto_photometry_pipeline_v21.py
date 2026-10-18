@@ -432,6 +432,10 @@ def fake_product_stages(root: Path) -> None:
         root / "scripts" / "validate_mmto_site_time_v21.py",
         "#!/usr/bin/env python3\nraise SystemExit(0)\n",
     )
+    executable(
+        root / "scripts" / "map_mmto_sidereal_transmission_v21.py",
+        "#!/usr/bin/env python3\nraise SystemExit(0)\n",
+    )
 
 
 class V21OrchestrationTests(unittest.TestCase):
@@ -530,7 +534,7 @@ class V21OrchestrationTests(unittest.TestCase):
         )
         self.assertEqual(
             [name for name, _ in actual[len(inherited):]],
-            ["v21_grey_extinction", "known_site_time_validation"],
+            ["v21_grey_extinction", "same_sidereal_transmission", "known_site_time_validation"],
         )
         for (name, command), (_, old_command) in zip(actual[:len(inherited)], inherited, strict=True):
             if name == "variable_star_time_series":
@@ -636,6 +640,7 @@ class V21OrchestrationTests(unittest.TestCase):
                 "planet_photometry",
                 "planet_empirical_extinction",
                 "v21_grey_extinction",
+                "same_sidereal_transmission",
                 "known_site_time_validation",
             ],
         )
