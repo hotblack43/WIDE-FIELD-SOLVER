@@ -69,6 +69,40 @@ class V21RuntimeBoundaryTests(unittest.TestCase):
         }
         self.assertEqual(manifest["sha256"], dict(sorted(actual.items())))
 
+    def test_v21_inherited_scientific_data_match_frozen_parent(self):
+        """Version substitutions must not alter inherited catalogue payloads."""
+        parent_data = ROOT / "v20" / "data"
+        child_data = ROOT / "v21" / "data"
+        inherited = {
+            path.relative_to(parent_data)
+            for path in parent_data.rglob("*")
+            if path.is_file() and path.name != "README.md"
+        }
+        self.assertEqual(
+            inherited,
+            {
+                path.relative_to(child_data)
+                for path in child_data.rglob("*")
+                if path.is_file() and path.name != "README.md"
+            },
+        )
+        for relative_path in sorted(inherited):
+            self.assertEqual(
+                _sha256(child_data / relative_path),
+                _sha256(parent_data / relative_path),
+                f"inherited scientific data changed: {relative_path}",
+            )
+
+    def test_v21_vsx_crossmatch_matches_recorded_provenance(self):
+        data = ROOT / "v21" / "data"
+        provenance = json.loads(
+            (data / "vsx_crossmatch.provenance.json").read_text()
+        )
+        self.assertEqual(
+            _sha256(data / "vsx_crossmatch.csv"),
+            provenance["output_csv_sha256"],
+        )
+
     def test_frozen_v20_snapshot_covers_and_matches_complete_runtime(self):
         snapshot_path = ROOT / "docs/v20-runtime.json"
         snapshot = json.loads(snapshot_path.read_text())
