@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import time
 import unittest
 
 import numpy as np
@@ -79,10 +80,77 @@ class GreyExtinctionTests(unittest.TestCase):
         self.assertEqual(fit.status, "deficient_airmass_leverage")
         self.assertIsNone(fit.extinction_mag_per_airmass)
 
+    def test_rejects_large_exactly_confounded_airmass_after_sparse_projection(self):
+        generator = np.random.default_rng(42)
+        star_airmass = generator.uniform(0.0, 20.0, 3000)
+        image_airmass = generator.uniform(0.0, 0.3, 40)
+        rows = []
+        for star in range(3000):
+            for image in generator.choice(40, size=5, replace=False):
+                airmass = 1.0 + star_airmass[star] + image_airmass[image]
+                delta_mag = (
+                    -11.0 + 0.2 * airmass + 0.01 * math.sin(star)
+                    + 0.02 * math.cos(image)
+                )
+                rows.append(measurement(star, int(image), airmass, delta_mag))
+
+        fit = fit_grey_extinction(rows, min_stars=20, min_images=3)
+
+        self.assertEqual(fit.status, "deficient_airmass_leverage")
+        self.assertIsNone(fit.extinction_mag_per_airmass)
+
     def test_rejects_too_few_images_or_stars(self):
         rows = [measurement(star, 0, 1.0 + star * 0.1, -11) for star in range(3)]
         fit = fit_grey_extinction(rows, min_stars=3, min_images=2)
         self.assertEqual(fit.status, "insufficient_images")
+
+    def test_accepts_exact_zero_response_from_lsqr_initialization(self):
+        rows = [
+            measurement(
+                star, image,
+                1.0 + 0.1 * image + 0.05 * star + 0.03 * image * star,
+                0.0,
+            )
+            for image in range(3)
+            for star in range(5)
+        ]
+
+        fit = fit_grey_extinction(rows, min_stars=3, min_images=3)
+
+        self.assertEqual(fit.status, "accepted")
+        self.assertAlmostEqual(fit.extinction_mag_per_airmass, 0.0, places=12)
+        self.assertTrue(all(abs(value) < 1e-12 for value in fit.residuals))
+
+    def test_large_nightly_network_avoids_dense_solver_failure(self):
+        offsets = (-0.18, 0.07, 0.11)
+        rows = []
+        for image in range(3):
+            for star in range(2000):
+                airmass = 1.02 + 0.11 * image + 0.003 * star + 0.0007 * image * star
+                noise = 0.005 * math.sin(0.37 * star + image)
+                outlier = 4.0 if image == 2 and star == 1999 else 0.0
+                delta_mag = (
+                    -11.0 + 0.0002 * star + 0.24 * airmass
+                    + offsets[image] + noise + outlier
+                )
+                rows.append(measurement(star, image, airmass, delta_mag))
+
+        started = time.monotonic()
+        fit = fit_grey_extinction(
+            rows, min_stars=20, min_images=3, loss_scale_mag=0.08
+        )
+        elapsed = time.monotonic() - started
+
+        self.assertEqual(fit.status, "accepted")
+        self.assertAlmostEqual(fit.extinction_mag_per_airmass, 0.24, delta=0.001)
+        self.assertEqual(fit.sample_count, len(rows))
+        self.assertEqual(len(fit.residuals), len(rows))
+        self.assertGreater(fit.extinction_uncertainty, 0.0)
+        for image, expected in enumerate(offsets):
+            self.assertAlmostEqual(
+                fit.image_offsets[f"image-{image}"], expected, delta=0.002
+            )
+        self.assertLess(elapsed, 10.0)
 
 
 if __name__ == "__main__":

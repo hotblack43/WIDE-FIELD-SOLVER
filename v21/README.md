@@ -110,7 +110,11 @@ Post-processing adds these v21 directories below each pipeline output:
 - `nightly-extinction-v21/` fits
   `m(s,i) = a_s + k X(s,i) + Z_i` independently by night and channel, with
   `sum_i Z_i = 0`. The soft-L1 fit retains fixed sample membership and rejects
-  deficient airmass leverage rather than reporting a confounded slope.
+  deficient airmass leverage rather than reporting a confounded slope. Its
+  numerical solve uses the exact sparse Jacobian with LSMR and computes the
+  `k`/`Z_i` covariance through the algebraically equivalent star-intercept
+  Schur complement. This preserves the model and measurements while avoiding
+  dense-SVD failures for production nights containing thousands of stars.
 - `same-sidereal-transmission/` pairs distinct nights one-to-one by apparent
   sidereal time. Maps plot actual measured centroids only; sparse comparisons
   are marked insufficient and never interpolated.

@@ -17,7 +17,8 @@ development line.
 - Adds read-only post-fit MMTO site/time, airmass, refraction-direction, stellar
   epoch and secondary planet-candidate comparisons.
 - Fits constrained per-exposure grey transparency terms with shared nightly
-  extinction and fixed sample membership.
+  extinction and fixed sample membership, using an exact sparse Jacobian so
+  production-sized star networks do not require a dense SVD.
 - Produces distinct-night same-sidereal-time differential transmission maps at
   unchanged measured centroids with no interpolation.
 

@@ -7,6 +7,8 @@ from typing import Sequence
 
 import numpy as np
 from scipy.optimize import least_squares
+from scipy.sparse import csr_matrix, hstack
+from scipy.sparse.linalg import lsqr
 
 from scripts.nightly_extinction import StarKey, StellarMeasurement
 
@@ -73,56 +75,112 @@ def fit_grey_extinction(
     star_index = {key: index for index, key in enumerate(stars)}
     image_index = {key: index for index, key in enumerate(images)}
     nstar, nimage, nrow = len(stars), len(images), len(rows)
-    nuisance = np.zeros((nrow, nstar + nimage - 1), dtype=float)
     x = np.asarray([row.airmass for row in rows], dtype=float)
     y = np.asarray([row.delta_magnitude for row in rows], dtype=float)
+    row_indices = np.arange(nrow)
+    star_columns = np.asarray([star_index[row.star_key] for row in rows])
+    star_design = csr_matrix(
+        (np.ones(nrow), (row_indices, star_columns)), shape=(nrow, nstar)
+    )
+    image_rows: list[int] = []
+    image_columns: list[int] = []
+    image_values: list[float] = []
     for row_index, row in enumerate(rows):
-        nuisance[row_index, star_index[row.star_key]] = 1.0
         image = image_index[row.source_sha256]
         if image < nimage - 1:
-            nuisance[row_index, nstar + image] = 1.0
+            image_rows.append(row_index)
+            image_columns.append(image)
+            image_values.append(1.0)
         else:
-            nuisance[row_index, nstar:] = -1.0
-    design = np.column_stack((nuisance[:, :nstar], x, nuisance[:, nstar:]))
-    nuisance_rank = int(np.linalg.matrix_rank(nuisance))
-    design_rank = int(np.linalg.matrix_rank(design))
+            image_rows.extend([row_index] * (nimage - 1))
+            image_columns.extend(range(nimage - 1))
+            image_values.extend([-1.0] * (nimage - 1))
+    image_design = csr_matrix(
+        (image_values, (image_rows, image_columns)),
+        shape=(nrow, nimage - 1),
+    )
+    design = hstack((star_design, csr_matrix(x[:, None]), image_design), format="csr")
+
+    parent = list(range(nstar + nimage))
+
+    def find(node: int) -> int:
+        while parent[node] != node:
+            parent[node] = parent[parent[node]]
+            node = parent[node]
+        return node
+
+    for row in rows:
+        left = find(star_index[row.star_key])
+        right = find(nstar + image_index[row.source_sha256])
+        if left != right:
+            parent[right] = left
+    component_count = len({find(node) for node in range(nstar + nimage)})
+    nuisance_rank = nstar + nimage - component_count
     parameter_count = design.shape[1]
-    projected_x = x - nuisance @ np.linalg.lstsq(nuisance, x, rcond=None)[0]
+    image_design_dense = image_design.toarray()
+    star_counts = np.bincount(star_columns, minlength=nstar)
+    star_mean_x = np.bincount(
+        star_columns, weights=x, minlength=nstar
+    ) / star_counts
+    centered_x = x - star_mean_x[star_columns]
+    star_mean_image = np.asarray(star_design.T @ image_design_dense) / star_counts[:, None]
+    centered_image = image_design_dense - star_mean_image[star_columns]
+    image_projection = np.linalg.lstsq(centered_image, centered_x, rcond=None)[0]
+    projected_x = centered_x - centered_image @ image_projection
     leverage = float(np.linalg.norm(projected_x))
+    design_rank = nuisance_rank + int(leverage >= 1e-8)
     if design_rank <= nuisance_rank or leverage < 1e-8:
         return _rejected("deficient_airmass_leverage", rows, stars, images, rank=design_rank, parameters=parameter_count, leverage=leverage)
     if design_rank != parameter_count:
         return _rejected("deficient_design_rank", rows, stars, images, rank=design_rank, parameters=parameter_count, leverage=leverage)
 
-    initial = np.linalg.lstsq(design, y, rcond=None)[0]
+    initial_solution = lsqr(
+        design, y, atol=1e-12, btol=1e-12,
+        iter_lim=max(1000, 10 * parameter_count),
+    )
+    if initial_solution[1] not in (0, 1, 2, 4, 5):
+        raise RuntimeError(
+            f"grey extinction LSQR initialization failed with istop={initial_solution[1]}"
+        )
+    initial = initial_solution[0]
     solution = least_squares(
         lambda parameters: design @ parameters - y,
-        initial, loss="soft_l1", f_scale=loss_scale_mag, x_scale="jac",
+        initial, jac=lambda _parameters: design, tr_solver="lsmr",
+        tr_options={"atol": 1e-12, "btol": 1e-12},
+        loss="soft_l1", f_scale=loss_scale_mag, x_scale="jac",
         ftol=1e-12, xtol=1e-12, gtol=1e-12, max_nfev=5000,
     )
     residual = design @ solution.x - y
     weights = 1.0 / np.sqrt(1.0 + (residual / loss_scale_mag) ** 2)
-    weighted = design * np.sqrt(weights)[:, None]
     dof = max(nrow - parameter_count, 1)
     variance = float(np.sum(weights * residual**2) / dof)
-    covariance = variance * np.linalg.pinv(weighted.T @ weighted)
+    global_design = np.column_stack((x, image_design_dense))
+    weighted_star = star_design.multiply(np.sqrt(weights)[:, None])
+    weighted_global = global_design * np.sqrt(weights)[:, None]
+    star_information = np.asarray(weighted_star.power(2).sum(axis=0)).ravel()
+    cross_information = np.asarray(weighted_star.T @ weighted_global)
+    global_information = weighted_global.T @ weighted_global
+    schur_information = global_information - cross_information.T @ (
+        cross_information / star_information[:, None]
+    )
+    global_covariance = variance * np.linalg.pinv(schur_information)
     slope_index = nstar
     image_start = nstar + 1
     offsets = list(map(float, solution.x[image_start:]))
     offsets.append(-sum(offsets))
     offset_uncertainties: list[float | None] = []
     for image in range(nimage):
-        contrast = np.zeros(parameter_count)
+        contrast = np.zeros(nimage)
         if image < nimage - 1:
-            contrast[image_start + image] = 1.0
+            contrast[1 + image] = 1.0
         else:
-            contrast[image_start:] = -1.0
-        value = float(contrast @ covariance @ contrast)
+            contrast[1:] = -1.0
+        value = float(contrast @ global_covariance @ contrast)
         offset_uncertainties.append(math.sqrt(max(0.0, value)))
     return GreyExtinctionFit(
         status="accepted",
         extinction_mag_per_airmass=float(solution.x[slope_index]),
-        extinction_uncertainty=math.sqrt(max(0.0, float(covariance[slope_index, slope_index]))),
+        extinction_uncertainty=math.sqrt(max(0.0, float(global_covariance[0, 0]))),
         star_intercepts={key: float(solution.x[index]) for index, key in enumerate(stars)},
         image_offsets=dict(zip(images, offsets)),
         image_offset_uncertainties=dict(zip(images, offset_uncertainties)),
