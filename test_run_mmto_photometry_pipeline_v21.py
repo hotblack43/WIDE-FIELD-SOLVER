@@ -426,6 +426,11 @@ def fake_product_stages(root: Path) -> None:
         "plot_planet_empirical_extinction.sh",
     ):
         executable(root / name, "#!/usr/bin/env bash\nexit 0\n")
+    (root / "scripts").mkdir()
+    executable(
+        root / "scripts" / "validate_mmto_site_time_v21.py",
+        "#!/usr/bin/env python3\nraise SystemExit(0)\n",
+    )
 
 
 class V21OrchestrationTests(unittest.TestCase):
@@ -518,8 +523,11 @@ class V21OrchestrationTests(unittest.TestCase):
         output = Path("/output")
         actual = PIPELINE._stage_commands(root, database, manifest, output)
         inherited = v19_stage_commands(root, database, manifest, output)
-        self.assertEqual([name for name, _ in actual], [name for name, _ in inherited])
-        for (name, command), (_, old_command) in zip(actual, inherited, strict=True):
+        self.assertEqual(
+            [name for name, _ in actual[:-1]], [name for name, _ in inherited]
+        )
+        self.assertEqual(actual[-1][0], "known_site_time_validation")
+        for (name, command), (_, old_command) in zip(actual[:-1], inherited, strict=True):
             if name == "variable_star_time_series":
                 self.assertEqual(command[1:], old_command[1:])
                 self.assertEqual(command[0], "/repo/plot_mmto_variable_stars_v21.sh")
@@ -622,6 +630,7 @@ class V21OrchestrationTests(unittest.TestCase):
                 "variable_star_time_series",
                 "planet_photometry",
                 "planet_empirical_extinction",
+                "known_site_time_validation",
             ],
         )
         self.assertEqual(saved_state["next_night"], "2026-10-14")

@@ -390,6 +390,16 @@ def _stage_commands(
                 name,
                 [str(Path(repo_root) / "plot_mmto_variable_stars_v21.sh"), *command[1:]],
             )
+    stages.append((
+        "known_site_time_validation",
+        [
+            "uv", "run", "--frozen", "python",
+            str(Path(repo_root) / "scripts" / "validate_mmto_site_time_v21.py"),
+            "--database", str(Path(database)),
+            "--manifest", str(Path(manifest)),
+            "--output", str(Path(output) / "known-site-time-validation"),
+        ],
+    ))
     return tuple(stages)
 
 
