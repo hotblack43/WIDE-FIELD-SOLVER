@@ -183,3 +183,36 @@ The later investigation should:
 6. Decide whether existing photometric products require reprocessing. Preserve
    astrometric solving when calibration is absent, while labelling photometry
    explicitly as spatially uncorrected.
+
+## MMTO FITS storage deduplication
+
+Recorded 2026-10-18. No cleanup is presently warranted. A SHA-256 audit of
+1,818 FITS-like files under `/home/pth` whose paths contain `mmto` found two
+duplicate-content groups, not widespread duplication. The operational archive
+under `raw_allsky_samples/mmto/` contained 1,784 verified images with 1,784
+distinct recorded SHA-256 values.
+
+The main repeated object is the 6,109,004-byte MMTO regression observation
+`2026_09_19__02_20_01.fits.bz2`, present 18 times across the central archive,
+the frozen v11--v20 example directories, two worktree paths, and the separate
+`MMTO_ASTROMETRY_COMPARISON` checkout. Retaining one physical copy would recover
+about 99 MiB. A separate uncompressed `MMTO.fits` occurs once on the Desktop
+and once in pCloud, with at most another 11.5 MiB recoverable. Thus the measured
+duplicate overhead is only about 110.5 MiB, less than one percent of the
+approximately 11.1 GiB examined. The inaccessible
+`/media/pth/WD_BLUE_1TB/lost+found` directory was outside the audit.
+
+Routine MMTO acquisition already writes to the single root-level archive; it
+does not download every observation into each solver version. The repeated
+compressed file is a deliberately bundled offline regression fixture. Git also
+stores identical tracked contents as one blob even though each checked-out
+regular file occupies filesystem blocks.
+
+If storage pressure or future version proliferation makes this worth revisiting,
+consider one documented canonical fixture with explicit relative symbolic links,
+or a checksum-addressed object store with logical date/name links. Add a dry-run
+duplicate report and verify every SHA-256 value before changing any path. Preserve
+the frozen-version manifests, offline demonstrations, notices, and the ability to
+use a released package without an undeclared external archive. A strict one-copy
+layout conflicts with self-contained historical version directories unless the
+release-packaging step materializes their linked fixture deliberately.
