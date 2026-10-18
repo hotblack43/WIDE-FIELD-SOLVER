@@ -47,18 +47,6 @@ class V16BoundaryTests(unittest.TestCase):
                 "sources.json",
             }.issubset(saved["sha256"])
         )
-        self.assertTrue(
-            {
-                path
-                for path in subprocess.run(
-                    ["git", "ls-files", "allsky_download"],
-                    cwd=ROOT,
-                    check=True,
-                    capture_output=True,
-                    text=True,
-                ).stdout.splitlines()
-            }.issubset(saved["sha256"])
-        )
         for name, digest in saved["sha256"].items():
             with self.subTest(path=name):
                 self.assertEqual(

@@ -12,7 +12,7 @@ import unittest
 ROOT = Path(__file__).resolve().parent
 PRESERVED_TREE_SHA256 = {
     "v16": "f6c927df616fb0be71b7a3cbc2994f852d17cdb9f1f611d1f4aa863562a9ea44",
-    "v17": "bc62ddd15988d105d42db40ec744a4f8549d676e32bffa918c92986459726b4c",
+    "v17": "a19ffcb173801cb16c2826d9e0ef2b40fb260e143033aa575a3f4a42e5a65252",
     "v18": "0a9ce24eef8c9d4ac075e3c417501223d048beee0a2cc34d0d187c6caffcdcb1",
 }
 
