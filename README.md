@@ -153,8 +153,9 @@ and redistribute it under those terms. If you use WIDE-FIELD SOLVER in
 scientific work, please use the repository's [`CITATION.cff`](CITATION.cff);
 GitHub's **Cite this repository** menu supplies APA and BibTeX forms.
 
-For current MMTO work, `go20.sh` and `go_mmto_photometry_v20.sh` are the
-recommended launchers. The independent v17 launcher remains specific to
+For FITS-header-timed MMTO reprocessing, `go21.sh` and
+`go_mmto_photometry_v21.sh` are the current development launchers. The frozen
+v20 launchers remain available for reproducible comparison. The independent v17 launcher remains specific to
 KNALDGAS inputs. The
 latest packaged GitHub release remains v0.11.0; its complete `go11.sh` runtime
 is frozen by `docs/v11-runtime.json`. Historical solvers remain available for
@@ -314,3 +315,9 @@ downloads without receipts are analysed first. The default historical floor is
 ./go_mmto_photometry_v20.sh
 ./go_mmto_photometry_v20.sh --max-images 12
 ```
+
+V21 preserves that bounded one-night-at-a-time acquisition rule while
+intentionally reprocessing verified local downloads under a distinct v21
+receipt. It uses FITS-header exposure midpoints and MMTO coordinates only in
+separate products after the blind solver and secondary blind planet search are
+fixed.

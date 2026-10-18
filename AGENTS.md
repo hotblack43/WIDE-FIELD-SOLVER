@@ -149,6 +149,14 @@ MMTO observing night at a time, select no more than the requested image cap,
 and treat every existing solver receipt as completed work regardless of solver
 version or exit code.
 
+`go20.sh`, `go_v0.20.0.sh`, `go_mmto_photometry_v20.sh`, and the complete
+`v20/` bounded-backlog runtime are frozen at the v21 boundary; their hashes are
+in `docs/v20-runtime.json`. Develop FITS-header-timed MMTO reprocessing only in
+`v21/` and its `go21.sh`, `go_v0.21.0.sh`, and
+`go_mmto_photometry_v21.sh` launchers. V21 may reuse the existing archive and
+append-only results database, but only v21 receipts count as completed v21
+analysis. Site and time remain post-fit validation inputs.
+
 Develop later upgrades in a new version directory with its own launchers,
 catalogue, lockfile, ephemeris data and source manifest. Never overwrite v11 or
 another preserved runtime. All versions must work without `.worktrees`; update
