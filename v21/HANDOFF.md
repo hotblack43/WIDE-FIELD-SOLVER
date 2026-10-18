@@ -1,19 +1,40 @@
 # V21 MMTO header-time reprocessing handoff
 
 Use `./go21.sh IMAGE` or `./go_v0.21.0.sh IMAGE` for the independent v21
-runtime. Use `./go_mmto_photometry_v21.sh` to select at most 40 unfinished MMTO
-images by default, download only selected gaps, analyse them, and regenerate
-every v19 photometry and variable-star product.
+runtime. Use `./go_mmto_photometry_v21.sh` to select at most 40 MMTO images
+without a v21 receipt by default, reuse local files, download only selected
+gaps, analyse them, and regenerate inherited and v21 post-fit products.
 The original `go_mmto_photometry.sh` remains pinned to v11.
 
 The v21 queue never requests a multi-night historical listing. It drains
-downloaded images without receipts first, checks the current night, and then
+downloaded images without v21 receipts first, checks the current night, and then
 continues from `RESULTS_DIR/mmto-v21-backfill-state.json`, one night per remote
-request. Any solver receipt counts as done, including earlier versions and
-scientific failures. Dry runs, transfer failures, and solver failures without
+request. A v21 receipt counts as done, including a recorded scientific failure;
+earlier receipts do not. Dry runs, transfer failures, and solver failures without
 receipts do not advance the cursor; a later product-stage failure does not undo
 completed image work. Use `--max-images N` to change the 40-image cap and
 `--oldest-night` to move the default 2026-06-30 floor deliberately.
+
+The two existing databases are reused. V21 appends versioned runs to
+`results/stars.sqlite` and adds `mmto_v21_observations` to
+`raw_allsky_samples/manifest.sqlite`. Each selected file must pass recognised
+MMTO header checks. The exposure midpoint is computed from header start plus
+half the header duration; neither filename time nor discovery time is a
+scientific fallback.
+
+The automated solve is forced to use `--blind-planets` and is never given site
+or time. Once the receipt and blind products are fixed, read-only stages write:
+
+- `nightly-extinction-v21/image_grey_transparency.csv` and
+  `grey_transparency.png` for constrained per-exposure `Z_i` terms;
+- `same-sidereal-transmission/sidereal_pair_summary.csv`, measured-point CSVs,
+  and non-interpolated map PNGs;
+- `known-site-time-validation/mmto_site_time_validation.csv`, per-star airmass
+  comparisons, secondary planet-candidate offsets and two validation PNGs.
+
+The historical `run_distributed_gobig.py` remote workflow is v11-specific. Do
+not point it at v21 or the shared MMTO databases. Local verification and a dry
+run are required before designing a separate Monster2 v21 dispatcher.
 
 The variable product uses `m_corrected = m_machine - k_night,channel X` from
 the nightly-extinction sidecar, then flux-averages all measurements by VSX

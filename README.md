@@ -321,3 +321,34 @@ intentionally reprocessing verified local downloads under a distinct v21
 receipt. It uses FITS-header exposure midpoints and MMTO coordinates only in
 separate products after the blind solver and secondary blind planet search are
 fixed.
+
+Only a v21 receipt suppresses v21 reprocessing; v16--v20 receipts remain
+historical evidence but do not count as v21 completion. Existing verified files
+are reused in place, while selected files missing locally are downloaded before
+analysis. V21 appends run products to `results/stars.sqlite` and records parsed
+header observations in `raw_allsky_samples/manifest.sqlite` table
+`mmto_v21_observations`; it does not create replacement databases.
+
+Every selected FITS header is validated before the blind solve. The start time
+comes from the recognised MMTO header clock, and the scientific timestamp is
+the exposure midpoint (start plus half the FITS exposure). Filenames and the
+archive-listing timestamp never supply scientific time. The automated solve is
+forced to retain the blind planet search; known time and site are revealed only
+to later read-only validation.
+
+After solving, v21 adds three products: a constrained nightly model
+`m(s,i) = a_s + k X(s,i) + Z_i` with zero-mean per-exposure grey terms,
+distinct-night transmission maps paired at nearly identical apparent sidereal
+time, and known-site/time comparisons of the fixed blind zenith, stellar epoch,
+airmass, refraction direction and saved planet candidates. Planet candidates
+are secondary evidence and are not reranked by the header time.
+
+```bash
+./go_mmto_photometry_v21.sh --dry-run
+./go_mmto_photometry_v21.sh --max-images 12
+```
+
+The historical Monster2 dispatcher in `run_distributed_gobig.py` is pinned to
+the frozen v11 goBIG format and must not be used for v21. A v21-aware remote
+dispatcher would need its own synchronization, shared-database import and
+receipt tests before remote batch work.

@@ -46,7 +46,7 @@ licence.
 
 ## Solve your own image
 
-Pass one or more input files to the v0.20 launcher:
+Pass one or more input files to the v0.21 launcher:
 
 ```sh
 ./go21.sh /full/path/to/image.fits.bz2
@@ -74,7 +74,7 @@ Run the incremental MMTO queue from the repository root with:
 ./go_mmto_photometry_v21.sh
 ```
 
-V21 first selects verified local MMTO images lacking any solver receipt. It
+V21 first selects verified local MMTO images lacking a v21 solver receipt. It
 then requests one MMTO observing-night directory at a time: the current night
 first, followed by a durable newest-to-oldest cursor. Discovery stops as soon
 as the default 40-image cap is full, so it never inventories the complete
@@ -84,13 +84,44 @@ historical archive merely to discard most entries. Change the cap with:
 ./go_mmto_photometry_v21.sh --max-images 12
 ```
 
-Any solver receipt for an image SHA-256 counts as completed work, irrespective
-of solver generation or scientific success. Downloads without receipts remain
-eligible. The cursor is stored beside `stars.sqlite`, advances only after the
-selected batch has receipts, and remains unchanged after a dry run, transfer
+Any v21 solver receipt for an image SHA-256 counts as completed v21 work,
+including a recorded scientific failure. Earlier-version receipts remain
+preserved but do not suppress v21 reprocessing. Downloads without v21 receipts
+remain eligible. The cursor is stored beside `stars.sqlite` and advances only
+after the selected batch has receipts. It remains unchanged after a dry run, transfer
 failure, or solver failure without a receipt. A later derived-product failure
 does not undo completed image work. The default oldest night is 2026-06-30;
 moving earlier requires an explicit `--oldest-night YYYY-MM-DD`.
+
+Before every solve, the recognised MMTO FITS header is checked and its exposure
+start, duration and midpoint are stored in the existing download manifest's
+`mmto_v21_observations` table. Header contradictions are fatal. The filename is
+not a clock, and the archive-listing timestamp remains discovery provenance
+only. The solve command includes `--blind-planets` and receives no observation
+time or site coordinates.
+
+The existing `results/stars.sqlite` and
+`raw_allsky_samples/manifest.sqlite` files are reused append-only. V21 does not
+copy either database. Runs are distinguished by solver version `0.21.0`, while
+the header-observation sidecar is keyed by the verified source SHA-256.
+
+Post-processing adds these v21 directories below each pipeline output:
+
+- `nightly-extinction-v21/` fits
+  `m(s,i) = a_s + k X(s,i) + Z_i` independently by night and channel, with
+  `sum_i Z_i = 0`. The soft-L1 fit retains fixed sample membership and rejects
+  deficient airmass leverage rather than reporting a confounded slope.
+- `same-sidereal-transmission/` pairs distinct nights one-to-one by apparent
+  sidereal time. Maps plot actual measured centroids only; sparse comparisons
+  are marked insufficient and never interpolated.
+- `known-site-time-validation/` reveals the MMTO header midpoint and site only
+  after the blind products are fixed. It compares zenith, latitude, airmass,
+  parallactic/refraction direction, stellar epoch and every saved blind planet
+  candidate without altering or reranking candidates.
+
+The legacy nightly-extinction products are still generated for compatibility
+with inherited variable-star and planet plots. The new grey-corrected table
+uses `m_corrected = m_machine - k X - Z_i` and is separately auditable.
 
 V21 runs every v19 plotting stage, including
 `variable-stars/variable_star_time_series.pdf`. Each panel is a chronological
@@ -147,12 +178,11 @@ refraction candidates become exact zero rather than being forced into the
 result. Plots show measured centroids
 and model predictions without cosmetic displacement.
 
-Planet validation is a separate stage. If trustworthy observation-time metadata
-is supplied, planet positions may be checked at that time and are explicitly
-reported as metadata-conditioned. With no usable time, the solver can perform a
-broader blind epoch search. A common planetary epoch is evidence from the
-detected sources, not a replacement for reliable observation metadata, and
-sparse or ambiguous planet detections can leave the epoch weakly constrained.
+Planet inference remains a secondary blind result in the automated MMTO path.
+The known FITS midpoint is compared with all saved candidates only after the
+solve. That comparison never changes candidate order, associations or the
+fitted astrometry. A common planetary epoch is useful evidence from detected
+sources, but sparse or ambiguous detections can leave it weakly constrained.
 
 Moon corroboration is separate from the point-source fit. The image is classified
 once. A possible Moon must be unidentified, at least 0.5 degrees across its
