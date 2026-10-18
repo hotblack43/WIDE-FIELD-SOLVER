@@ -37,6 +37,8 @@ from scripts.run_mmto_photometry_pipeline_v19 import (
     _stage_commands as _v19_stage_commands,
     _write_summary,
 )
+from v21.mmto_observations import record_observation
+from v21.mmto_time import read_mmto_observation
 
 
 SOLVER_VERSION = "0.21.0"
@@ -176,8 +178,19 @@ def _processed_source_digests(results_database: Path) -> set[str]:
         return {
             str(row[0])
             for row in database.execute(
-                "SELECT DISTINCT source_sha256 FROM runs "
-                "WHERE source_sha256 IS NOT NULL"
+                """
+                SELECT DISTINCT source_sha256 FROM runs
+                WHERE source_sha256 IS NOT NULL
+                  AND (
+                      solver_version=?
+                      OR CASE
+                          WHEN json_valid(source_manifest_json)
+                          THEN json_extract(source_manifest_json, '$.version')=?
+                          ELSE 0
+                      END
+                  )
+                """,
+                (SOLVER_VERSION, SOLVER_VERSION),
             )
         }
 
@@ -610,6 +623,22 @@ def acquire_selected_images(
                     except Exception as exc:
                         manifest.record_failure(item.candidate, str(exc))
                         raise
+                try:
+                    observation = read_mmto_observation(existing.path)
+                    record_observation(
+                        manifest.connection,
+                        existing.sha256,
+                        item.candidate.url,
+                        item.candidate.observed_at.astimezone(UTC).isoformat().replace(
+                            "+00:00", "Z"
+                        ),
+                        observation,
+                    )
+                except Exception as exc:
+                    raise OperationalFailure(
+                        "cannot establish authoritative MMTO FITS-header time for "
+                        f"{existing.path}: {exc}"
+                    ) from exc
                 ready.append(
                     ReadyImage(
                         candidate=item.candidate,
@@ -619,16 +648,6 @@ def acquire_selected_images(
                     )
                 )
     return tuple(ready), reused, downloaded
-
-
-def _has_any_receipt(database_path: Path, source_sha256: str) -> bool:
-    if not Path(database_path).is_file():
-        return False
-    with closing(_read_only_database(database_path)) as database:
-        row = database.execute(
-            "SELECT 1 FROM runs WHERE source_sha256=? LIMIT 1", (source_sha256,)
-        ).fetchone()
-    return row is not None
 
 
 def _latest_v21_receipt(database_path: Path, source_sha256: str) -> int | None:
@@ -660,6 +679,7 @@ def solver_command(repo_root: Path, source: Path, results: Path) -> list[str]:
         str(Path(source)),
         "--results-dir",
         str(Path(results)),
+        "--blind-planets",
     ]
 
 
@@ -783,7 +803,7 @@ def main(
                 processing = summary["processing"]
                 assert isinstance(processing, dict)
                 for number, image in enumerate(ready, 1):
-                    if _has_any_receipt(database, image.source_sha256):
+                    if _latest_v21_receipt(database, image.source_sha256) is not None:
                         processing["receipt_skipped"] += 1
                         _message(
                             f"SKIP [{number}/{len(ready)}] receipt exists: "
@@ -805,12 +825,12 @@ def main(
                     receipt = _latest_v21_receipt(database, image.source_sha256)
                     if receipt is None:
                         raise OperationalFailure(
-                            "go20 produced no v21 database receipt for "
+                            "go21 produced no v21 database receipt for "
                             f"{image.source_sha256}"
                         )
                     if (return_code == 0) != (receipt == 0):
                         raise OperationalFailure(
-                            "go20 exit status disagrees with its database receipt for "
+                            "go21 exit status disagrees with its database receipt for "
                             f"{image.source_sha256}"
                         )
                     processing["succeeded" if receipt == 0 else "solver_failed"] += 1
