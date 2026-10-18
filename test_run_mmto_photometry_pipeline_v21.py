@@ -421,6 +421,7 @@ def fake_product_stages(root: Path) -> None:
     for name in (
         "plot_mmto_lightcurves.sh",
         "calibrate_mmto_extinction.sh",
+        "calibrate_mmto_extinction_v21.sh",
         "plot_mmto_variable_stars_v21.sh",
         "plot_ALL_planets.sh",
         "plot_planet_empirical_extinction.sh",
@@ -524,10 +525,14 @@ class V21OrchestrationTests(unittest.TestCase):
         actual = PIPELINE._stage_commands(root, database, manifest, output)
         inherited = v19_stage_commands(root, database, manifest, output)
         self.assertEqual(
-            [name for name, _ in actual[:-1]], [name for name, _ in inherited]
+            [name for name, _ in actual[:len(inherited)]],
+            [name for name, _ in inherited],
         )
-        self.assertEqual(actual[-1][0], "known_site_time_validation")
-        for (name, command), (_, old_command) in zip(actual[:-1], inherited, strict=True):
+        self.assertEqual(
+            [name for name, _ in actual[len(inherited):]],
+            ["v21_grey_extinction", "known_site_time_validation"],
+        )
+        for (name, command), (_, old_command) in zip(actual[:len(inherited)], inherited, strict=True):
             if name == "variable_star_time_series":
                 self.assertEqual(command[1:], old_command[1:])
                 self.assertEqual(command[0], "/repo/plot_mmto_variable_stars_v21.sh")
@@ -630,6 +635,7 @@ class V21OrchestrationTests(unittest.TestCase):
                 "variable_star_time_series",
                 "planet_photometry",
                 "planet_empirical_extinction",
+                "v21_grey_extinction",
                 "known_site_time_validation",
             ],
         )

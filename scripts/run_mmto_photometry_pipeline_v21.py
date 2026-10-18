@@ -391,6 +391,15 @@ def _stage_commands(
                 [str(Path(repo_root) / "plot_mmto_variable_stars_v21.sh"), *command[1:]],
             )
     stages.append((
+        "v21_grey_extinction",
+        [
+            str(Path(repo_root) / "calibrate_mmto_extinction_v21.sh"),
+            "--database", str(Path(database)),
+            "--manifest", str(Path(manifest)),
+            "--output", str(Path(output) / "nightly-extinction-v21"),
+        ],
+    ))
+    stages.append((
         "known_site_time_validation",
         [
             "uv", "run", "--frozen", "python",
