@@ -67,8 +67,6 @@ def fit_grey_extinction(
         return _rejected("insufficient_stars", rows, stars, images)
     if len(images) < min_images:
         return _rejected("insufficient_images", rows, stars, images)
-    if any(sum(row.star_key == star for row in rows) < 2 for star in stars):
-        return _rejected("star_not_repeated", rows, stars, images)
     if any(sum(row.source_sha256 == image for row in rows) < 2 for image in images):
         return _rejected("image_has_insufficient_stars", rows, stars, images)
 

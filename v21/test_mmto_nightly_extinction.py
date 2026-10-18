@@ -58,6 +58,17 @@ class GreyExtinctionTests(unittest.TestCase):
         self.assertEqual(set(fit.image_offset_uncertainties), set(fit.image_offsets))
         self.assertGreater(fit.design_rank, 0)
 
+    def test_keeps_singleton_edge_star_when_repeated_network_identifies_fit(self):
+        rows, _, _, slope = self.synthetic()
+        rows.append(measurement(99, 0, 1.37, -8.2 + slope * 1.37))
+        fit = fit_grey_extinction(
+            rows, min_stars=3, min_images=3, loss_scale_mag=0.08
+        )
+        self.assertEqual(fit.status, "accepted")
+        self.assertEqual(fit.sample_count, len(rows))
+        self.assertIn(("catalogue", "star-99"), fit.star_intercepts)
+        self.assertEqual(len(fit.residuals), len(rows))
+
     def test_rejects_airmass_that_is_confounded_with_image_offsets(self):
         rows = []
         for image in range(3):
