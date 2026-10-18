@@ -1,0 +1,41 @@
+I notice that each mmto image is saved MULTIPLE TIMES:
+
+th@pth-13:~/WORKSHOP/WIDE-FIELD-SOLVER$ ds9  mmto/mmto-skycam/2026-09-18/2026_09_19__02_20_01.fits.bz2
+pth@pth-13:~/WORKSHOP/WIDE-FIELD-SOLVER$ find . -name 2026_09_19__02_20_01.fits.bz2
+./v11/examples/mmto/2026_09_19__02_20_01.fits.bz2
+./.worktrees/v12-radial-model-comparison/v11/examples/mmto/2026_09_19__02_20_01.fits.bz2
+./.worktrees/v12-radial-model-comparison/v12/examples/mmto/2026_09_19__02_20_01.fits.bz2
+./v17/examples/mmto/2026_09_19__02_20_01.fits.bz2
+./v19/examples/mmto/2026_09_19__02_20_01.fits.bz2
+./raw_allsky_samples/mmto/mmto-skycam/2026-09-18/2026_09_19__02_20_01.fits.bz2
+./v16/examples/mmto/2026_09_19__02_20_01.fits.bz2
+./v13/examples/mmto/2026_09_19__02_20_01.fits.bz2
+./v20/examples/mmto/2026_09_19__02_20_01.fits.bz2
+./v15/examples/mmto/2026_09_19__02_20_01.fits.bz2
+./v12/examples/mmto/2026_09_19__02_20_01.fits.bz2
+./v18/examples/mmto/2026_09_19__02_20_01.fits.bz2
+./v14/examples/mmto/2026_09_19__02_20_01.fits.bz2
+pth@pth-13:~/WORKSHOP/WIDE-FIELD-SOLVER$ find . -name 2026_09_19__02_20_01.fits.bz2 | xargs ls -alt
+-rw-rw-r-- 1 pth pth 6109004 Oct 16 08:49 ./v20/examples/mmto/2026_09_19__02_20_01.fits.bz2
+-rw-rw-r-- 1 pth pth 6109004 Oct  6 17:15 ./v14/examples/mmto/2026_09_19__02_20_01.fits.bz2
+-rw-rw-r-- 1 pth pth 6109004 Oct  6 17:15 ./v15/examples/mmto/2026_09_19__02_20_01.fits.bz2
+-rw-rw-r-- 1 pth pth 6109004 Oct  6 17:15 ./v16/examples/mmto/2026_09_19__02_20_01.fits.bz2
+-rw-rw-r-- 1 pth pth 6109004 Oct  6 17:15 ./v17/examples/mmto/2026_09_19__02_20_01.fits.bz2
+-rw-rw-r-- 1 pth pth 6109004 Oct  6 17:15 ./v18/examples/mmto/2026_09_19__02_20_01.fits.bz2
+-rw-rw-r-- 1 pth pth 6109004 Oct  6 17:15 ./v19/examples/mmto/2026_09_19__02_20_01.fits.bz2
+-rw-rw-r-- 1 pth pth 6109004 Sep 24 12:09 ./v12/examples/mmto/2026_09_19__02_20_01.fits.bz2
+-rw-rw-r-- 1 pth pth 6109004 Sep 24 12:09 ./v13/examples/mmto/2026_09_19__02_20_01.fits.bz2
+-rw-rw-r-- 1 pth pth 6109004 Sep 24 12:09 ./.worktrees/v12-radial-model-comparison/v11/examples/mmto/2026_09_19__02_20_01.fits.bz2
+-rw-rw-r-- 1 pth pth 6109004 Sep 24 12:09 ./.worktrees/v12-radial-model-comparison/v12/examples/mmto/2026_09_19__02_20_01.fits.bz2
+-rw-r--r-- 1 pth pth 6109004 Sep 20 17:55 ./v11/examples/mmto/2026_09_19__02_20_01.fits.bz2
+-rw------- 1 pth pth 6109004 Sep 19 11:27 ./raw_allsky_samples/mmto/mmto-skycam/2026-09-18/2026_09_19__02_20_01.fits.bz2
+
+
+That will certainly eat up disk space. Please modify the code that uses
+the mmto images so that ONLY one copy of the image is EVER downloaded
+and is always the one used wven when new version of codes 15 16 17 18
+19 20 .... are set  up. Do you understand the importance of this step?
+
+Having done that, I then epxect you to troll through the system and
+set up JUST ONE COPY OF EACH MMTO image, and remove the duplicates.
+
