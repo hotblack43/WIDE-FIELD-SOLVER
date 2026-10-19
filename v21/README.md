@@ -74,10 +74,11 @@ Run the incremental MMTO queue from the repository root with:
 ./go_mmto_photometry_v21.sh
 ```
 
-V21 first selects verified local MMTO images lacking a v21 solver receipt. It
-then requests one MMTO observing-night directory at a time: the current night
-first, followed by a durable newest-to-oldest cursor. Discovery stops as soon
-as the default 40-image cap is full, so it never inventories the complete
+V21 first requests the current MMTO observing-night directory, so newly arrived
+images cannot be hidden by a full local backlog. It then fills the remaining
+capacity with verified local images lacking a v21 solver receipt before
+continuing a durable newest-to-oldest remote cursor. Discovery stops as soon as
+the default 40-image cap is full, so it never inventories the complete
 historical archive merely to discard most entries. Change the cap with:
 
 ```sh

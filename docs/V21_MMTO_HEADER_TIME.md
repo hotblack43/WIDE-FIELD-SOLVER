@@ -75,17 +75,12 @@ threshold are explicitly labelled insufficient.
 The pipeline summary records every stage and its exit status. The durable
 backfill cursor advances only after selected images have v21 receipts.
 
-## Verification on 2026-10-18
+## Verification on 2026-10-19
 
-- The 52 v21-focused timing, acquisition, validation, grey-fit, sidereal-map
-  and boundary tests passed.
+- The complete root suite ran 554 tests with no failures and one optional
+  `h5py` skip; the v15 and v17 preservation checks passed.
 - `./demo.sh --output results/check-unique-name` passed with 3,653 associations,
   0.397892-pixel RMS and no withheld stars.
-- A real three-image `--dry-run` selected verified local files, made no remote
-  listing, and performed no download, solve or state advance.
-- The complete root suite ran 551 tests: 548 passed, one optional `h5py` test
-  skipped, and two older boundary assertions failed. The v15 assertion requires
-  later-added root `allsky_download` files to appear in its older snapshot even
-  though every recorded v15 file hash matches. The v17 assertion's hard-coded
-  whole-tree digest differs from the clean committed v17 tree. V21 did not
-  modify v15, v17, either failing test, or their boundary records.
+- A real one-image `--dry-run` listed the current observing night, selected
+  `2026_10_18__22_00_04.fits.bz2`, and performed no download, solve or state
+  advance.

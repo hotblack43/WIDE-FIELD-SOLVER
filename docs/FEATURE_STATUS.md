@@ -7,6 +7,8 @@ development line.
 ## V21 implemented
 
 - Reuses verified local MMTO downloads before fetching a selected missing file.
+- Checks the current MMTO observing night before filling the invocation cap
+  from older local backlog, then resumes the durable older-night cursor.
 - Lists at most one observing night per remote request and preserves the
   per-invocation image cap.
 - Reprocesses earlier-version receipts; only a v21 receipt suppresses v21 work.

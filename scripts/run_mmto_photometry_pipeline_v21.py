@@ -488,49 +488,9 @@ def build_acquisition_plan(
     selected_candidates: list[Candidate] = []
     skipped: set[tuple[str, str]] = set()
 
-    local_pending = sorted(
-        _cadence_winners(site, tuple(
-            entry.candidate
-            for entry in entries.values()
-            if entry.downloaded
-            and entry.source_sha256 is not None
-            and entry.source_sha256 not in processed
-            and not _covered_cadence(
-                site, entry.candidate, completed_slots, completed_candidates
-            )
-            and oldest_night
-            <= observing_night_date(site, entry.candidate.observed_at)
-            <= current_night
-        )),
-        key=lambda item: (item.observed_at, item.url),
-        reverse=True,
-    )
     for entry in entries.values():
         if entry.source_sha256 is not None and entry.source_sha256 in processed:
             skipped.add(("digest", entry.source_sha256))
-    for candidate_item in local_pending:
-        entry = entries[candidate_item.url]
-        assert entry.source_sha256 is not None
-        if entry.source_sha256 in selected_digests:
-            continue
-        slot = _cadence_slot(site, entry.candidate)
-        if slot in selected_slots:
-            continue
-        selected.append(_selected_from_entry(entry))
-        selected_urls.add(entry.candidate.url)
-        selected_digests.add(entry.source_sha256)
-        selected_slots.add(slot)
-        selected_candidates.append(entry.candidate)
-        if len(selected) == max_images:
-            return AcquisitionPlan(
-                max_images,
-                state.next_night,
-                state.next_night,
-                (),
-                0,
-                len(skipped),
-                tuple(selected),
-            )
 
     nights_listed: list[date] = []
     files_listed = 0
@@ -584,9 +544,50 @@ def build_acquisition_plan(
 
     if current_night >= oldest_night:
         complete = scan_night(current_night)
+        if state.next_night == current_night and complete:
+            cursor_after = current_night - timedelta(days=1)
         if len(selected) == max_images:
-            if state.next_night == current_night and complete:
-                cursor_after = current_night - timedelta(days=1)
+            return AcquisitionPlan(
+                max_images,
+                state.next_night,
+                cursor_after,
+                tuple(nights_listed),
+                files_listed,
+                len(skipped),
+                tuple(selected),
+            )
+
+    local_pending = sorted(
+        _cadence_winners(site, tuple(
+            entry.candidate
+            for entry in entries.values()
+            if entry.downloaded
+            and entry.source_sha256 is not None
+            and entry.source_sha256 not in processed
+            and not _covered_cadence(
+                site, entry.candidate, completed_slots, completed_candidates
+            )
+            and oldest_night
+            <= observing_night_date(site, entry.candidate.observed_at)
+            <= current_night
+        )),
+        key=lambda item: (item.observed_at, item.url),
+        reverse=True,
+    )
+    for candidate_item in local_pending:
+        entry = entries[candidate_item.url]
+        assert entry.source_sha256 is not None
+        if entry.source_sha256 in selected_digests:
+            continue
+        slot = _cadence_slot(site, entry.candidate)
+        if slot in selected_slots:
+            continue
+        selected.append(_selected_from_entry(entry))
+        selected_urls.add(entry.candidate.url)
+        selected_digests.add(entry.source_sha256)
+        selected_slots.add(slot)
+        selected_candidates.append(entry.candidate)
+        if len(selected) == max_images:
             return AcquisitionPlan(
                 max_images,
                 state.next_night,

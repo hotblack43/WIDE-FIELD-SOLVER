@@ -271,7 +271,7 @@ class V21SelectionTests(unittest.TestCase):
 
         self.assertEqual(plan.selected, ())
 
-    def test_downloaded_unreceipted_image_is_selected_before_remote_listing(self):
+    def test_downloaded_unreceipted_image_is_reused_after_current_listing(self):
         night = date(2026, 10, 15)
         item = candidate(night, 0, "local")
         listing = Listing({})
@@ -292,7 +292,7 @@ class V21SelectionTests(unittest.TestCase):
                 site=SITE,
             )
 
-        self.assertEqual(listing.calls, [])
+        self.assertEqual(len(listing.calls), 1)
         self.assertEqual(plan.selected[0].source_sha256, digest)
         self.assertEqual(plan.selected[0].local_path, path.relative_to(archive))
         self.assertTrue(plan.selected[0].downloaded)
@@ -326,6 +326,36 @@ class V21SelectionTests(unittest.TestCase):
         self.assertEqual(plan.cursor_before, cursor)
         self.assertEqual(plan.cursor_after, cursor)
         self.assertEqual(len(listing.calls), 1)
+
+    def test_current_remote_night_precedes_full_local_backlog(self):
+        current = date(2026, 10, 15)
+        older = current - timedelta(days=1)
+        newest = candidate(current, 0, "current-remote")
+        backlog = candidate(older, 0, "older-local")
+        listing = Listing({current: (newest,)})
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            archive = root / "archive"
+            archive.mkdir()
+            record_verified(archive, backlog, b"older-local-image")
+            plan = PIPELINE.build_acquisition_plan(
+                archive,
+                root / "stars.sqlite",
+                state_path=root / "state.json",
+                current_night=current,
+                oldest_night=older,
+                max_images=1,
+                adapter=listing,
+                client=object(),
+                site=SITE,
+            )
+
+        self.assertEqual(
+            [item.candidate.filename for item in plan.selected],
+            ["current-remote.fits.bz2"],
+        )
+        self.assertEqual(plan.nights_listed, (current,))
+        self.assertEqual(plan.files_listed, 1)
 
     def test_partial_cursor_night_retains_night_for_next_run(self):
         night = date(2026, 10, 15)
