@@ -434,7 +434,7 @@ def _stage_commands(
         if name == "variable_star_time_series":
             stages[index] = (
                 name,
-                [str(Path(repo_root) / "plot_mmto_variable_stars_v21.sh"), *command[1:]],
+                [str(Path(repo_root) / "plot_mmto_variable_stars_v22.sh"), *command[1:]],
             )
         elif name == "planet_photometry":
             stages[index] = (
@@ -447,7 +447,7 @@ def _stage_commands(
     stages.append((
         "v22_grey_extinction",
         [
-            str(Path(repo_root) / "calibrate_mmto_extinction_v21.sh"),
+            str(Path(repo_root) / "calibrate_mmto_extinction_v22.sh"),
             "--database", str(Path(database)),
             "--manifest", str(Path(manifest)),
             "--output", str(Path(output) / "nightly-extinction-v22"),
@@ -457,7 +457,7 @@ def _stage_commands(
         "same_sidereal_transmission",
         [
             "uv", "run", "--frozen", "python",
-            str(Path(repo_root) / "scripts" / "map_mmto_sidereal_transmission_v21.py"),
+            str(Path(repo_root) / "scripts" / "map_mmto_sidereal_transmission_v22.py"),
             "--database", str(Path(database)),
             "--manifest", str(Path(manifest)),
             "--nightly-calibration", str(Path(output) / "nightly-extinction-v22"),
@@ -468,7 +468,7 @@ def _stage_commands(
         "known_site_time_validation",
         [
             "uv", "run", "--frozen", "python",
-            str(Path(repo_root) / "scripts" / "validate_mmto_site_time_v21.py"),
+            str(Path(repo_root) / "scripts" / "validate_mmto_site_time_v22.py"),
             "--database", str(Path(database)),
             "--manifest", str(Path(manifest)),
             "--output", str(Path(output) / "known-site-time-validation"),
