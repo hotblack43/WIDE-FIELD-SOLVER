@@ -140,9 +140,9 @@ def _slope(x: np.ndarray, y: np.ndarray) -> float:
     finite = np.isfinite(x) & np.isfinite(y)
     if finite.sum() < 3 or float(np.ptp(x[finite])) <= 0.0:
         return math.nan
-    centred = x[finite] - np.median(x[finite])
+    centred = x[finite] - np.mean(x[finite])
     denominator = float(np.dot(centred, centred))
-    return float(np.dot(centred, y[finite] - np.median(y[finite])) / denominator)
+    return float(np.dot(centred, y[finite] - np.mean(y[finite])) / denominator)
 
 
 def _bootstrap_lower_improvement(
@@ -186,19 +186,31 @@ def _bootstrap_slope_interval(
     unique = np.unique(groups)
     if len(unique) < 3:
         return (math.nan, math.nan)
-    group_x = np.array([np.nanmedian(x[groups == name]) for name in unique])
-    group_y = np.array([np.nanmedian(y[groups == name]) for name in unique])
-    finite = np.isfinite(group_x) & np.isfinite(group_y)
-    group_x, group_y = group_x[finite], group_y[finite]
-    if len(group_x) < 3:
+    sufficient = []
+    for name in unique:
+        selected = (groups == name) & np.isfinite(x) & np.isfinite(y)
+        gx, gy = x[selected], y[selected]
+        if len(gx):
+            sufficient.append(
+                (
+                    len(gx),
+                    float(gx.sum()),
+                    float(gy.sum()),
+                    float(np.dot(gx, gx)),
+                    float(np.dot(gx, gy)),
+                )
+            )
+    statistics = np.asarray(sufficient, dtype=float)
+    if len(statistics) < 3:
         return (math.nan, math.nan)
     rng = np.random.default_rng(seed)
     slopes = []
     for _ in range(resamples):
-        selected = rng.integers(0, len(group_x), size=len(group_x))
-        value = _slope(group_x[selected], group_y[selected])
-        if math.isfinite(value):
-            slopes.append(value)
+        selected = rng.integers(0, len(statistics), size=len(statistics))
+        n, sum_x, sum_y, sum_xx, sum_xy = statistics[selected].sum(axis=0)
+        denominator = sum_xx - sum_x * sum_x / n
+        if denominator > 0.0:
+            slopes.append(float((sum_xy - sum_x * sum_y / n) / denominator))
     if not slopes:
         return (math.nan, math.nan)
     return tuple(float(value) for value in np.quantile(slopes, (0.025, 0.975)))
@@ -317,6 +329,9 @@ def evaluate_gate(
                     for row in usable
                 ]
             )
+            finite_x = x[np.isfinite(x)]
+            if len(finite_x) < 3 or float(np.ptp(finite_x)) <= 0.0:
+                continue
             raw_slope = _slope(x, raw)
             v21_slope = _slope(x, v21)
             corrected_slope = _slope(x, corrected)
