@@ -1,0 +1,18 @@
+{
+  "bootstrap_resamples": 2000,
+  "comparison_radii_px": [128, 256, 512],
+  "gradient_boosting_leaf_counts": [15, 31],
+  "improvement_fraction": 0.05,
+  "maximum_planet_stratum_degradation_fraction": 0.02,
+  "maximum_signal_attenuation_fraction": 0.05,
+  "minimum_exposure_comparisons": 30,
+  "minimum_local_comparisons": 12,
+  "mlp_alpha": [0.0001, 0.001],
+  "mlp_hidden_layers": [[32], [32, 16]],
+  "random_forest_min_samples_leaf": [8, 20],
+  "seed_features": 2201,
+  "seed_signals": 2202,
+  "support_nearest_neighbour_quantile": 0.995,
+  "support_univariate_lower_quantile": 0.005,
+  "support_univariate_upper_quantile": 0.995
+}
