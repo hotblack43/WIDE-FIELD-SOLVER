@@ -5,6 +5,8 @@
   "improvement_fraction": 0.05,
   "maximum_planet_stratum_degradation_fraction": 0.02,
   "maximum_signal_attenuation_fraction": 0.05,
+  "maximum_training_rows_per_channel": 50000,
+  "maximum_tuning_rows_per_channel": 10000,
   "minimum_exposure_comparisons": 30,
   "minimum_local_comparisons": 12,
   "mlp_alpha": [0.0001, 0.001],
