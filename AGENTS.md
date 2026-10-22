@@ -157,6 +157,14 @@ in `docs/v20-runtime.json`. Develop FITS-header-timed MMTO reprocessing only in
 append-only results database, but only v21 receipts count as completed v21
 analysis. Site and time remain post-fit validation inputs.
 
+`go21.sh`, `go_v0.21.0.sh`, `go_mmto_photometry_v21.sh`, and the complete
+`v21/` FITS-header-timed runtime are frozen at the v22 boundary; their hashes
+are in `docs/v21-runtime.json`. Develop local and machine-learned differential
+planet photometry only in `v22/` and its `go22.sh`, `go_v0.22.0.sh`, and
+`go_mmto_photometry_v22.sh` launchers. V22 may benchmark the frozen v21
+measurement population read-only; only v22 receipts count as completed v22
+solver work.
+
 Develop later upgrades in a new version directory with its own launchers,
 catalogue, lockfile, ephemeris data and source manifest. Never overwrite v11 or
 another preserved runtime. All versions must work without `.worktrees`; update

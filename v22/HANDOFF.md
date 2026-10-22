@@ -1,0 +1,100 @@
+# V22 MMTO header-time reprocessing handoff
+
+Use `./go22.sh IMAGE` or `./go_v0.22.0.sh IMAGE` for the independent v22
+runtime. Use `./go_mmto_photometry_v22.sh` to select at most 40 MMTO images
+without a v22 receipt by default, reuse local files, download only selected
+gaps, analyse them, and regenerate inherited and v22 post-fit products.
+The original `go_mmto_photometry.sh` remains pinned to v11.
+
+The v22 queue never requests a multi-night historical listing. It drains
+downloaded images without v22 receipts first, checks the current night, and then
+continues from `RESULTS_DIR/mmto-v22-backfill-state.json`, one night per remote
+request. A v22 receipt counts as done, including a recorded scientific failure;
+earlier receipts do not. Dry runs, transfer failures, and solver failures without
+receipts do not advance the cursor; a later product-stage failure does not undo
+completed image work. Use `--max-images N` to change the 40-image cap and
+`--oldest-night` to move the default 2026-06-30 floor deliberately.
+
+The two existing databases are reused. V22 appends versioned runs to
+`results/stars.sqlite` and adds `mmto_v22_observations` to
+`raw_allsky_samples/manifest.sqlite`. Each selected file must pass recognised
+MMTO header checks. The exposure midpoint is computed from header start plus
+half the header duration; neither filename time nor discovery time is a
+scientific fallback.
+
+The automated solve is forced to use `--blind-planets` and is never given site
+or time. Once the receipt and blind products are fixed, read-only stages write:
+
+- `nightly-extinction-v22/image_grey_transparency.csv` and
+  `grey_transparency.png` for constrained per-exposure `Z_i` terms;
+- `same-sidereal-transmission/sidereal_pair_summary.csv`, measured-point CSVs,
+  and non-interpolated map PNGs;
+- `known-site-time-validation/mmto_site_time_validation.csv`, per-star airmass
+  comparisons, secondary planet-candidate offsets and two validation PNGs.
+
+The historical `run_distributed_gobig.py` remote workflow is v11-specific. Do
+not point it at v22 or the shared MMTO databases. Local verification and a dry
+run are required before designing a separate Monster2 v22 dispatcher.
+
+The variable product uses `m_corrected = m_machine - k_night,channel X` from
+the nightly-extinction sidecar, then flux-averages all measurements by VSX
+object, observing night, and native channel before converting the mean flux
+back to magnitude. It is not distance corrected or phase folded. The default
+selection is the strict interval `5 < period < 30` days and catalogue magnitude
+`< 5.0`; all three limits are adjustable with `--variable-min-period-days`,
+`--variable-max-period-days`, and `--variable-max-catalogue-magnitude`. The
+default UTC boundary is
+`2026-06-30T00:00:00Z`, so the isolated March 2026 point is audited but not
+plotted. The frozen local VSX association keeps runtime operation offline.
+
+For each R/G/B channel, v22 fits the nightly points with the published period
+held fixed. The unweighted magnitude-space model is
+`m(t) = mean - A cos(2 pi ((t-reference)/period - phase_brightest))`.
+The common reference is the star's earliest plotted nightly UTC. The PDF draws
+the fitted curves and labels the brightest-light phase; the fit CSV records the
+phase in cycles and days, first brightest epoch, mean, semi-amplitude, RMS, and
+fit status. Fewer than three points or fewer than three independent phases are
+audited rather than fitted.
+
+V15 combines the existing Sun check with a binary Moon-above/below-horizon check
+after cheap interpolated planet proposals and before exact planet refinement.
+Moon candidacy requires a bright resolved object: at least 0.5 degrees across,
+at least 5 degrees above the image-derived horizon, and saturated or peak SNR
+at least 25. Phase and positional coincidence do not enter the gate. The JSON
+audits are retained; no all-candidate image overlay is generated.
+
+# v8/v8a consolidation record
+
+V9 was created on 2026-09-18 from the complete tracked v8a work snapshot after
+that snapshot was safely fast-forwarded from GitHub. The parent v8 and v8a
+runtimes were not edited. Their exact package and launcher bytes are recorded in
+`../docs/v8-runtime.json` and `../docs/v8a-runtime.json`.
+
+## Features consolidated in v9
+
+- Native-depth monochrome, RGB, stacked FITS, TIFF and PNG input.
+- Direct `.fits.bz2`, `.fit.bz2` and `.fts.bz2` input with metadata and
+  compressed-source provenance.
+- Exposure-normalized instrumental count rates when positive, consistent FITS
+  or EXIF exposure metadata exists; raw aperture ADU remain available.
+- Ceres and Vesta search and brightness evidence alongside the seven inherited
+  major planets.
+- Saturated and broad detections remain eligible for astrometry.
+- Per-channel saturated aperture lower bounds plus separate robust masked
+  Moffat-wing totals, count rates, centroids and fit-quality diagnostics.
+- Exact supplied-time planet/source association, distinct from unmatched
+  predicted planet positions and from blind epoch inference.
+- Portable result/database location and append-only SQLite recording.
+
+## V9 presentation change
+
+The adopted extinction or geometric zenith is still plotted at its exact saved
+detector coordinate as a red X. Its source and conditional/provisional status
+remain in the legend, but the marker no longer has a large on-image text label.
+Missing, invalid, off-image and unavailable-image notices are retained. This
+does not alter the camera, source positions, fitted zenith, residuals, or any
+other numerical product.
+
+Use `./go9.sh IMAGE` or the pinned `./go_v0.9.0.sh IMAGE` from the repository
+root. The package uses `v9/uv.lock` and does not depend on a development branch
+or worktree.

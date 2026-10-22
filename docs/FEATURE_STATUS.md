@@ -1,10 +1,20 @@
 # Current development feature status
 
 The published checkpoint remains v0.11.0. Historical runtime boundaries through
-v20 are frozen by their manifests. V21 is the active MMTO FITS-header-timed
-development line.
+v21 are frozen by their manifests. V22 is the active differential-planet-
+photometry development line.
 
-## V21 implemented
+## V22 in development
+
+- Preserves the final v21 runtime and its transient Horizons retry behavior.
+- Adds a read-only benchmark of local stellar ensembles, random forests,
+  gradient boosting, and a small neural network.
+- Selects the simplest method passing leakage-resistant validation before one
+  final pseudo-planet test; a failed final test publishes no correction.
+- Keeps all outputs as relative instrumental photometry and preserves raw and
+  v21-control values beside any v22 result.
+
+## V21 frozen implementation
 
 - Reuses verified local MMTO downloads before fetching a selected missing file.
 - Checks the current MMTO observing night and any intervening nights missed
