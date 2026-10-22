@@ -1,7 +1,7 @@
 """Fixed-order candidate fitting and one-shot final confirmation for v22."""
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 import math
 from types import MappingProxyType
 from typing import Mapping, Sequence
@@ -15,7 +15,7 @@ from sklearn.neural_network import MLPRegressor
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
-from v22.mmto_differential_features import FeatureRow, FeatureTable
+from v22.mmto_differential_features import FeatureRow, FeatureTable, inject_signals
 from v22.mmto_differential_metrics import (
     GateReport,
     PredictionRow,
@@ -58,6 +58,7 @@ class ValidationResult:
     gate_status: str
     fitted_pipeline: FittedCandidate
     validation_predictions: tuple[PredictionRow, ...]
+    signal_recovery: tuple["SignalRecoveryRow", ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,6 +67,18 @@ class ConfirmedModel:
     fitted_pipeline: FittedCandidate
     test_metrics: GateReport
     test_predictions: tuple[PredictionRow, ...]
+    signal_recovery: tuple["SignalRecoveryRow", ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class SignalRecoveryRow:
+    row_index: int
+    role: str
+    signal_type: str
+    injected_signal_magnitude: float
+    recovered_signal_magnitude: float
+    attenuation_fraction: float
+    status: str
 
 
 def candidate_specs(config: Mapping[str, object]) -> tuple[CandidateSpec, ...]:
@@ -445,6 +458,82 @@ def _intervals(
     return MappingProxyType(result)
 
 
+def measure_signal_recovery(
+    candidate: FittedCandidate,
+    table: FeatureTable,
+    role: str,
+    config: Mapping[str, object],
+    planet_ranges: Mapping[str, tuple[float, float, float, float]] | None = None,
+) -> tuple[SignalRecoveryRow, ...]:
+    """Measure injected-signal survival using actual candidate predictions."""
+    injected = inject_signals(
+        table,
+        seed=int(config.get("seed_signals", 2202)),
+        roles=frozenset({role}),
+    )
+    by_index = {row.row_index: row for row in injected.rows}
+    selected = [
+        (index, row, by_index[index])
+        for index, row in enumerate(table.rows)
+        if row.role == role and index in by_index
+    ]
+    if not selected:
+        return ()
+    ordinary_rows = [row for _, row, _ in selected]
+    injected_rows = [
+        replace(
+            row,
+            target_delta_magnitude=signal.injected_target_magnitude,
+            metric_target_magnitude=row.metric_target_magnitude
+            + signal.signal_magnitude,
+        )
+        for _, row, signal in selected
+    ]
+    ordinary = _predictions(candidate, ordinary_rows, config, planet_ranges)
+    altered = _predictions(candidate, injected_rows, config, planet_ranges)
+    output = []
+    for (row_index, _, signal), base, changed in zip(
+        selected, ordinary, altered, strict=True
+    ):
+        if base.status != "corrected" or changed.status != "corrected":
+            output.append(
+                SignalRecoveryRow(
+                    row_index=row_index,
+                    role=role,
+                    signal_type=signal.signal_type,
+                    injected_signal_magnitude=signal.signal_magnitude,
+                    recovered_signal_magnitude=math.nan,
+                    attenuation_fraction=math.nan,
+                    status=(
+                        changed.status
+                        if changed.status != "corrected"
+                        else base.status
+                    ),
+                )
+            )
+            continue
+        base_value = base.observed_magnitude - base.predicted_nuisance
+        changed_value = changed.observed_magnitude - changed.predicted_nuisance
+        recovered = changed_value - base_value
+        attenuation = (
+            abs(recovered - signal.signal_magnitude) / abs(signal.signal_magnitude)
+            if abs(signal.signal_magnitude) > 1e-12
+            else math.nan
+        )
+        output.append(
+            SignalRecoveryRow(
+                row_index=row_index,
+                role=role,
+                signal_type=signal.signal_type,
+                injected_signal_magnitude=signal.signal_magnitude,
+                recovered_signal_magnitude=recovered,
+                attenuation_fraction=attenuation,
+                status="measured",
+            )
+        )
+    return tuple(output)
+
+
 def fit_and_validate_candidates(
     table: FeatureTable, config: Mapping[str, object]
 ) -> tuple[ValidationResult, ...]:
@@ -455,11 +544,18 @@ def fit_and_validate_candidates(
         fitted = _fit_candidate(spec, table, config)
         predictions = _predictions(fitted, validation_rows, config, planet_ranges)
         fitted.prediction_intervals = _intervals(predictions)
+        signal_recovery = measure_signal_recovery(
+            fitted, table, "validation", config, planet_ranges
+        )
         metrics = evaluate_gate(
             predictions,
             config,
             diagnostic_feature_names=table.diagnostic_feature_names,
-            signal_attenuations=(0.0,),
+            signal_attenuations=tuple(
+                row.attenuation_fraction
+                for row in signal_recovery
+                if math.isfinite(row.attenuation_fraction)
+            ),
         )
         output.append(
             ValidationResult(
@@ -468,6 +564,7 @@ def fit_and_validate_candidates(
                 gate_status="passed" if metrics.passed else "failed",
                 fitted_pipeline=fitted,
                 validation_predictions=predictions,
+                signal_recovery=signal_recovery,
             )
         )
     return tuple(output)
@@ -500,11 +597,18 @@ def confirm_on_test(
     predictions = _predictions(
         selected.fitted_pipeline, test_rows, config, _planet_ranges(table)
     )
+    signal_recovery = measure_signal_recovery(
+        selected.fitted_pipeline, table, "test", config, _planet_ranges(table)
+    )
     metrics = evaluate_gate(
         predictions,
         config,
         diagnostic_feature_names=table.diagnostic_feature_names,
-        signal_attenuations=(0.0,),
+        signal_attenuations=tuple(
+            row.attenuation_fraction
+            for row in signal_recovery
+            if math.isfinite(row.attenuation_fraction)
+        ),
     )
     if not metrics.passed:
         return None
@@ -513,6 +617,7 @@ def confirm_on_test(
         fitted_pipeline=selected.fitted_pipeline,
         test_metrics=metrics,
         test_predictions=predictions,
+        signal_recovery=signal_recovery,
     )
 
 

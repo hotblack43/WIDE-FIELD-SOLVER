@@ -4,9 +4,10 @@ from __future__ import annotations
 import math
 from types import MappingProxyType
 import unittest
+from unittest.mock import patch
 
 from v22.mmto_differential_features import FeatureRow, FeatureTable
-from v22.mmto_differential_metrics import GateReport
+from v22.mmto_differential_metrics import GateReport, PredictionRow
 from v22.mmto_differential_models import (
     FittedCandidate,
     ValidationResult,
@@ -15,6 +16,7 @@ from v22.mmto_differential_models import (
     final_test_evaluation_count,
     fit_and_validate_candidates,
     local_ensemble_prediction,
+    measure_signal_recovery,
     reset_final_test_evaluation_count,
     select_simplest_passing,
 )
@@ -83,6 +85,59 @@ def _validation(name: str, passed: bool) -> ValidationResult:
 
 
 class DifferentialModelTests(unittest.TestCase):
+    def test_signal_recovery_is_measured_from_candidate_predictions(self):
+        rows = tuple(
+            _row(
+                observed_utc=f"2026-01-0{index + 1}T00:00:00+00:00",
+                night=f"2026-01-0{index + 1}",
+                target_delta_magnitude=0.1 * index,
+            )
+            for index in range(4)
+        )
+        table = FeatureTable(
+            rows=rows,
+            assignments=(),
+            deployable_feature_names=("x",),
+            diagnostic_feature_names=("diagnostic",),
+            comparison_residuals=(),
+            star_baselines=MappingProxyType({}),
+            v21_baselines=MappingProxyType({}),
+            data=None,
+            control=None,
+            config=MappingProxyType({}),
+        )
+        candidate = _validation("local_ensemble", True).fitted_pipeline
+
+        def erase_signal(_candidate, measured, _config, _ranges=None):
+            return tuple(
+                PredictionRow(
+                    row_index=index,
+                    channel=row.channel,
+                    target_group="group",
+                    observed_magnitude=row.target_delta_magnitude,
+                    raw_control_magnitude=row.raw_control_magnitude,
+                    v21_control_magnitude=row.v21_control_magnitude,
+                    predicted_nuisance=row.target_delta_magnitude,
+                    corrected_magnitude=0.0,
+                    status="corrected",
+                    diagnostic_features=row.diagnostic_features,
+                    planet_like=True,
+                )
+                for index, row in enumerate(measured)
+            )
+
+        with patch("v22.mmto_differential_models._predictions", side_effect=erase_signal):
+            recovered = measure_signal_recovery(
+                candidate, table, "validation", {"seed_signals": 2202}
+            )
+        attenuations = [
+            row.attenuation_fraction
+            for row in recovered
+            if math.isfinite(row.attenuation_fraction)
+        ]
+        self.assertTrue(attenuations)
+        self.assertTrue(all(value == 1.0 for value in attenuations))
+
     def test_local_ensemble_uses_smallest_supported_radius_then_exposure(self):
         self.assertEqual(local_ensemble_prediction(_row())[0], 0.1)
         row = _row(local_count_128_px=11)

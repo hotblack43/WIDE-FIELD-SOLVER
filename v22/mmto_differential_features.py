@@ -37,11 +37,9 @@ class SplitAssignment:
 
     @property
     def role(self) -> str:
-        if "test" in (self.night_role, self.star_role):
-            return "test"
-        if "validation" in (self.night_role, self.star_role):
-            return "validation"
-        return "train"
+        if self.night_role == self.star_role:
+            return self.night_role
+        return "excluded"
 
 
 @dataclass(frozen=True, slots=True)
@@ -381,7 +379,33 @@ def _indexed_context(
     minimum_exposure: int,
 ) -> tuple[float, float, int, dict[int, tuple[float, float, int]]]:
     identity = (target.catalogue_sha256, target.star_id)
-    exposure = index.exposure_statistics.get(identity)
+    return context_at_position(
+        target.x_px,
+        target.y_px,
+        index,
+        radii=radii,
+        minimum_local=minimum_local,
+        minimum_exposure=minimum_exposure,
+        excluded_identity=identity,
+    )
+
+
+def context_at_position(
+    x_px: float,
+    y_px: float,
+    index: _ExposureIndex,
+    *,
+    radii: Sequence[int],
+    minimum_local: int,
+    minimum_exposure: int,
+    excluded_identity: tuple[str, str] | None = None,
+) -> tuple[float, float, int, dict[int, tuple[float, float, int]]]:
+    """Return thresholded context with identical stellar/planet semantics."""
+    exposure = (
+        index.exposure_statistics.get(excluded_identity)
+        if excluded_identity is not None
+        else None
+    )
     if exposure is None:
         values = index.values.tolist()
         exposure = (_median(values), _mad(values), len(index.rows))
@@ -390,17 +414,17 @@ def _indexed_context(
         exposure_median = exposure_mad = math.nan
 
     candidates = (
-        index.tree.query_ball_point((target.x_px, target.y_px), max(radii))
+        index.tree.query_ball_point((x_px, y_px), max(radii))
         if index.tree is not None
         else []
     )
     distances = {
         position: math.hypot(
-            index.rows[position].x_px - target.x_px,
-            index.rows[position].y_px - target.y_px,
+            index.rows[position].x_px - x_px,
+            index.rows[position].y_px - y_px,
         )
         for position in candidates
-        if index.identities[position] != identity
+        if excluded_identity is None or index.identities[position] != excluded_identity
     }
     local: dict[int, tuple[float, float, int]] = {}
     for radius in radii:
@@ -464,38 +488,61 @@ def _value_and_missing(value: float | None) -> tuple[float, float]:
     return float(value), 0.0
 
 
-def _deployable_values(
-    row: StellarMeasurement,
+def deployable_feature_mapping(
+    row: object,
     exposure: tuple[float, float, int],
     local: Mapping[int, tuple[float, float, int]],
     *,
+    airmass: float | None,
     radii: Sequence[int],
     has_background: bool,
-) -> tuple[float, ...]:
+) -> dict[str, float]:
     half_width = row.image_width_px / 2.0
     half_height = row.image_height_px / 2.0
     x = (row.x_px - half_width) / max(half_width, 1.0)
     y = (row.y_px - half_height) / max(half_height, 1.0)
     radius = math.hypot(x, y)
     angle = math.atan2(y, x)
-    values = [x, y, radius, math.sin(angle), math.cos(angle), row.airmass]
-    for value in (
-        row.major_sigma_px,
-        row.area_px,
-        row.axis_ratio,
-        row.peak_snr,
-        row.aperture_radius_px,
-        row.exposure_seconds,
-        row.global_noise_adu,
+    values = {
+        "x_normalized": x,
+        "y_normalized": y,
+        "radius_normalized": radius,
+        "azimuth_sin": math.sin(angle),
+        "azimuth_cos": math.cos(angle),
+        "blind_airmass": float(airmass) if airmass is not None else math.nan,
+    }
+    for name, value in (
+        ("major_sigma_px", row.major_sigma_px),
+        ("area_px", row.area_px),
+        ("axis_ratio", row.axis_ratio),
+        ("peak_snr", row.peak_snr),
+        ("aperture_radius_px", row.aperture_radius_px),
+        ("exposure_seconds", row.exposure_seconds),
+        ("global_noise_adu", row.global_noise_adu),
     ):
-        values.extend(_value_and_missing(value))
+        measured, missing = _value_and_missing(value)
+        values[name] = measured
+        missing_name = (
+            "exposure_missing"
+            if name == "exposure_seconds"
+            else name.removesuffix("_px").removesuffix("_adu") + "_missing"
+        )
+        values[missing_name] = missing
     if has_background:
-        values.extend(_value_and_missing(row.aperture_background_adu))
-    values.extend((exposure[0], exposure[1], float(exposure[2])))
+        measured, missing = _value_and_missing(row.aperture_background_adu)
+        values["aperture_background_adu"] = measured
+        values["aperture_background_missing"] = missing
+    values.update(
+        exposure_median_magnitude=exposure[0],
+        exposure_mad_magnitude=exposure[1],
+        exposure_count=float(exposure[2]),
+    )
     for radius_px in radii:
         median, mad, count = local[radius_px]
-        values.extend((median, mad, float(count)))
-    return tuple(float(value) for value in values)
+        values[f"local_median_{radius_px}_px"] = median
+        values[f"local_mad_{radius_px}_px"] = mad
+        values[f"local_count_{radius_px}_px"] = float(count)
+    return values
 
 
 def _metric_centres(
@@ -504,7 +551,7 @@ def _metric_centres(
     raw: dict[tuple[str, str, str, str], list[float]] = {}
     v21: dict[tuple[str, str, str, str], list[float]] = {}
     for measurement, assignment, target, v21_value in rows:
-        if assignment.role == "train":
+        if assignment.role not in ("validation", "test"):
             continue
         key = (
             measurement.catalogue_sha256,
@@ -603,13 +650,15 @@ def build_feature_table(
             minimum_local=minimum_local,
             minimum_exposure=minimum_exposure,
         )
-        deployable = _deployable_values(
+        deployable_mapping = deployable_feature_mapping(
             row,
             (exposure_median, exposure_mad, exposure_count),
             local,
+            airmass=row.airmass,
             radii=radii,
             has_background=has_background,
         )
+        deployable = tuple(deployable_mapping[name] for name in deployable_names)
         centre_key = (
             row.catalogue_sha256,
             row.star_id,
@@ -695,7 +744,7 @@ def build_feature_table(
 
 
 def inject_signals(
-    table: FeatureTable, *, seed: int = 2202
+    table: FeatureTable, *, seed: int = 2202, roles: frozenset[str] | None = None
 ) -> InjectedFeatureTable:
     grouped: dict[tuple[str, str, str], list[int]] = {}
     for index, row in enumerate(table.rows):
@@ -718,6 +767,8 @@ def inject_signals(
             else:
                 signal = 0.2 if sequence == count // 2 else 0.0
             row = table.rows[index]
+            if roles is not None and row.role not in roles:
+                continue
             output.append(
                 InjectedFeatureRow(
                     row_index=index,

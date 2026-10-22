@@ -35,7 +35,7 @@ def _fixture_table() -> FeatureTable:
                         channel=channel,
                         role=role,
                         night_role=role,
-                        star_role="train",
+                        star_role=role,
                         spatial_block="1:1",
                         target_delta_magnitude=nuisance,
                         metric_target_magnitude=nuisance,

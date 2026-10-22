@@ -24,13 +24,13 @@ Run it directly with:
   --output results/photometry-runs/v22-benchmark
 ```
 
-The routine v22 pipeline runs the same benchmark last and records both the
-operational result and the independent scientific-gate result.
+The routine v22 pipeline freezes a completed v21 control directory before any
+v22 work, runs the benchmark last, and records operational and scientific gates.
 
 ## Current MMTO result
 
-The 2026-10-22 benchmark used 590 runs, 1,449,615 stellar channel measurements,
-and 36,993 planet channel measurements. Gradient boosting had the lowest R and
-B validation MAE; random forest was slightly lower in G. Both still failed the
-held-out colour and PSF-width trend tests. No method passed, so no v22 planet
-correction was published.
+The corrected 2026-10-22 benchmark used 590 runs, 1,449,615 stellar channel
+measurements, and 36,993 planet channel measurements. Its 50,803 validation rows
+were jointly held out by night and star identity. Injected signals were measured
+as preserved, but every method still failed either R/B improvement or residual
+brightness, radius, or PSF-width tests. No v22 planet correction was published.

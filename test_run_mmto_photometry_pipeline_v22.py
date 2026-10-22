@@ -10,13 +10,36 @@ from scripts import run_mmto_photometry_pipeline_v22 as pipeline
 
 
 class V22PipelineTest(unittest.TestCase):
+    def test_latest_completed_v21_control_is_frozen_before_v22_work(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            results = Path(temporary)
+            older = results / "photometry-runs" / "v21-20260101" / "nightly-extinction"
+            newer = results / "photometry-runs" / "v21-20260102" / "nightly-extinction"
+            for directory in (older, newer):
+                directory.mkdir(parents=True)
+                for name in (
+                    "calibration_manifest.json",
+                    "corrected_stellar_photometry.csv",
+                    "nightly_extinction_coefficients.csv",
+                ):
+                    (directory / name).write_text("fixture", encoding="utf-8")
+            resolved = pipeline._resolve_v21_control(results, None)
+            (results / "photometry-runs" / "v22-20990101").mkdir()
+            self.assertEqual(resolved, newer)
+
     def test_differential_benchmark_runs_after_raw_planet_products(self):
         root = Path("/repo")
         database = Path("/results/stars.sqlite")
         manifest = Path("/archive/manifest.sqlite")
         output = Path("/output")
 
-        stages = pipeline._stage_commands(root, database, manifest, output)
+        stages = pipeline._stage_commands(
+            root,
+            database,
+            manifest,
+            output,
+            v21_control=Path("/controls/v21"),
+        )
         names = [name for name, _ in stages]
         self.assertGreater(
             names.index("differential_photometry"), names.index("planet_photometry")
@@ -27,12 +50,26 @@ class V22PipelineTest(unittest.TestCase):
         self.assertEqual(command[command.index("--manifest") + 1], str(manifest))
         self.assertEqual(
             command[command.index("--v21-control") + 1],
-            "/output/nightly-extinction",
+            "/controls/v21",
         )
         self.assertEqual(
             command[command.index("--output") + 1],
             "/output/differential-photometry",
         )
+
+    def test_every_generated_stage_program_exists(self):
+        root = Path(__file__).resolve().parent
+        stages = pipeline._stage_commands(
+            root,
+            root / "results" / "stars.sqlite",
+            root / "raw_allsky_samples" / "manifest.sqlite",
+            Path("/output"),
+            v21_control=Path("/controls/v21"),
+        )
+        for name, command in stages:
+            with self.subTest(name):
+                program = Path(command[4] if command[:4] == ["uv", "run", "--frozen", "python"] else command[0])
+                self.assertTrue(program.is_file(), program)
 
     def test_failed_scientific_gate_is_recorded_without_operational_failure(self):
         with tempfile.TemporaryDirectory() as temporary:

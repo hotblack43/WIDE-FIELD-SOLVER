@@ -2,14 +2,23 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 import math
+from pathlib import Path
 from typing import Mapping, Sequence
 
 import numpy as np
 
+from v22.barghini_model import BarghiniParameters, detector_to_horizontal
 from v22.mmto_differential_data import PlanetMeasurement
-from v22.mmto_differential_features import FeatureTable
+from v22.mmto_differential_features import (
+    FeatureTable,
+    _make_exposure_index,
+    context_at_position,
+    deployable_feature_mapping,
+)
 from v22.mmto_differential_models import ConfirmedModel
+from v22.point_star_refraction import IntegratedRefraction, remove_refraction
 
 
 STATUSES = (
@@ -46,21 +55,75 @@ class CorrectedPlanetMeasurement:
     comparison_count: int
 
 
-def _airmass(row: PlanetMeasurement) -> float | None:
-    if row.x_px is None or row.y_px is None:
+def _load_blind_geometry(analysis_path: str):
+    analysis = Path(analysis_path)
+    try:
+        result = json.loads((analysis / "result.json").read_text(encoding="utf-8"))
+        zenith = json.loads(
+            (analysis / "photometric_zenith.json").read_text(encoding="utf-8")
+        ).get("zenith_unit_vector")
+        camera = result["camera"]
+        if zenith is None:
+            return None
+        zenith_vector = np.asarray(zenith, dtype=float)
+        zenith_norm = float(np.linalg.norm(zenith_vector))
+        if zenith_vector.shape != (3,) or not np.isfinite(zenith_vector).all() or zenith_norm <= 0.0:
+            return None
+        shape = np.asarray(camera["shape"], dtype=float)
+        scale = float(np.linalg.norm(shape) / 2.0)
+        p = np.asarray(camera["normalised_parameters"], dtype=float)
+        parameters = BarghiniParameters(
+            p[0], *(p[1:5] * scale).tolist(), math.exp(p[5]) / scale,
+            p[6], p[7] / scale,
+        )
+        parity = -1.0 if camera.get("detector_parity") == "mirrored" else 1.0
+        return (
+            parameters,
+            parity,
+            np.asarray(camera["reference_rotation"], dtype=float),
+            IntegratedRefraction.from_dict(camera.get("integrated_refraction")),
+            zenith_vector / zenith_norm,
+        )
+    except (KeyError, OSError, TypeError, ValueError, json.JSONDecodeError):
         return None
-    dx = row.x_px - row.image_width_px / 2.0
-    dy = row.y_px - row.image_height_px / 2.0
-    radius = math.hypot(dx, dy) / max(min(row.image_width_px, row.image_height_px) / 2.0, 1.0)
-    zenith_distance = 90.0 * min(max(radius, 0.0), 1.0)
-    altitude = 90.0 - zenith_distance
-    denominator = math.cos(math.radians(zenith_distance)) + 0.50572 * (
-        96.07995 - zenith_distance
+
+
+def _airmass(row: PlanetMeasurement, geometry) -> float | None:
+    if row.x_px is None or row.y_px is None or geometry is None:
+        return None
+    parameters, parity, rotation, refraction, zenith = geometry
+    azimuth, zenith_distance = detector_to_horizontal(
+        np.asarray([row.x_px]), np.asarray([row.y_px]), parameters
+    )
+    ray = np.column_stack(
+        (
+            np.sin(zenith_distance) * np.cos(azimuth),
+            parity * np.sin(zenith_distance) * np.sin(azimuth),
+            np.cos(zenith_distance),
+        )
+    )
+    if not refraction.is_zero:
+        ray = remove_refraction(
+            ray,
+            refraction.zenith_camera,
+            refraction.refraction_a_arcsec,
+            refraction.refraction_b_arcsec,
+        )
+    sky = ray @ rotation.T
+    sine_altitude = float(np.clip(sky[0] @ zenith, -1.0, 1.0))
+    altitude = math.degrees(math.asin(sine_altitude))
+    zenith_distance_deg = 90.0 - altitude
+    if altitude < 0.0:
+        return None
+    denominator = math.cos(math.radians(zenith_distance_deg)) + 0.50572 * (
+        96.07995 - zenith_distance_deg
     ) ** -1.6364
-    return 1.0 / denominator if altitude >= 0.0 and denominator > 0.0 else None
+    return 1.0 / denominator if denominator > 0.0 else None
 
 
-def _v21_control(row: PlanetMeasurement, context: FeatureTable) -> float | None:
+def _v21_control(
+    row: PlanetMeasurement, context: FeatureTable, airmass: float | None
+) -> float | None:
     if row.machine_magnitude is None:
         return None
     run = next(
@@ -71,92 +134,42 @@ def _v21_control(row: PlanetMeasurement, context: FeatureTable) -> float | None:
     coefficient = context.control.extinction_coefficients.get(
         (row.night, row.channel, run.catalogue_sha256)
     )
-    airmass = _airmass(row)
     if coefficient is None or airmass is None:
         return None
     return row.machine_magnitude - coefficient * airmass
 
 
 def _context_values(
-    row: PlanetMeasurement, context: FeatureTable
+    row: PlanetMeasurement, context: FeatureTable, airmass: float | None
 ) -> tuple[dict[str, float], dict[int, tuple[float, float, int]], tuple[float, float, int]]:
     comparisons = [
         item
         for item in context.comparison_residuals
         if item.source_sha256 == row.source_sha256 and item.channel == row.channel
     ]
-    values = np.asarray([item.residual_magnitude for item in comparisons], dtype=float)
-    exposure = (
-        float(np.median(values)) if len(values) else math.nan,
-        float(np.median(np.abs(values - np.median(values)))) if len(values) else math.nan,
-        len(values),
-    )
-    local = {}
-    for radius in (128, 256, 512):
-        selected = [
-            item.residual_magnitude
-            for item in comparisons
-            if row.x_px is not None
-            and row.y_px is not None
-            and math.hypot(item.x_px - row.x_px, item.y_px - row.y_px) <= radius
-        ]
-        array = np.asarray(selected, dtype=float)
-        local[radius] = (
-            float(np.median(array)) if len(array) else math.nan,
-            float(np.median(np.abs(array - np.median(array)))) if len(array) else math.nan,
-            len(array),
+    minimum_local = int(context.config.get("minimum_local_comparisons", 12))
+    minimum_exposure = int(context.config.get("minimum_exposure_comparisons", 30))
+    if row.x_px is None or row.y_px is None:
+        exposure = (math.nan, math.nan, 0)
+        local = {radius: (math.nan, math.nan, 0) for radius in (128, 256, 512)}
+    else:
+        exposure_median, exposure_mad, exposure_count, local = context_at_position(
+            row.x_px,
+            row.y_px,
+            _make_exposure_index(comparisons),
+            radii=(128, 256, 512),
+            minimum_local=minimum_local,
+            minimum_exposure=minimum_exposure,
         )
-
-    x = (
-        (row.x_px - row.image_width_px / 2.0) / max(row.image_width_px / 2.0, 1.0)
-        if row.x_px is not None
-        else math.nan
+        exposure = (exposure_median, exposure_mad, exposure_count)
+    features = deployable_feature_mapping(
+        row,
+        exposure,
+        local,
+        airmass=airmass,
+        radii=(128, 256, 512),
+        has_background="aperture_background_adu" in context.deployable_feature_names,
     )
-    y = (
-        (row.y_px - row.image_height_px / 2.0) / max(row.image_height_px / 2.0, 1.0)
-        if row.y_px is not None
-        else math.nan
-    )
-    angle = math.atan2(y, x) if math.isfinite(x) and math.isfinite(y) else math.nan
-
-    def optional(name: str, value: float | None) -> None:
-        features[name] = float(value) if value is not None else math.nan
-        missing_name = name.removesuffix("_px").removesuffix("_adu") + "_missing"
-        features[missing_name] = 0.0 if value is not None else 1.0
-
-    features: dict[str, float] = {
-        "x_normalized": x,
-        "y_normalized": y,
-        "radius_normalized": math.hypot(x, y) if math.isfinite(x) and math.isfinite(y) else math.nan,
-        "azimuth_sin": math.sin(angle) if math.isfinite(angle) else math.nan,
-        "azimuth_cos": math.cos(angle) if math.isfinite(angle) else math.nan,
-        "blind_airmass": _airmass(row) or math.nan,
-        "exposure_median_magnitude": exposure[0],
-        "exposure_mad_magnitude": exposure[1],
-        "exposure_count": float(exposure[2]),
-    }
-    optional("major_sigma_px", row.major_sigma_px)
-    optional("area_px", row.area_px)
-    optional("axis_ratio", row.axis_ratio)
-    optional("peak_snr", row.peak_snr)
-    optional("aperture_radius_px", row.aperture_radius_px)
-    optional("exposure_seconds", row.exposure_seconds)
-    optional("global_noise_adu", row.global_noise_adu)
-    optional("aperture_background_adu", row.aperture_background_adu)
-    # Match the exact historical feature names used by the stellar table.
-    features["major_sigma_missing"] = features.pop("major_sigma_missing", features.get("major_sigma_missing", 0.0))
-    features["area_missing"] = features.pop("area_missing", features.get("area_missing", 0.0))
-    features["axis_ratio_missing"] = features.pop("axis_ratio_missing", features.get("axis_ratio_missing", 0.0))
-    features["peak_snr_missing"] = features.pop("peak_snr_missing", features.get("peak_snr_missing", 0.0))
-    features["aperture_radius_missing"] = features.pop("aperture_radius_missing", features.get("aperture_radius_missing", 0.0))
-    features["exposure_missing"] = features.pop("exposure_seconds_missing", 0.0)
-    features["global_noise_missing"] = features.pop("global_noise_missing", features.get("global_noise_missing", 0.0))
-    features["aperture_background_missing"] = features.pop("aperture_background_missing", features.get("aperture_background_missing", 0.0))
-    for radius in (128, 256, 512):
-        median, mad, count = local[radius]
-        features[f"local_median_{radius}_px"] = median
-        features[f"local_mad_{radius}_px"] = mad
-        features[f"local_count_{radius}_px"] = float(count)
     return features, local, exposure
 
 
@@ -164,8 +177,9 @@ def _predict(
     model: ConfirmedModel,
     row: PlanetMeasurement,
     context: FeatureTable,
+    airmass: float | None,
 ) -> tuple[float | None, str, int]:
-    features, local, exposure = _context_values(row, context)
+    features, local, exposure = _context_values(row, context, airmass)
     minimum_local = int(context.config.get("minimum_local_comparisons", 12))
     minimum_exposure = int(context.config.get("minimum_exposure_comparisons", 30))
     supported_count = max(item[2] for item in local.values())
@@ -199,9 +213,15 @@ def apply_to_planets(
     context: FeatureTable,
 ) -> tuple[CorrectedPlanetMeasurement, ...]:
     output = []
+    runs = {run.run_id: run for run in context.data.runs}
+    geometries = {
+        run_id: _load_blind_geometry(run.analysis_path)
+        for run_id, run in runs.items()
+    }
     for row in planets:
         raw = row.machine_magnitude
-        v21 = _v21_control(row, context)
+        airmass = _airmass(row, geometries.get(row.run_id))
+        v21 = _v21_control(row, context, airmass)
         if not row.valid_measurement or raw is None:
             prediction, status, count = None, "invalid_measurement", 0
             reason = ";".join(row.exclusion_reasons) or "invalid_measurement"
@@ -209,7 +229,7 @@ def apply_to_planets(
             prediction, status, count = None, "model_unavailable", 0
             reason = "no_candidate_passed_validation_and_final_test"
         else:
-            prediction, status, count = _predict(model, row, context)
+            prediction, status, count = _predict(model, row, context, airmass)
             reason = "" if status == "corrected" else status
         corrected = (
             raw - prediction

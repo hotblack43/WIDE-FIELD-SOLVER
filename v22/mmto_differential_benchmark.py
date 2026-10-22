@@ -24,7 +24,6 @@ from v22.mmto_differential_features import (
     FeatureTable,
     assign_splits,
     build_feature_table,
-    inject_signals,
     write_feature_audit,
 )
 from v22.mmto_differential_metrics import GateReport, PredictionRow
@@ -195,30 +194,25 @@ def _write_predictions(results: Sequence[ValidationResult], output: Path) -> Non
                 writer.writerow({"method": result.name, **asdict(row)})
 
 
-def _write_signals(table: FeatureTable, output: Path) -> None:
-    injected = inject_signals(table, seed=int(table.config.get("seed_signals", 2202)))
+def _write_signals(results: Sequence[ValidationResult], output: Path) -> None:
     with (output / "signal_recovery.csv").open(
         "w", newline="", encoding="utf-8"
     ) as stream:
         fieldnames = (
+            "method",
             "row_index",
+            "role",
             "signal_type",
             "injected_signal_magnitude",
             "recovered_signal_magnitude",
             "attenuation_fraction",
+            "status",
         )
         writer = csv.DictWriter(stream, fieldnames=fieldnames)
         writer.writeheader()
-        for row in injected.rows:
-            writer.writerow(
-                {
-                    "row_index": row.row_index,
-                    "signal_type": row.signal_type,
-                    "injected_signal_magnitude": row.signal_magnitude,
-                    "recovered_signal_magnitude": row.signal_magnitude,
-                    "attenuation_fraction": 0.0,
-                }
-            )
+        for result in results:
+            for row in result.signal_recovery:
+                writer.writerow({"method": result.name, **asdict(row)})
 
 
 def _write_planets(
@@ -294,18 +288,36 @@ def _plot_models(results: Sequence[ValidationResult], output: Path) -> None:
     _save_figure(figure, output / "model_comparison.pdf")
 
 
-def _plot_signals(table: FeatureTable, output: Path) -> None:
-    injected = inject_signals(table, seed=int(table.config.get("seed_signals", 2202)))
+def _plot_signals(results: Sequence[ValidationResult], output: Path) -> None:
     figure, axis = plt.subplots(figsize=(7, 6))
-    values = np.asarray([row.signal_magnitude for row in injected.rows], dtype=float)
-    if len(values):
-        axis.scatter(values, values, s=8, alpha=0.5)
+    all_values = []
+    for result in results:
+        rows = [
+            row
+            for row in result.signal_recovery
+            if math.isfinite(row.recovered_signal_magnitude)
+        ]
+        if len(rows) > 5000:
+            indices = np.linspace(0, len(rows) - 1, 5000, dtype=int)
+            rows = [rows[index] for index in indices]
+        injected = np.asarray(
+            [row.injected_signal_magnitude for row in rows], dtype=float
+        )
+        recovered = np.asarray(
+            [row.recovered_signal_magnitude for row in rows], dtype=float
+        )
+        if len(injected):
+            all_values.extend(injected.tolist())
+            all_values.extend(recovered.tolist())
+            axis.scatter(injected, recovered, s=7, alpha=0.25, label=result.name)
+    if all_values:
+        values = np.asarray(all_values, dtype=float)
         limits = (float(values.min()), float(values.max()))
         axis.plot(limits, limits, "k--", linewidth=1, label="perfect recovery")
-        axis.legend()
+        axis.legend(fontsize=8)
     else:
-        axis.text(0.5, 0.5, "No injected rows", ha="center", va="center", transform=axis.transAxes)
-    axis.set(xlabel="Injected signal (mag)", ylabel="Recovered signal (mag)", title="Signal preservation after context construction")
+        axis.text(0.5, 0.5, "No measured injected rows", ha="center", va="center", transform=axis.transAxes)
+    axis.set(xlabel="Injected signal (mag)", ylabel="Recovered signal (mag)", title="Measured validation signal preservation")
     axis.grid(alpha=0.2)
     figure.tight_layout()
     _save_figure(figure, output / "signal_recovery.pdf")
@@ -419,11 +431,11 @@ def run_benchmark(
     planets = apply_to_planets(confirmed, data.planets, table)
     _write_validation(results, output)
     _write_predictions(results, output)
-    _write_signals(table, output)
+    _write_signals(results, output)
     _write_planets(planets, output)
     _plot_residuals(results, output)
     _plot_models(results, output)
-    _plot_signals(table, output)
+    _plot_signals(results, output)
     _plot_planets(planets, output)
     artifact = model_hash = None
     if confirmed is not None:

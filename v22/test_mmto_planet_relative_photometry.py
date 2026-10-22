@@ -5,9 +5,11 @@ from dataclasses import replace
 import math
 from types import MappingProxyType
 import unittest
+from unittest.mock import patch
 
 import numpy as np
 
+from v22.barghini_model import BarghiniParameters, detector_to_horizontal
 from v22.mmto_differential_data import (
     MeasurementSet,
     PlanetMeasurement,
@@ -17,7 +19,8 @@ from v22.mmto_differential_data import (
 from v22.mmto_differential_features import ComparisonResidual, FeatureTable
 from v22.mmto_differential_metrics import GateReport
 from v22.mmto_differential_models import ConfirmedModel, FittedCandidate
-from v22.mmto_planet_relative_photometry import apply_to_planets
+from v22.mmto_planet_relative_photometry import _airmass, _context_values, apply_to_planets
+from v22.point_star_refraction import IntegratedRefraction
 
 
 class _Predictor:
@@ -154,10 +157,42 @@ def _confirmed(name: str = "local_ensemble", *, out_of_domain: bool = False):
 
 
 class PlanetRelativePhotometryTests(unittest.TestCase):
-    def test_corrected_local_planet_keeps_raw_and_v21_controls(self):
-        result = apply_to_planets(
-            _confirmed(), (_planet(),), _context()
+    def test_planet_airmass_uses_saved_off_centre_photometric_zenith(self):
+        parameters = BarghiniParameters(0.0, 500.0, 400.0, 500.0, 400.0, 0.002, 0.0, 0.0)
+        azimuth, distance = detector_to_horizontal(
+            np.asarray([700.0]), np.asarray([400.0]), parameters
+        )
+        zenith = np.column_stack(
+            (
+                np.sin(distance) * np.cos(azimuth),
+                np.sin(distance) * np.sin(azimuth),
+                np.cos(distance),
+            )
         )[0]
+        geometry = (
+            parameters,
+            1.0,
+            np.eye(3),
+            IntegratedRefraction.zero(),
+            zenith,
+        )
+        self.assertAlmostEqual(_airmass(_planet(x_px=700.0), geometry), 1.0, places=3)
+
+    def test_planet_context_uses_same_minimum_counts_as_stars(self):
+        context = _context(comparison_count=11)
+        features, local, exposure = _context_values(_planet(), context, 1.0)
+        self.assertTrue(math.isnan(local[128][0]))
+        self.assertEqual(local[128][2], 11)
+        self.assertTrue(math.isnan(exposure[0]))
+        self.assertTrue(math.isnan(features["local_median_128_px"]))
+
+    def test_corrected_local_planet_keeps_raw_and_v21_controls(self):
+        with patch(
+            "v22.mmto_planet_relative_photometry._airmass", return_value=1.0
+        ):
+            result = apply_to_planets(
+                _confirmed(), (_planet(),), _context()
+            )[0]
         self.assertEqual(result.correction_status, "corrected")
         self.assertAlmostEqual(result.raw_machine_magnitude, -5.0)
         self.assertIsNotNone(result.v21_control_magnitude)
@@ -187,7 +222,11 @@ class PlanetRelativePhotometryTests(unittest.TestCase):
         )
         for model, planet, context, expected in cases:
             with self.subTest(expected):
-                result = apply_to_planets(model, (planet,), context)[0]
+                with patch(
+                    "v22.mmto_planet_relative_photometry._airmass",
+                    return_value=1.0,
+                ):
+                    result = apply_to_planets(model, (planet,), context)[0]
                 self.assertEqual(result.correction_status, expected)
                 self.assertEqual(result.raw_machine_magnitude, planet.machine_magnitude)
                 self.assertIsNotNone(result.v21_control_magnitude)

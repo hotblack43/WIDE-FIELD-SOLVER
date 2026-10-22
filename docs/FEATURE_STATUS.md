@@ -15,9 +15,9 @@ photometry development line.
   v21-control values beside any v22 result.
 - Runs the benchmark as the final v22 photometry stage. Scientific rejection is
   recorded separately from operational failure and does not fail the pipeline.
-- The complete 2026-10-22 MMTO benchmark rejected all four methods. Gradient
-  boosting reduced validation MAE most overall but retained colour and PSF-width
-  trends, so corrected planet values remain unavailable.
+- The corrected 2026-10-22 MMTO benchmark used 50,803 rows jointly held out by
+  night and star identity and rejected all four methods. Blue-channel gains and
+  PSF-width trends still failed, so corrected planet values remain unavailable.
 
 ## V21 frozen implementation
 

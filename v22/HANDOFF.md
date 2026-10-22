@@ -36,8 +36,8 @@ or time. Once the receipt and blind products are fixed, read-only stages write:
   sets `correction_available` false and leaves corrected magnitudes absent.
 
 The differential benchmark reads the databases without writing them and uses
-the v21 nightly-extinction directory only as a comparison control. It makes no
-network request.
+one immutable completed v21 nightly-extinction directory as its population and
+comparison control. It makes no network request.
 
 The historical `run_distributed_gobig.py` remote workflow is v11-specific. Do
 not point it at v22 or the shared MMTO databases. Local verification and a dry

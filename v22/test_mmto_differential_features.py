@@ -215,7 +215,7 @@ class DifferentialFeatureTests(unittest.TestCase):
             sorted(next(iter(roles)) for roles in star_roles.values()).count("train"), 6
         )
 
-    def test_held_star_identities_never_enter_an_earlier_role(self):
+    def test_evaluation_rows_are_jointly_held_out_by_night_and_identity(self):
         runs = [_run(index, f"2026-02-{index + 1:02d}") for index in range(6)]
         stars = [
             _star(run, f"star-{star}", 5.0, x=100.0 + star, y=200.0)
@@ -224,10 +224,12 @@ class DifferentialFeatureTests(unittest.TestCase):
         ]
         assignments = assign_splits(_data(runs, stars))
         for row in assignments:
-            if row.star_role == "validation":
-                self.assertNotEqual(row.role, "train")
-            if row.star_role == "test":
-                self.assertEqual(row.role, "test")
+            if row.role in ("train", "validation", "test"):
+                self.assertEqual(row.night_role, row.role)
+                self.assertEqual(row.star_role, row.role)
+            else:
+                self.assertEqual(row.role, "excluded")
+                self.assertNotEqual(row.night_role, row.star_role)
 
     def test_target_is_not_its_own_weather_station(self):
         ordinary = _context_fixture(target_delta=9.0)

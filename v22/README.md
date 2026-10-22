@@ -136,7 +136,8 @@ Post-processing adds these v22 directories below each pipeline output:
   parallactic/refraction direction, stellar epoch and every saved blind planet
   candidate without altering or reranking candidates.
 - `differential-photometry/` compares a local stellar ensemble, random forest,
-  gradient boosting, and a small neural network on held-out nights and stars.
+  gradient boosting, and a small neural network on rows jointly held out by
+  night and star identity, with measured injected-signal recovery.
   The simplest passing method receives one final pseudo-planet test. Failed
   scientific gates are reported normally and publish no corrected planet value;
   they are not pipeline crashes.
