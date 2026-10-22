@@ -7,8 +7,9 @@ development line.
 ## V21 implemented
 
 - Reuses verified local MMTO downloads before fetching a selected missing file.
-- Checks the current MMTO observing night before filling the invocation cap
-  from older local backlog, then resumes the durable older-night cursor.
+- Checks the current MMTO observing night and any intervening nights missed
+  since the previous invocation before filling remaining capacity from local
+  unfinished work and the durable older-night cursor.
 - Lists at most one observing night per remote request and preserves the
   per-invocation image cap.
 - Reprocesses earlier-version receipts; only a v21 receipt suppresses v21 work.
@@ -23,6 +24,9 @@ development line.
   production-sized star networks do not require a dense SVD.
 - Produces distinct-night same-sidereal-time differential transmission maps at
   unchanged measured centroids with no interpolation.
+- Retries the derived planet-photometry stage only when its preserved log shows
+  a transient JPL Horizons transport failure. Each failed attempt is retained,
+  and successful products retain their requested output paths in provenance.
 
 ## Preserved limitations
 

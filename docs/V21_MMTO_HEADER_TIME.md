@@ -72,8 +72,10 @@ threshold are explicitly labelled insufficient.
 - `known-site-time-validation/mmto_site_time_validation.csv`
 - `known-site-time-validation/mmto_planet_epoch_validation.csv`
 
-The pipeline summary records every stage and its exit status. The durable
-backfill cursor advances only after selected images have v21 receipts.
+The pipeline summary records every stage and its exit status. A separate
+recent-night queue ensures that current and intervening newly available nights
+are considered before old backlog. The durable backfill cursor and recent-night
+queue advance only after selected images have v21 receipts.
 
 ## Verification on 2026-10-19
 
@@ -84,3 +86,14 @@ backfill cursor advances only after selected images have v21 receipts.
 - A real one-image `--dry-run` listed the current observing night, selected
   `2026_10_18__22_00_04.fits.bz2`, and performed no download, solve or state
   advance.
+
+## Recent-night queue verification on 2026-10-20
+
+- The complete root suite ran 557 tests with no failures and one optional
+  `h5py` skip.
+- `./demo.sh --output results/check-unique-name` passed with 3,653
+  associations, 0.397892-pixel RMS and no withheld stars.
+- A real 40-image dry run checked the current and two intervening observing
+  nights, selected 39 recent unfinished images first, then filled the final
+  slot with one older unfinished local image. It performed no download, solve
+  or state advance.

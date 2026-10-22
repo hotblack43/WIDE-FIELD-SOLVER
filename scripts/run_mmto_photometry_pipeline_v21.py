@@ -54,6 +54,8 @@ CADENCE_BOUNDARY_TOLERANCE = timedelta(minutes=2)
 class BackfillState:
     archive: Path
     next_night: date
+    latest_current_night: date | None = None
+    pending_recent_nights: tuple[date, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -91,6 +93,8 @@ class AcquisitionPlan:
     files_listed: int
     processed_receipts_skipped: int
     selected: tuple[SelectedImage, ...]
+    recent_nights_pending_before: tuple[date, ...]
+    state_after: BackfillState
 
 
 def _date_value(value: str) -> date:
@@ -247,9 +251,10 @@ def load_backfill_state(
     archive = Path(archive).resolve()
     state_path = Path(state_path)
     if not state_path.is_file():
-        return BackfillState(archive, default_night)
+        return BackfillState(archive, default_night, default_night)
     payload = json.loads(state_path.read_text(encoding="utf-8"))
-    if payload.get("schema_version") != 1:
+    schema_version = payload.get("schema_version")
+    if schema_version not in (1, 2):
         raise ValueError(f"unsupported v21 backfill state: {state_path}")
     recorded_archive = Path(str(payload.get("archive", ""))).resolve()
     if recorded_archive != archive:
@@ -261,18 +266,50 @@ def load_backfill_state(
         next_night = date.fromisoformat(str(payload["next_night"]))
     except (KeyError, ValueError) as exc:
         raise ValueError(f"invalid v21 backfill state: {state_path}") from exc
-    return BackfillState(archive, next_night)
+    if schema_version == 1:
+        return BackfillState(archive, next_night)
+    try:
+        latest_raw = payload.get("latest_current_night")
+        latest_current_night = (
+            None if latest_raw is None else date.fromisoformat(str(latest_raw))
+        )
+        pending_recent_nights = tuple(
+            date.fromisoformat(str(value))
+            for value in payload.get("pending_recent_nights", ())
+        )
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"invalid v21 backfill state: {state_path}") from exc
+    if len(set(pending_recent_nights)) != len(pending_recent_nights):
+        raise ValueError(f"invalid v21 backfill state: {state_path}")
+    return BackfillState(
+        archive,
+        next_night,
+        latest_current_night,
+        tuple(sorted(pending_recent_nights, reverse=True)),
+    )
 
 
 def write_backfill_state_atomic(
-    state_path: Path, archive: Path, next_night: date
+    state_path: Path,
+    archive: Path,
+    next_night: date,
+    *,
+    latest_current_night: date | None = None,
+    pending_recent_nights: Sequence[date] = (),
 ) -> None:
     state_path = Path(state_path)
     state_path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
-        "schema_version": 1,
+        "schema_version": 2,
         "archive": str(Path(archive).resolve()),
         "next_night": next_night.isoformat(),
+        "latest_current_night": (
+            None if latest_current_night is None else latest_current_night.isoformat()
+        ),
+        "pending_recent_nights": [
+            night.isoformat()
+            for night in sorted(set(pending_recent_nights), reverse=True)
+        ],
     }
     temporary = state_path.with_name(f".{state_path.name}.{os.getpid()}.tmp")
     temporary.write_text(
@@ -390,6 +427,14 @@ def _stage_commands(
                 name,
                 [str(Path(repo_root) / "plot_mmto_variable_stars_v21.sh"), *command[1:]],
             )
+        elif name == "planet_photometry":
+            stages[index] = (
+                name,
+                [
+                    str(Path(repo_root) / "v21" / "plot_ALL_planets_v21.sh"),
+                    *command[1:],
+                ],
+            )
     stages.append((
         "v21_grey_extinction",
         [
@@ -468,6 +513,11 @@ def build_acquisition_plan(
     state = load_backfill_state(state_path, archive, current_night)
     if state.next_night > current_night:
         raise ValueError("v21 backfill cursor is later than the current night")
+    if (
+        state.latest_current_night is not None
+        and state.latest_current_night > current_night
+    ):
+        raise ValueError("v21 recent-night marker is later than the current night")
 
     processed = _processed_source_digests(results_database)
     entries = _manifest_entries(archive)
@@ -495,6 +545,34 @@ def build_acquisition_plan(
     nights_listed: list[date] = []
     files_listed = 0
     cursor_after = state.next_night
+    pending_recent_nights = set(state.pending_recent_nights)
+    if state.latest_current_night is None:
+        next_recent_night = state.next_night + timedelta(days=1)
+    else:
+        next_recent_night = state.latest_current_night
+    while next_recent_night < current_night:
+        if next_recent_night > state.next_night and next_recent_night >= oldest_night:
+            pending_recent_nights.add(next_recent_night)
+        next_recent_night += timedelta(days=1)
+    recent_nights_pending_before = tuple(sorted(pending_recent_nights, reverse=True))
+
+    def finish_plan() -> AcquisitionPlan:
+        return AcquisitionPlan(
+            max_images=max_images,
+            cursor_before=state.next_night,
+            cursor_after=cursor_after,
+            nights_listed=tuple(nights_listed),
+            files_listed=files_listed,
+            processed_receipts_skipped=len(skipped),
+            selected=tuple(selected),
+            recent_nights_pending_before=recent_nights_pending_before,
+            state_after=BackfillState(
+                state.archive,
+                cursor_after,
+                current_night,
+                tuple(sorted(pending_recent_nights, reverse=True)),
+            ),
+        )
 
     def scan_night(night: date) -> bool:
         """Append available work and return whether the whole night was considered."""
@@ -547,15 +625,14 @@ def build_acquisition_plan(
         if state.next_night == current_night and complete:
             cursor_after = current_night - timedelta(days=1)
         if len(selected) == max_images:
-            return AcquisitionPlan(
-                max_images,
-                state.next_night,
-                cursor_after,
-                tuple(nights_listed),
-                files_listed,
-                len(skipped),
-                tuple(selected),
-            )
+            return finish_plan()
+
+    for recent_night in recent_nights_pending_before:
+        complete = scan_night(recent_night)
+        if complete:
+            pending_recent_nights.remove(recent_night)
+        if len(selected) == max_images:
+            return finish_plan()
 
     local_pending = sorted(
         _cadence_winners(site, tuple(
@@ -588,15 +665,7 @@ def build_acquisition_plan(
         selected_slots.add(slot)
         selected_candidates.append(entry.candidate)
         if len(selected) == max_images:
-            return AcquisitionPlan(
-                max_images,
-                state.next_night,
-                cursor_after,
-                tuple(nights_listed),
-                files_listed,
-                len(skipped),
-                tuple(selected),
-            )
+            return finish_plan()
 
     cursor = state.next_night
     if cursor == current_night:
@@ -612,15 +681,7 @@ def build_acquisition_plan(
             break
         cursor -= timedelta(days=1)
 
-    return AcquisitionPlan(
-        max_images=max_images,
-        cursor_before=state.next_night,
-        cursor_after=cursor_after,
-        nights_listed=tuple(nights_listed),
-        files_listed=files_listed,
-        processed_receipts_skipped=len(skipped),
-        selected=tuple(selected),
-    )
+    return finish_plan()
 
 
 def acquire_selected_images(
@@ -771,6 +832,8 @@ def main(
                 f"cursor_after={plan.cursor_after.isoformat()} "
                 f"nights_listed={len(plan.nights_listed)} "
                 f"files_listed={plan.files_listed} "
+                f"recent_pending_before={len(plan.recent_nights_pending_before)} "
+                f"recent_pending_after={len(plan.state_after.pending_recent_nights)} "
                 f"receipt_skipped={plan.processed_receipts_skipped} "
                 f"selected={len(plan.selected)}"
             )
@@ -799,6 +862,14 @@ def main(
                     "cursor_after_proposed": plan.cursor_after.isoformat(),
                     "nights_listed": [night.isoformat() for night in plan.nights_listed],
                     "files_listed": plan.files_listed,
+                    "recent_nights_pending_before": [
+                        night.isoformat()
+                        for night in plan.recent_nights_pending_before
+                    ],
+                    "recent_nights_pending_after_proposed": [
+                        night.isoformat()
+                        for night in plan.state_after.pending_recent_nights
+                    ],
                     "processed_receipts_skipped": plan.processed_receipts_skipped,
                     "selected": len(plan.selected),
                 },
@@ -867,10 +938,20 @@ def main(
                     processing["succeeded" if receipt == 0 else "solver_failed"] += 1
                     _write_summary(output, summary)
 
-                write_backfill_state_atomic(state_path, archive, plan.cursor_after)
+                write_backfill_state_atomic(
+                    state_path,
+                    archive,
+                    plan.state_after.next_night,
+                    latest_current_night=plan.state_after.latest_current_night,
+                    pending_recent_nights=plan.state_after.pending_recent_nights,
+                )
                 selection_summary = summary["selection"]
                 assert isinstance(selection_summary, dict)
                 selection_summary["cursor_committed"] = plan.cursor_after.isoformat()
+                selection_summary["recent_nights_pending_committed"] = [
+                    night.isoformat()
+                    for night in plan.state_after.pending_recent_nights
+                ]
                 _write_summary(output, summary)
 
                 if not database.is_file():

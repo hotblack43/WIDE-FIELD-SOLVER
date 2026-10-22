@@ -74,12 +74,14 @@ Run the incremental MMTO queue from the repository root with:
 ./go_mmto_photometry_v21.sh
 ```
 
-V21 first requests the current MMTO observing-night directory, so newly arrived
-images cannot be hidden by a full local backlog. It then fills the remaining
-capacity with verified local images lacking a v21 solver receipt before
-continuing a durable newest-to-oldest remote cursor. Discovery stops as soon as
-the default 40-image cap is full, so it never inventories the complete
-historical archive merely to discard most entries. Change the cap with:
+V21 first requests the current MMTO observing-night directory and then any
+intervening recent nights not completed since the previous invocation. New
+images therefore cannot be hidden by a full local backlog or by a skipped daily
+run. It then fills the remaining capacity with verified local images lacking a
+v21 solver receipt before continuing a durable newest-to-oldest historical
+cursor. An incomplete recent night remains ahead of historical work for the
+next invocation. Selection stops as soon as the default total 40-image cap is
+full. Change the cap with:
 
 ```sh
 ./go_mmto_photometry_v21.sh --max-images 12
@@ -88,11 +90,21 @@ historical archive merely to discard most entries. Change the cap with:
 Any v21 solver receipt for an image SHA-256 counts as completed v21 work,
 including a recorded scientific failure. Earlier-version receipts remain
 preserved but do not suppress v21 reprocessing. Downloads without v21 receipts
-remain eligible. The cursor is stored beside `stars.sqlite` and advances only
-after the selected batch has receipts. It remains unchanged after a dry run, transfer
+remain eligible. The historical cursor, latest current-night marker and pending
+recent-night queue are stored beside `stars.sqlite`; they advance only after the
+selected batch has receipts. They remain unchanged after a dry run, transfer
 failure, or solver failure without a receipt. A later derived-product failure
 does not undo completed image work. The default oldest night is 2026-06-30;
 moving earlier requires an explicit `--oldest-night YYYY-MM-DD`.
+
+V21 runs planet photometry through `v21/plot_ALL_planets_v21.sh`. The wrapper
+retries only transient JPL Horizons connection, read, and retryable HTTP
+failures, up to four total attempts with bounded exponential delays. Each
+failed attempt remains beside the requested output as
+`planet-photometry-failed-attempt-N`; non-network and malformed-response
+failures stop immediately. A retry starts with the requested
+`planet-photometry/` path clear, so successful products retain the correct
+absolute output paths in their provenance.
 
 Before every solve, the recognised MMTO FITS header is checked and its exposure
 start, duration and midpoint are stored in the existing download manifest's

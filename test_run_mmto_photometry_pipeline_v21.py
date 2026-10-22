@@ -357,6 +357,99 @@ class V21SelectionTests(unittest.TestCase):
         self.assertEqual(plan.nights_listed, (current,))
         self.assertEqual(plan.files_listed, 1)
 
+    def test_intervening_new_nights_precede_older_backlog_after_missed_run(self):
+        current = date(2026, 10, 20)
+        cursor = date(2026, 10, 17)
+        newest = candidate(date(2026, 10, 19), 0, "new-19")
+        intervening = candidate(date(2026, 10, 18), 0, "new-18")
+        backlog = candidate(cursor, 0, "old-17")
+        listing = Listing(
+            {
+                date(2026, 10, 19): (newest,),
+                date(2026, 10, 18): (intervening,),
+                cursor: (backlog,),
+            }
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            archive = root / "archive"
+            PIPELINE.write_backfill_state_atomic(root / "state.json", archive, cursor)
+            plan = PIPELINE.build_acquisition_plan(
+                archive,
+                root / "stars.sqlite",
+                state_path=root / "state.json",
+                current_night=current,
+                oldest_night=cursor,
+                max_images=3,
+                adapter=listing,
+                client=object(),
+                site=SITE,
+            )
+
+        self.assertEqual(
+            [item.candidate.filename for item in plan.selected],
+            ["new-19.fits.bz2", "new-18.fits.bz2", "old-17.fits.bz2"],
+        )
+        self.assertEqual(
+            [requested.start_utc.astimezone(ARIZONA).date() for requested in listing.calls],
+            [current, date(2026, 10, 19), date(2026, 10, 18), cursor],
+        )
+
+    def test_incomplete_new_night_is_retained_ahead_of_old_cursor(self):
+        current = date(2026, 10, 20)
+        recent = date(2026, 10, 19)
+        cursor = date(2026, 10, 17)
+        first = candidate(recent, 20, "newer")
+        second = candidate(recent, 0, "older")
+        listing = Listing({recent: (first, second)})
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            archive = root / "archive"
+            state_path = root / "state.json"
+            PIPELINE.write_backfill_state_atomic(state_path, archive, cursor)
+            plan = PIPELINE.build_acquisition_plan(
+                archive,
+                root / "stars.sqlite",
+                state_path=state_path,
+                current_night=current,
+                oldest_night=cursor,
+                max_images=1,
+                adapter=listing,
+                client=object(),
+                site=SITE,
+            )
+
+        self.assertEqual(plan.selected[0].candidate.filename, "newer.fits.bz2")
+        self.assertEqual(plan.cursor_after, cursor)
+        self.assertEqual(
+            plan.state_after.pending_recent_nights,
+            (recent, date(2026, 10, 18)),
+        )
+
+    def test_state_round_trip_preserves_recent_discovery_queue(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            archive = root / "archive"
+            state_path = root / "state.json"
+            PIPELINE.write_backfill_state_atomic(
+                state_path,
+                archive,
+                date(2026, 10, 17),
+                latest_current_night=date(2026, 10, 20),
+                pending_recent_nights=(date(2026, 10, 19), date(2026, 10, 18)),
+            )
+
+            state = PIPELINE.load_backfill_state(
+                state_path, archive, date(2026, 10, 21)
+            )
+
+        self.assertEqual(state.next_night, date(2026, 10, 17))
+        self.assertEqual(state.latest_current_night, date(2026, 10, 20))
+        self.assertEqual(
+            state.pending_recent_nights,
+            (date(2026, 10, 19), date(2026, 10, 18)),
+        )
+
     def test_partial_cursor_night_retains_night_for_next_run(self):
         night = date(2026, 10, 15)
         listing = Listing(
@@ -453,10 +546,11 @@ def fake_product_stages(root: Path) -> None:
         "calibrate_mmto_extinction.sh",
         "calibrate_mmto_extinction_v21.sh",
         "plot_mmto_variable_stars_v21.sh",
-        "plot_ALL_planets.sh",
         "plot_planet_empirical_extinction.sh",
     ):
         executable(root / name, "#!/usr/bin/env bash\nexit 0\n")
+    (root / "v21").mkdir()
+    executable(root / "v21" / "plot_ALL_planets_v21.sh", "#!/usr/bin/env bash\nexit 0\n")
     (root / "scripts").mkdir()
     executable(
         root / "scripts" / "validate_mmto_site_time_v21.py",
@@ -570,6 +664,9 @@ class V21OrchestrationTests(unittest.TestCase):
             if name == "variable_star_time_series":
                 self.assertEqual(command[1:], old_command[1:])
                 self.assertEqual(command[0], "/repo/plot_mmto_variable_stars_v21.sh")
+            elif name == "planet_photometry":
+                self.assertEqual(command[1:], old_command[1:])
+                self.assertEqual(command[0], "/repo/v21/plot_ALL_planets_v21.sh")
             else:
                 self.assertEqual(command, old_command)
 

@@ -18,6 +18,8 @@ CHANGES = [
     "Use validated FITS-header exposure midpoints and known MMTO site coordinates only for separate post-fit products.",
     "Retain the blind planet epoch search as a separately inspectable secondary result.",
     "Add per-exposure grey-transparency terms and same-sidereal-time differential transmission maps.",
+    "Prioritize current and intervening recent MMTO nights before filling the invocation cap from historical backlog.",
+    "Retry only transient JPL Horizons failures in v21 planet photometry while preserving failed attempts and retaining correct output provenance.",
 ]
 
 
