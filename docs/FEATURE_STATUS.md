@@ -1,10 +1,19 @@
 # Current development feature status
 
 The published checkpoint remains v0.11.0. Historical runtime boundaries through
-v21 are frozen by their manifests. V22 is the active differential-planet-
-photometry development line.
+v22 are frozen by their manifests. V23 is the active aperture-photometry test
+line.
 
-## V22 in development
+## V23 in development
+
+- Preserves v22 and tests aperture and local-sky radii read-only on native FITS.
+- Uses held-out nights and requires one radius rule to improve R, G and B.
+- The 71-image, 36-night test retained the v22 production rule. A 4-sigma
+  aperture reduced scatter, but introduced held-out magnitude/PSF trends.
+- Annuli scaled to detected blob width did not improve all three channels;
+  the existing aperture+3 to aperture+7 pixel annulus remains the control.
+
+## V22 frozen implementation
 
 - Preserves the final v21 runtime and its transient Horizons retry behavior.
 - Adds a read-only benchmark of local stellar ensembles, random forests,

@@ -165,6 +165,14 @@ planet photometry only in `v22/` and its `go22.sh`, `go_v0.22.0.sh`, and
 measurement population read-only; only v22 receipts count as completed v22
 solver work.
 
+`go22.sh`, `go_v0.22.0.sh`, `go_mmto_photometry_v22.sh`, and the complete
+`v22/` differential-photometry runtime are frozen at the v23 boundary; their
+hashes are in `docs/v22-runtime.json`. Develop aperture and sky-annulus testing
+only in `v23/` and its `go23.sh`, `go_v0.23.0.sh`, and
+`go_mmto_photometry_v23.sh` launchers. V23 may benchmark the frozen v21
+measurement population read-only; only v23 receipts count as completed v23
+solver work.
+
 Develop later upgrades in a new version directory with its own launchers,
 catalogue, lockfile, ephemeris data and source manifest. Never overwrite v11 or
 another preserved runtime. All versions must work without `.worktrees`; update
