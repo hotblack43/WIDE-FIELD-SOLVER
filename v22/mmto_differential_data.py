@@ -366,10 +366,19 @@ def _select_runs(
         "run_id,recorded_at_utc,source_path,source_sha256,analysis_path,"
         "exit_code,solver_version,catalogue_sha256"
     )
-    all_rows = connection.execute(
-        f"SELECT {columns} FROM runs WHERE solver_version=? ORDER BY recorded_at_utc,run_id",
-        (input_solver_version,),
-    ).fetchall()
+    if run_ids is None:
+        all_rows = connection.execute(
+            f"SELECT {columns} FROM runs WHERE solver_version=? "
+            "ORDER BY recorded_at_utc,run_id",
+            (input_solver_version,),
+        ).fetchall()
+    else:
+        # An adopted control records an immutable population by run ID. Preserve
+        # that exact historical population even when it contains successful
+        # reductions from an earlier solver version.
+        all_rows = connection.execute(
+            f"SELECT {columns} FROM runs ORDER BY recorded_at_utc,run_id"
+        ).fetchall()
     audit: list[AuditRow] = []
     if run_ids is not None:
         by_id = {str(row[0]): row for row in all_rows}

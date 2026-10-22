@@ -465,7 +465,45 @@ def _stage_commands(
             "--output", str(Path(output) / "known-site-time-validation"),
         ],
     ))
+    stages.append((
+        "differential_photometry",
+        [
+            str(Path(repo_root) / "run_v22_photometry_benchmark.sh"),
+            "--database", str(Path(database)),
+            "--manifest", str(Path(manifest)),
+            "--v21-control", str(Path(output) / "nightly-extinction"),
+            "--output", str(Path(output) / "differential-photometry"),
+            "--config", str(
+                Path(repo_root) / "v22" / "config" / "differential_photometry.json"
+            ),
+        ],
+    ))
     return tuple(stages)
+
+
+def _record_differential_benchmark(output: Path, summary: dict[str, object]) -> None:
+    """Copy the scientific gate outcome into the operational pipeline summary."""
+    summary_path = Path(output) / "differential-photometry" / "benchmark_summary.json"
+    payload = json.loads(summary_path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError(f"benchmark summary is not a JSON object: {summary_path}")
+    figures = payload.get("figures", [])
+    if not isinstance(figures, list):
+        raise ValueError(f"benchmark figures are not a list: {summary_path}")
+    resolved_figures = []
+    for item in figures:
+        figure = Path(item)
+        if not figure.is_absolute():
+            figure = summary_path.parent / figure
+        resolved_figures.append(str(figure.resolve()))
+    summary["differential_photometry"] = {
+        "selected_method": payload.get("selected_method"),
+        "correction_available": bool(payload.get("correction_available", False)),
+        "validation_gate": payload.get("validation_gate"),
+        "final_test_gate": payload.get("final_test_gate"),
+        "figures": resolved_figures,
+        "summary": str(summary_path.resolve()),
+    }
 
 
 def _selected_from_entry(entry: ManifestEntry) -> SelectedImage:
@@ -889,6 +927,9 @@ def main(
                     "planet_empirical_extinction": str(
                         output / "planet-empirical-extinction"
                     ),
+                    "differential_photometry": str(
+                        output / "differential-photometry"
+                    ),
                 },
             }
             _write_summary(output, summary)
@@ -927,12 +968,12 @@ def main(
                     receipt = _latest_v22_receipt(database, image.source_sha256)
                     if receipt is None:
                         raise OperationalFailure(
-                            "go21 produced no v22 database receipt for "
+                            "go22 produced no v22 database receipt for "
                             f"{image.source_sha256}"
                         )
                     if (return_code == 0) != (receipt == 0):
                         raise OperationalFailure(
-                            "go21 exit status disagrees with its database receipt for "
+                            "go22 exit status disagrees with its database receipt for "
                             f"{image.source_sha256}"
                         )
                     processing["succeeded" if receipt == 0 else "solver_failed"] += 1
@@ -980,6 +1021,9 @@ def main(
                         raise OperationalFailure(
                             f"photometry stage {name} exited {return_code}"
                         )
+                    if name == "differential_photometry":
+                        _record_differential_benchmark(output, summary)
+                        _write_summary(output, summary)
                 summary["status"] = "complete"
                 summary["finished_utc"] = _utc_now()
                 _write_summary(output, summary)

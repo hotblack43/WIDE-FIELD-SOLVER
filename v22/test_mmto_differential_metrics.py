@@ -8,6 +8,7 @@ import numpy as np
 from v22.mmto_differential_metrics import (
     PredictionRow,
     TrainingSupport,
+    _bootstrap_slope_interval,
     empirical_prediction_interval,
     evaluate_gate,
 )
@@ -114,6 +115,16 @@ class DifferentialMetricTests(unittest.TestCase):
         )
         self.assertLess(interval[0], 0.0)
         self.assertGreater(interval[1], 0.0)
+
+    def test_grouped_slope_bootstrap_preserves_reference_result(self):
+        x = np.array([0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+        y = np.array([1.0, 1.5, 2.2, 2.9, 4.1, 5.2, 5.8])
+        groups = np.array(["a", "a", "b", "b", "c", "c", "c"])
+        interval = _bootstrap_slope_interval(
+            x, y, groups, resamples=50, seed=17
+        )
+        self.assertAlmostEqual(interval[0], 0.6317073170731708)
+        self.assertAlmostEqual(interval[1], 0.9510416666666672)
 
 
 if __name__ == "__main__":

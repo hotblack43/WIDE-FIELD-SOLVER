@@ -289,8 +289,8 @@ def _plot_models(results: Sequence[ValidationResult], output: Path) -> None:
     axis.set_ylabel("Validation MAE (mag)")
     axis.set_title("Fixed-order model comparison")
     axis.grid(axis="y", alpha=0.2)
-    axis.legend()
-    figure.tight_layout()
+    axis.legend(loc="upper left", bbox_to_anchor=(1.01, 1.0))
+    figure.tight_layout(rect=(0, 0, 0.91, 1))
     _save_figure(figure, output / "model_comparison.pdf")
 
 
@@ -320,7 +320,12 @@ def _plot_planets(rows: Sequence[CorrectedPlanetMeasurement], output: Path) -> N
             x = np.arange(len(series))
             axis.plot(x, [row.raw_machine_magnitude for row in series], ".-", alpha=0.45, label=f"{identity} raw")
             axis.plot(x, [row.v21_control_magnitude for row in series], ".-", alpha=0.45, label=f"{identity} v21")
-            axis.plot(x, [row.v22_relative_magnitude for row in series], "o-", alpha=0.8, label=f"{identity} v22")
+            if any(
+                row.v22_relative_magnitude is not None
+                and math.isfinite(row.v22_relative_magnitude)
+                for row in series
+            ):
+                axis.plot(x, [row.v22_relative_magnitude for row in series], "o-", alpha=0.8, label=f"{identity} v22")
         if not selected:
             axis.text(0.5, 0.5, "No planet rows", ha="center", va="center", transform=axis.transAxes)
         axis.set_ylabel(f"{channel} mag")
@@ -328,9 +333,26 @@ def _plot_planets(rows: Sequence[CorrectedPlanetMeasurement], output: Path) -> N
     axes[-1].set_xlabel("Observation order")
     handles, labels = axes[0].get_legend_handles_labels()
     if handles:
-        figure.legend(handles[:12], labels[:12], loc="upper center", ncol=3, fontsize=7)
-    figure.suptitle("Planet relative photometry: raw, v21 control, and confirmed v22")
-    figure.tight_layout(rect=(0, 0, 1, 0.91))
+        figure.legend(
+            handles[:12],
+            labels[:12],
+            loc="upper center",
+            bbox_to_anchor=(0.5, 0.955),
+            ncol=4,
+            fontsize=7,
+        )
+    has_v22 = any(
+        row.v22_relative_magnitude is not None
+        and math.isfinite(row.v22_relative_magnitude)
+        for row in rows
+    )
+    figure.suptitle(
+        "Planet relative photometry: raw, v21 control, and confirmed v22"
+        if has_v22
+        else "Planet relative photometry: raw and v21 control; no v22 correction passed",
+        y=0.995,
+    )
+    figure.tight_layout(rect=(0, 0, 1, 0.86))
     _save_figure(figure, output / "planet_relative_lightcurves.pdf")
 
 

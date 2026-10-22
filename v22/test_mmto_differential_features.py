@@ -14,7 +14,11 @@ from v22.mmto_differential_data import (
     V21Control,
 )
 from v22.mmto_differential_features import (
+    ComparisonResidual,
     SplitAssignment,
+    _context,
+    _indexed_context,
+    _make_exposure_index,
     assign_splits,
     build_feature_table,
     inject_signals,
@@ -147,6 +151,39 @@ def _context_fixture(target_delta: float = 9.0):
 
 
 class DifferentialFeatureTests(unittest.TestCase):
+    def test_indexed_context_is_exactly_equivalent_to_reference_scan(self):
+        run = _run(0, "2026-01-01")
+        target = _star(run, "target", 5.0, x=500.0, y=400.0)
+        residuals = tuple(
+            ComparisonResidual(
+                source_sha256=run.source_sha256,
+                catalogue_sha256=run.catalogue_sha256,
+                star_id="target" if index == 0 else f"comparison-{index}",
+                channel="R",
+                x_px=500.0 + (index % 10) * 31.0,
+                y_px=400.0 + (index // 10) * 29.0,
+                residual_magnitude=(index % 7 - 3) / 10.0,
+            )
+            for index in range(60)
+        )
+        expected = _context(
+            target,
+            residuals,
+            radii=(128, 256, 512),
+            minimum_local=3,
+            minimum_exposure=10,
+        )
+
+        actual = _indexed_context(
+            target,
+            _make_exposure_index(residuals),
+            radii=(128, 256, 512),
+            minimum_local=3,
+            minimum_exposure=10,
+        )
+
+        self.assertEqual(actual, expected)
+
     def test_splits_are_deterministic_independent_and_sixty_twenty_twenty(self):
         runs = [_run(index, f"2026-01-{index + 1:02d}") for index in range(10)]
         stars = [

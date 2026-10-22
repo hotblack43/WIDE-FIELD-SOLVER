@@ -357,6 +357,19 @@ class DifferentialDataTests(unittest.TestCase):
             self.assertEqual([run.run_id for run in replay.runs], ["old"])
             self.assertEqual(replay.stellar[0].count_rate_adu_per_s, 80.0)
 
+    def test_exact_control_ids_replay_preserved_earlier_solver_versions(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            database, manifest = _fixture(Path(temporary))
+            with sqlite3.connect(database) as connection:
+                connection.execute(
+                    "UPDATE runs SET solver_version='0.20.0' WHERE run_id='old'"
+                )
+
+            replay = load_measurements(database, manifest, run_ids=frozenset({"old"}))
+
+        self.assertEqual([run.run_id for run in replay.runs], ["old"])
+        self.assertEqual(replay.runs[0].solver_version, "0.20.0")
+
     def test_only_unsaturated_ordinary_apertures_enter_stellar_data(self):
         with tempfile.TemporaryDirectory() as temporary:
             database, manifest = _fixture(Path(temporary))

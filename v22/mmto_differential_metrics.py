@@ -95,7 +95,9 @@ class TrainingSupport:
         scale = q75 - q25
         scale[~np.isfinite(scale) | (scale <= 0.0)] = 1.0
         normalized = (array - centre) / scale
-        neighbours = NearestNeighbors(n_neighbors=2).fit(normalized)
+        neighbours = NearestNeighbors(
+            n_neighbors=2, algorithm="kd_tree", n_jobs=-1
+        ).fit(normalized)
         distances = neighbours.kneighbors(normalized, return_distance=True)[0][:, 1]
         limit = float(np.quantile(distances, neighbour_quantile))
         return cls(lower, upper, centre, scale, max(limit, np.finfo(float).eps), neighbours)
@@ -106,17 +108,21 @@ class TrainingSupport:
             array = array.reshape(1, -1)
         if array.ndim != 2 or array.shape[1] != len(self.lower):
             raise ValueError("support feature width mismatch")
-        output = []
-        for row in array:
-            if not np.isfinite(row).all() or np.any(row < self.lower) or np.any(row > self.upper):
-                output.append("out_of_domain")
-                continue
-            normalized = (row - self.centre) / self.scale
-            distance = float(
-                self.neighbours.kneighbors(normalized.reshape(1, -1), n_neighbors=1)[0][0, 0]
-            )
-            output.append("supported" if distance <= self.neighbour_limit else "out_of_domain")
-        return tuple(output)
+        valid = (
+            np.isfinite(array).all(axis=1)
+            & (array >= self.lower).all(axis=1)
+            & (array <= self.upper).all(axis=1)
+        )
+        output = np.full(len(array), "out_of_domain", dtype=object)
+        valid_indices = np.flatnonzero(valid)
+        for start in range(0, len(valid_indices), 10_000):
+            indices = valid_indices[start:start + 10_000]
+            normalized = (array[indices] - self.centre) / self.scale
+            distances = self.neighbours.kneighbors(
+                normalized, n_neighbors=1, return_distance=True
+            )[0][:, 0]
+            output[indices[distances <= self.neighbour_limit]] = "supported"
+        return tuple(str(value) for value in output)
 
 
 def _mae(values: np.ndarray) -> float:
@@ -183,24 +189,21 @@ def _bootstrap_slope_interval(
     resamples: int,
     seed: int,
 ) -> tuple[float, float]:
-    unique = np.unique(groups)
+    finite = np.isfinite(x) & np.isfinite(y)
+    unique, inverse = np.unique(groups[finite], return_inverse=True)
     if len(unique) < 3:
         return (math.nan, math.nan)
-    sufficient = []
-    for name in unique:
-        selected = (groups == name) & np.isfinite(x) & np.isfinite(y)
-        gx, gy = x[selected], y[selected]
-        if len(gx):
-            sufficient.append(
-                (
-                    len(gx),
-                    float(gx.sum()),
-                    float(gy.sum()),
-                    float(np.dot(gx, gx)),
-                    float(np.dot(gx, gy)),
-                )
-            )
-    statistics = np.asarray(sufficient, dtype=float)
+    finite_x = x[finite]
+    finite_y = y[finite]
+    statistics = np.column_stack(
+        (
+            np.bincount(inverse),
+            np.bincount(inverse, weights=finite_x),
+            np.bincount(inverse, weights=finite_y),
+            np.bincount(inverse, weights=finite_x * finite_x),
+            np.bincount(inverse, weights=finite_x * finite_y),
+        )
+    )
     if len(statistics) < 3:
         return (math.nan, math.nan)
     rng = np.random.default_rng(seed)
@@ -223,8 +226,13 @@ def empirical_prediction_interval(
     groups = np.asarray(groups)
     if residuals.shape != groups.shape:
         raise ValueError("residual and group arrays must match")
+    grouped: dict[object, list[float]] = {}
+    for group, residual in zip(groups, residuals, strict=True):
+        grouped.setdefault(group.item() if hasattr(group, "item") else group, []).append(
+            float(residual)
+        )
     group_medians = np.array(
-        [np.median(residuals[groups == name]) for name in np.unique(groups)], dtype=float
+        [np.median(grouped[name]) for name in sorted(grouped, key=str)], dtype=float
     )
     alpha = (1.0 - coverage) / 2.0
     return tuple(float(value) for value in np.quantile(group_medians, (alpha, 1.0 - alpha)))

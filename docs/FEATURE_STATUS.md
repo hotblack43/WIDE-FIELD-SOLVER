@@ -13,6 +13,11 @@ photometry development line.
   final pseudo-planet test; a failed final test publishes no correction.
 - Keeps all outputs as relative instrumental photometry and preserves raw and
   v21-control values beside any v22 result.
+- Runs the benchmark as the final v22 photometry stage. Scientific rejection is
+  recorded separately from operational failure and does not fail the pipeline.
+- The complete 2026-10-22 MMTO benchmark rejected all four methods. Gradient
+  boosting reduced validation MAE most overall but retained colour and PSF-width
+  trends, so corrected planet values remain unavailable.
 
 ## V21 frozen implementation
 

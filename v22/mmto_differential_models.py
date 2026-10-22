@@ -307,28 +307,46 @@ def _predictions(
     config: Mapping[str, object],
     planet_ranges: Mapping[str, tuple[float, float, float, float]] | None = None,
 ) -> tuple[PredictionRow, ...]:
-    staged = []
+    predicted_values = np.full(len(rows), math.nan, dtype=float)
+    statuses = np.full(len(rows), "model_unavailable", dtype=object)
     minimum_local = int(config.get("minimum_local_comparisons", 12))
     minimum_exposure = int(config.get("minimum_exposure_comparisons", 30))
-    for index, row in enumerate(rows):
-        if candidate.name == "local_ensemble":
+    if candidate.name == "local_ensemble":
+        for index, row in enumerate(rows):
             predicted, status = local_ensemble_prediction(
                 row,
                 minimum_local=minimum_local,
                 minimum_exposure=minimum_exposure,
             )
-        elif row.channel not in candidate.estimators:
-            predicted, status = math.nan, "model_unavailable"
-        else:
-            raw = np.asarray(row.deployable_features, dtype=float).reshape(1, -1)
-            median = candidate.support_medians[row.channel]
+            predicted_values[index] = predicted
+            statuses[index] = status
+    else:
+        for channel in "RGB":
+            indices = [index for index, row in enumerate(rows) if row.channel == channel]
+            if not indices or channel not in candidate.estimators:
+                continue
+            raw = np.asarray(
+                [rows[index].deployable_features for index in indices], dtype=float
+            )
+            median = candidate.support_medians[channel]
             support_values = np.where(np.isfinite(raw), raw, median)
-            support_status = candidate.support[row.channel].status(support_values)[0]
-            if support_status != "supported":
-                predicted, status = math.nan, "out_of_domain"
-            else:
-                predicted = float(candidate.estimators[row.channel].predict(raw)[0])
-                status = "corrected"
+            support_status = np.asarray(
+                candidate.support[channel].status(support_values), dtype=object
+            )
+            supported = support_status == "supported"
+            statuses[np.asarray(indices)] = support_status
+            if supported.any():
+                supported_indices = np.asarray(indices)[supported]
+                predicted_values[supported_indices] = candidate.estimators[channel].predict(
+                    raw[supported]
+                )
+                statuses[supported_indices] = "corrected"
+
+    staged = []
+    grouped_corrected: dict[str, list[float]] = {}
+    for index, row in enumerate(rows):
+        predicted = float(predicted_values[index])
+        status = str(statuses[index])
         corrected = (
             row.target_delta_magnitude - predicted
             if status == "corrected" and math.isfinite(predicted)
@@ -336,15 +354,12 @@ def _predictions(
         )
         target_group = f"{row.catalogue_sha256}:{row.star_id}:{row.channel}"
         staged.append((index, row, predicted, status, corrected, target_group))
-    centres: dict[str, float] = {}
-    for target_group in sorted({item[5] for item in staged}):
-        values = [
-            item[4]
-            for item in staged
-            if item[5] == target_group and math.isfinite(item[4])
-        ]
-        if values:
-            centres[target_group] = float(np.median(values))
+        if math.isfinite(corrected):
+            grouped_corrected.setdefault(target_group, []).append(corrected)
+    centres = {
+        target_group: float(np.median(values))
+        for target_group, values in grouped_corrected.items()
+    }
     output = []
     for index, row, predicted, status, corrected, target_group in staged:
         metric_corrected = (
