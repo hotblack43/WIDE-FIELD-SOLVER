@@ -4,7 +4,7 @@
 
 **Goal:** Make v23 acquire unseen remote images before cached leftovers and show recent uncalibrated planet measurements honestly on its main time plot.
 
-**Architecture:** Adjust only the v23 acquisition planner, then extend the shared planet writer behind an opt-in flag used only by the v23 launcher. Corrected and uncorrected measurements remain separate in data products and plot styling.
+**Architecture:** Adjust only the v23 acquisition planner, then add a v23-local planet writer behind an opt-in flag used only by the v23 launcher. Corrected and uncorrected measurements remain separate in data products and plot styling, while the root plotting runtime remains frozen at the v15 boundary.
 
 **Tech Stack:** Python 3.12, unittest, Matplotlib, Bash, SQLite.
 
@@ -47,8 +47,8 @@
 
 **Files:**
 - Modify: `test_plot_planet_photometry.py`
-- Modify: `scripts/plot_planet_photometry.py`
-- Modify: `plot_ALL_planets.sh`
+- Create: `v23/scripts/plot_planet_photometry.py`
+- Create: `v23/plot_ALL_planets_impl_v23.sh`
 - Modify: `v23/plot_ALL_planets_v23.sh`
 - Modify: `scripts/run_mmto_photometry_pipeline_v23.py`
 

@@ -9,6 +9,8 @@ import json
 import math
 from pathlib import Path
 import sqlite3
+import subprocess
+import sys
 import tempfile
 import unittest
 from unittest import mock
@@ -22,6 +24,21 @@ from scripts.plot_planet_photometry import load_planet_measurements
 
 
 TEST_CATALOGUE_SHA = "c" * 64
+
+
+def load_v23_planet_plot_module():
+    """Load the active v23 plotter without altering the frozen root runtime."""
+    name = "_test_v23_plot_planet_photometry"
+    if name in sys.modules:
+        return sys.modules[name]
+    path = Path(__file__).resolve().parent / "v23" / "scripts" / "plot_planet_photometry.py"
+    spec = importlib.util.spec_from_file_location(name, path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"cannot load {path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
 def write_nightly_sidecar(
@@ -1356,7 +1373,7 @@ class PlanetPhotometryLoadingTests(unittest.TestCase):
         )
 
     def test_opt_in_exports_missing_extinction_as_distance_only_measurement(self):
-        import scripts.plot_planet_photometry as planet_plot
+        planet_plot = load_v23_planet_plot_module()
 
         self.add_run(
             "run", "a" * 64, "2026-09-20T01:01:00Z",
@@ -1414,7 +1431,7 @@ class PlanetPhotometryLoadingTests(unittest.TestCase):
     def test_opt_in_distance_only_points_are_open_and_unconnected(self):
         from matplotlib.collections import PathCollection
         import matplotlib.pyplot as plt
-        import scripts.plot_planet_photometry as planet_plot
+        planet_plot = load_v23_planet_plot_module()
 
         corrected = [
             {
@@ -2128,6 +2145,29 @@ class PlanetPhotometryLoadingTests(unittest.TestCase):
 
         self.assertEqual(status, 0)
         self.assertTrue((output / "planet_measurements.csv").is_file())
+
+    def test_standalone_script_can_import_manifest_loader_dependencies(self):
+        script = (
+            Path(__file__).resolve().parent
+            / "v23" / "scripts" / "plot_planet_photometry.py"
+        )
+        repository = script.parents[2]
+        probe = (
+            "import runpy,sys; "
+            f"sys.path=[{str(script.parent)!r}]+[p for p in sys.path if p not in "
+            f"({str(script.parent)!r},{str(repository)!r},'')]; "
+            f"runpy.run_path({str(script)!r},run_name='standalone_probe'); "
+            "import scripts.calibrate_nightly_extinction"
+        )
+
+        completed = subprocess.run(
+            [sys.executable, "-c", probe],
+            cwd=repository,
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
 
     def test_command_line_selects_stellar_calibrated_distance_writer(self):
         import scripts.plot_planet_photometry as planet_plot

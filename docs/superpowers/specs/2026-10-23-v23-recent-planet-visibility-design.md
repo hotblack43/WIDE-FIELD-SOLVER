@@ -14,6 +14,8 @@ extinction fit is unavailable.
   before filling remaining capacity from the local unfinished backlog.
 - Within a listed night, select unseen remote files before verified local files.
 - Change v23 only; do not alter frozen v21 acquisition behavior.
+- Keep the plotting implementation under `v23/`; the root plotting scripts are
+  part of the frozen v15 runtime and must retain their recorded hashes.
 - Preserve the 30-reference-star and 10-image extinction gates.
 - Keep filled, connected points as extinction- and distance-corrected data.
 - Plot usable measurements lacking an accepted nightly extinction fit as open,

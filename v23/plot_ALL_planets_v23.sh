@@ -48,7 +48,8 @@ for ((attempt = 1; attempt <= MAX_ATTEMPTS; ++attempt)); do
     fi
 
     printf 'V23 planet plotting attempt %d/%d\n' "$attempt" "$MAX_ATTEMPTS"
-    "$ROOT_DIR/plot_ALL_planets.sh" "${arguments[@]}"
+    "$ROOT_DIR/v23/plot_ALL_planets_impl_v23.sh" \
+        --include-uncalibrated "${arguments[@]}"
     status=$?
     if ((status == 0)); then
         if [[ ! -d $OUTPUT ]]; then

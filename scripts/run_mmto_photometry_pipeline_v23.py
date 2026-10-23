@@ -7,6 +7,7 @@ from contextlib import closing, nullcontext
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 import json
+import math
 import os
 from pathlib import Path
 import sqlite3
@@ -37,6 +38,7 @@ from scripts.run_mmto_photometry_pipeline_v19 import (
     _stage_commands as _v19_stage_commands,
     _write_summary,
 )
+from scripts.mmto_weather import HISTORY_ENDPOINT, MmtoWeatherHistory, WeatherDecision
 from v23.mmto_observations import record_observation
 from v23.mmto_time import read_mmto_observation
 
@@ -44,6 +46,8 @@ from v23.mmto_time import read_mmto_observation
 SOLVER_VERSION = "0.23.0"
 SOLVER_LAUNCHER = "go23.sh"
 DEFAULT_MAX_IMAGES = 40
+DEFAULT_MAX_HUMIDITY_PERCENT = 80.0
+DEFAULT_WEATHER_MAX_AGE_SECONDS = 120.0
 DEFAULT_OLDEST_NIGHT = date(2026, 6, 30)
 UTC = timezone.utc
 CADENCE = timedelta(minutes=20)
@@ -85,6 +89,13 @@ class ReadyImage:
 
 
 @dataclass(frozen=True, slots=True)
+class CandidateWeatherDecision:
+    candidate: Candidate
+    decision: WeatherDecision
+    source_errors: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class AcquisitionPlan:
     max_images: int
     cursor_before: date
@@ -93,6 +104,10 @@ class AcquisitionPlan:
     files_listed: int
     processed_receipts_skipped: int
     selected: tuple[SelectedImage, ...]
+    weather_decisions: tuple[CandidateWeatherDecision, ...]
+    weather_accepted: int
+    weather_skipped: int
+    weather_unknown: int
     recent_nights_pending_before: tuple[date, ...]
     state_after: BackfillState
 
@@ -114,6 +129,26 @@ def _positive_int(value: str) -> int:
     return parsed
 
 
+def _humidity_percent(value: str) -> float:
+    try:
+        parsed = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("value must be between 0 and 100") from exc
+    if not math.isfinite(parsed) or not 0.0 <= parsed <= 100.0:
+        raise argparse.ArgumentTypeError("value must be between 0 and 100")
+    return parsed
+
+
+def _positive_float(value: str) -> float:
+    try:
+        parsed = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("value must be positive and finite") from exc
+    if not math.isfinite(parsed) or parsed <= 0.0:
+        raise argparse.ArgumentTypeError("value must be positive and finite")
+    return parsed
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
@@ -122,6 +157,24 @@ def _build_parser() -> argparse.ArgumentParser:
         )
     )
     parser.add_argument("--max-images", type=_positive_int, default=DEFAULT_MAX_IMAGES)
+    parser.add_argument(
+        "--max-humidity-percent",
+        type=_humidity_percent,
+        default=DEFAULT_MAX_HUMIDITY_PERCENT,
+        help=(
+            "skip an image when fresh MMTO summit humidity is at or above this "
+            "percentage (default: 80)"
+        ),
+    )
+    parser.add_argument(
+        "--weather-max-age-seconds",
+        type=_positive_float,
+        default=DEFAULT_WEATHER_MAX_AGE_SECONDS,
+        help=(
+            "maximum absolute age of a usable humidity sample; missing or stale "
+            "weather fails open (default: 120)"
+        ),
+    )
     parser.add_argument(
         "--oldest-night", type=_date_value, default=DEFAULT_OLDEST_NIGHT
     )
@@ -442,6 +495,7 @@ def _stage_commands(
                 [
                     str(Path(repo_root) / "v23" / "plot_ALL_planets_v23.sh"),
                     *command[1:],
+                    "--manifest", str(Path(manifest)),
                 ],
             )
     stages.append((
@@ -559,6 +613,74 @@ def _selected_from_candidate(
     return SelectedImage(item, None, None, None, False)
 
 
+def _weather_decision_payload(
+    item: CandidateWeatherDecision,
+) -> dict[str, object]:
+    decision = item.decision
+    return {
+        "candidate_observed_utc": item.candidate.observed_at.astimezone(UTC)
+        .isoformat()
+        .replace("+00:00", "Z"),
+        "candidate_url": item.candidate.url,
+        "status": decision.status,
+        "humidity_percent": decision.humidity_percent,
+        "sensor": decision.sensor,
+        "sample_utc": (
+            None
+            if decision.sample_utc is None
+            else decision.sample_utc.astimezone(UTC).isoformat().replace("+00:00", "Z")
+        ),
+        "age_seconds": decision.age_seconds,
+        "reason": decision.reason,
+        "source_errors": list(item.source_errors),
+    }
+
+
+def _write_weather_decisions_atomic(
+    path: Path, decisions: Sequence[CandidateWeatherDecision]
+) -> None:
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    ordered = sorted(
+        decisions,
+        key=lambda item: (
+            item.candidate.observed_at.astimezone(UTC),
+            item.candidate.url,
+        ),
+    )
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    with temporary.open("w", encoding="utf-8") as stream:
+        for item in ordered:
+            stream.write(json.dumps(_weather_decision_payload(item), sort_keys=True))
+            stream.write("\n")
+    os.replace(temporary, path)
+
+
+def _weather_summary(
+    plan: AcquisitionPlan,
+    *,
+    max_humidity_percent: float,
+    weather_max_age_seconds: float,
+    audit_path: Path,
+) -> dict[str, object]:
+    return {
+        "source": HISTORY_ENDPOINT,
+        "sensors": [
+            "vaisala2_relative_humidity",
+            "vaisala4_relative_humidity",
+        ],
+        "max_humidity_percent": max_humidity_percent,
+        "comparison": "skip_at_or_above_limit",
+        "max_age_seconds": weather_max_age_seconds,
+        "time_basis": "nearest_sample_to_candidate_utc",
+        "missing_data_policy": "accept",
+        "accepted": plan.weather_accepted,
+        "skipped": plan.weather_skipped,
+        "unknown_fail_open": plan.weather_unknown,
+        "audit": str(Path(audit_path)),
+    }
+
+
 def build_acquisition_plan(
     archive: Path,
     results_database: Path,
@@ -570,11 +692,21 @@ def build_acquisition_plan(
     adapter,
     client,
     site,
+    weather_fetcher=None,
+    max_humidity_percent: float = DEFAULT_MAX_HUMIDITY_PERCENT,
+    weather_max_age_seconds: float = DEFAULT_WEATHER_MAX_AGE_SECONDS,
 ) -> AcquisitionPlan:
     """Select a bounded batch without listing a multi-night MMTO range."""
 
     if max_images <= 0:
         raise ValueError("max_images must be positive")
+    if (
+        not math.isfinite(max_humidity_percent)
+        or not 0.0 <= max_humidity_percent <= 100.0
+    ):
+        raise ValueError("max_humidity_percent must be finite and between 0 and 100")
+    if not math.isfinite(weather_max_age_seconds) or weather_max_age_seconds <= 0.0:
+        raise ValueError("weather_max_age_seconds must be positive and finite")
     if oldest_night > current_night:
         raise ValueError("oldest observing night follows current observing night")
     state = load_backfill_state(state_path, archive, current_night)
@@ -604,6 +736,8 @@ def build_acquisition_plan(
     selected_slots: set[tuple[date, int]] = set()
     selected_candidates: list[Candidate] = []
     skipped: set[tuple[str, str]] = set()
+    weather_by_night: dict[date, MmtoWeatherHistory] = {}
+    weather_decisions_by_url: dict[str, CandidateWeatherDecision] = {}
 
     for entry in entries.values():
         if entry.source_sha256 is not None and entry.source_sha256 in processed:
@@ -623,7 +757,43 @@ def build_acquisition_plan(
         next_recent_night += timedelta(days=1)
     recent_nights_pending_before = tuple(sorted(pending_recent_nights, reverse=True))
 
+    def weather_history(night: date) -> MmtoWeatherHistory:
+        history = weather_by_night.get(night)
+        if history is not None:
+            return history
+        if weather_fetcher is None:
+            history = MmtoWeatherHistory()
+        else:
+            requested = site_night_range(site, night)
+            try:
+                history = weather_fetcher(requested.start_utc, requested.end_utc)
+                if not isinstance(history, MmtoWeatherHistory):
+                    raise TypeError("weather fetcher returned an invalid history")
+            except Exception as exc:
+                history = MmtoWeatherHistory(
+                    errors=(f"weather fetch failed: {type(exc).__name__}: {exc}",)
+                )
+        weather_by_night[night] = history
+        return history
+
+    def weather_decision(item: Candidate) -> WeatherDecision:
+        recorded = weather_decisions_by_url.get(item.url)
+        if recorded is not None:
+            return recorded.decision
+        night = observing_night_date(site, item.observed_at)
+        history = weather_history(night)
+        decision = history.decide(
+            item.observed_at,
+            max_humidity_percent=max_humidity_percent,
+            max_age_seconds=weather_max_age_seconds,
+        )
+        weather_decisions_by_url[item.url] = CandidateWeatherDecision(
+            item, decision, history.errors
+        )
+        return decision
+
     def finish_plan() -> AcquisitionPlan:
+        weather_decisions = tuple(weather_decisions_by_url.values())
         return AcquisitionPlan(
             max_images=max_images,
             cursor_before=state.next_night,
@@ -632,6 +802,16 @@ def build_acquisition_plan(
             files_listed=files_listed,
             processed_receipts_skipped=len(skipped),
             selected=tuple(selected),
+            weather_decisions=weather_decisions,
+            weather_accepted=sum(
+                item.decision.status == "accept" for item in weather_decisions
+            ),
+            weather_skipped=sum(
+                item.decision.status == "skip" for item in weather_decisions
+            ),
+            weather_unknown=sum(
+                item.decision.status == "unknown" for item in weather_decisions
+            ),
             recent_nights_pending_before=recent_nights_pending_before,
             state_after=BackfillState(
                 state.archive,
@@ -672,6 +852,8 @@ def build_acquisition_plan(
                 skipped.add(("digest", digest))
                 continue
             if digest is not None and digest in selected_digests:
+                continue
+            if weather_decision(item).status == "skip":
                 continue
             unfinished.append(_selected_from_candidate(item, entry))
         unfinished.sort(
@@ -719,7 +901,7 @@ def build_acquisition_plan(
         else:
             cursor_after = cursor
         if len(selected) == max_images:
-            break
+            return finish_plan()
         cursor -= timedelta(days=1)
 
     local_pending = sorted(
@@ -746,6 +928,8 @@ def build_acquisition_plan(
             continue
         slot = _cadence_slot(site, entry.candidate)
         if slot in selected_slots:
+            continue
+        if weather_decision(entry.candidate).status == "skip":
             continue
         selected.append(_selected_from_entry(entry))
         selected_urls.add(entry.candidate.url)
@@ -860,6 +1044,7 @@ def main(
     client=None,
     site=None,
     now: datetime | None = None,
+    weather_fetcher=None,
 ) -> int:
     args = _build_parser().parse_args(argv)
     repo_root = args.repo_root.resolve()
@@ -874,6 +1059,7 @@ def main(
     adapter = adapter or registry.get_adapter("mmto")
     site = site or adapter.sites("mmto-skycam")[0]
     client = client or HttpClient()
+    weather_fetcher = weather_fetcher or MmtoWeatherHistory.fetch
     current_night = current_mmto_night(site, now)
     try:
         if args.oldest_night > current_night:
@@ -900,6 +1086,9 @@ def main(
                 adapter=adapter,
                 client=client,
                 site=site,
+                weather_fetcher=weather_fetcher,
+                max_humidity_percent=args.max_humidity_percent,
+                weather_max_age_seconds=args.weather_max_age_seconds,
             )
             print(
                 f"MMTO_V23_PLAN current={current_night.isoformat()} "
@@ -911,6 +1100,9 @@ def main(
                 f"recent_pending_before={len(plan.recent_nights_pending_before)} "
                 f"recent_pending_after={len(plan.state_after.pending_recent_nights)} "
                 f"receipt_skipped={plan.processed_receipts_skipped} "
+                f"weather_accept={plan.weather_accepted} "
+                f"weather_skip={plan.weather_skipped} "
+                f"weather_unknown={plan.weather_unknown} "
                 f"selected={len(plan.selected)}"
             )
             for item in plan.selected:
@@ -922,6 +1114,8 @@ def main(
 
             assert output is not None
             output.mkdir(parents=True)
+            weather_audit = output / "weather-decisions.jsonl"
+            _write_weather_decisions_atomic(weather_audit, plan.weather_decisions)
             summary = {
                 "status": "running",
                 "started_utc": _utc_now(),
@@ -951,6 +1145,12 @@ def main(
                     "selected": len(plan.selected),
                 },
                 "acquisition": {"reused": 0, "downloaded": 0},
+                "weather": _weather_summary(
+                    plan,
+                    max_humidity_percent=args.max_humidity_percent,
+                    weather_max_age_seconds=args.weather_max_age_seconds,
+                    audit_path=weather_audit,
+                ),
                 "processing": {
                     "attempted": 0,
                     "succeeded": 0,
@@ -969,6 +1169,7 @@ def main(
                     "differential_photometry": str(
                         output / "differential-photometry"
                     ),
+                    "weather_decisions": str(weather_audit),
                 },
             }
             _write_summary(output, summary)

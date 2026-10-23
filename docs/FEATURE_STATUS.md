@@ -24,6 +24,25 @@ line.
   1937--1958 estimates). The fitted epoch and astrometry are unchanged.
 - Same-sidereal transmission keeps every map path in its saved manifest but
   prints only the map count in routine terminal and pipeline-log output.
+- MMTO acquisition checks the current and intervening remote nights, then the
+  durable older-night cursor, before spending any remaining image allowance on
+  cached local backlog. Within a listed night, previously unseen remote images
+  take priority over already downloaded files, while the per-invocation image
+  cap and one-night-at-a-time archive access remain unchanged.
+- MMTO v23 acquisition independently checks the public summit weather-history
+  API for both outside Vaisala relative-humidity sensors. For each candidate it
+  uses the larger fresh reading nearest the candidate UTC time: humidity below
+  80% is accepted and humidity at or above 80% is skipped. A reading is fresh
+  through an absolute age of 120 seconds. Missing, stale, malformed, or failed
+  telemetry fails open, so the image proceeds without manual intervention.
+  Weather decisions are made before the image cap is spent and are recorded in
+  each run's `weather-decisions.jsonl`; weather never enters the blind fit.
+- The extinction-plus-distance planet plot keeps the accepted nightly
+  extinction thresholds unchanged. Recent planet measurements that lack an
+  accepted nightly extinction fit are now shown separately as open,
+  unconnected distance-only points, with aperture-only uncertainty, and are
+  exported to `planet_distance_only_uncalibrated_measurements.csv`; filled
+  points remain the fully extinction- and distance-corrected population.
 
 ## V22 frozen implementation
 

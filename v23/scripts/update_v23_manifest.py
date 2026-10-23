@@ -17,6 +17,8 @@ CHANGES = [
     "Add native-FITS aperture-radius and sky-annulus sweeps on held-out nights.",
     "Retain the v22 aperture unless one global RGB geometry passes validation and final-test gates.",
     "Batch post-fit coordinate validation, use TDB for fitted Julian epochs, and keep transmission-map terminal summaries compact.",
+    "Prioritize remote MMTO nights before cached backlog and mark distance-only recent planet measurements explicitly when nightly extinction is unavailable.",
+    "Gate MMTO acquisition on fresh public summit humidity below 80 percent, fail open when telemetry is unavailable, and retain per-image audit decisions.",
 ]
 
 
