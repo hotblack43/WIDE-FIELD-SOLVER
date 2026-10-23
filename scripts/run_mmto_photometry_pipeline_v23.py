@@ -674,6 +674,13 @@ def build_acquisition_plan(
             if digest is not None and digest in selected_digests:
                 continue
             unfinished.append(_selected_from_candidate(item, entry))
+        unfinished.sort(
+            key=lambda value: (
+                value.downloaded,
+                -value.candidate.observed_at.timestamp(),
+                value.candidate.url,
+            )
+        )
         capacity = max_images - len(selected)
         chosen = unfinished[:capacity]
         selected.extend(chosen)
@@ -700,6 +707,20 @@ def build_acquisition_plan(
             pending_recent_nights.remove(recent_night)
         if len(selected) == max_images:
             return finish_plan()
+
+    cursor = state.next_night
+    if cursor == current_night:
+        cursor -= timedelta(days=1)
+        cursor_after = cursor
+    while cursor >= oldest_night and len(selected) < max_images:
+        complete = scan_night(cursor)
+        if complete:
+            cursor_after = cursor - timedelta(days=1)
+        else:
+            cursor_after = cursor
+        if len(selected) == max_images:
+            break
+        cursor -= timedelta(days=1)
 
     local_pending = sorted(
         _cadence_winners(site, tuple(
@@ -733,20 +754,6 @@ def build_acquisition_plan(
         selected_candidates.append(entry.candidate)
         if len(selected) == max_images:
             return finish_plan()
-
-    cursor = state.next_night
-    if cursor == current_night:
-        cursor -= timedelta(days=1)
-        cursor_after = cursor
-    while cursor >= oldest_night and len(selected) < max_images:
-        complete = scan_night(cursor)
-        if complete:
-            cursor_after = cursor - timedelta(days=1)
-        else:
-            cursor_after = cursor
-        if len(selected) == max_images:
-            break
-        cursor -= timedelta(days=1)
 
     return finish_plan()
 

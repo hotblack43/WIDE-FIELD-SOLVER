@@ -1355,6 +1355,114 @@ class PlanetPhotometryLoadingTests(unittest.TestCase):
             summary["excluded_calibrated_reasons"], {"missing_sidecar_match": 1}
         )
 
+    def test_opt_in_exports_missing_extinction_as_distance_only_measurement(self):
+        import scripts.plot_planet_photometry as planet_plot
+
+        self.add_run(
+            "run", "a" * 64, "2026-09-20T01:01:00Z",
+            observation="2026-09-20T01:00:00 UTC",
+        )
+        self.add_planet("run", 1, "Mars", rate=100.0)
+        self.add_stellar_calibration("run", planet="Mars", detection_id="1")
+        rows, audit = load_planet_measurements(self.database)
+        sidecar = Path(self.temporary.name) / "mismatched-opt-in-sidecar"
+        write_nightly_sidecar(sidecar, source_sha256="b" * 64)
+        output = Path(self.temporary.name) / "distance-only-output"
+
+        summary = planet_plot.write_extinction_corrected_distance_outputs(
+            rows,
+            audit,
+            output,
+            database=self.database,
+            nightly_calibration=sidecar,
+            channel="G",
+            include_uncalibrated=True,
+            distance_lookup={
+                ("Mars", "2026-09-20T01:00:00Z"): {
+                    "sun_planet_distance_au": 2.0,
+                    "earth_planet_distance_au": 3.0,
+                    "distance_ephemeris_source": "test ephemeris",
+                }
+            },
+            uncertainty_lookup={
+                ("run", "1"): {
+                    "machine_magnitude_uncertainty": 0.1,
+                    "uncertainty_status": "available",
+                    "uncertainty_source": "test background",
+                }
+            },
+        )
+
+        with (
+            output / "planet_distance_only_uncalibrated_measurements.csv"
+        ).open(newline="", encoding="utf-8") as stream:
+            exported = list(csv.DictReader(stream))
+        self.assertEqual(len(exported), 1)
+        self.assertAlmostEqual(
+            float(exported[0]["distance_corrected_magnitude"]),
+            -8.89075625191822,
+            12,
+        )
+        self.assertEqual(
+            exported[0]["extinction_correction_status"],
+            "nightly_extinction_unavailable",
+        )
+        self.assertEqual(exported[0]["extinction_corrected_magnitude"], "")
+        self.assertEqual(summary["plotted_counts"]["measurements"], 0)
+        self.assertEqual(summary["uncalibrated_plotted_counts"]["measurements"], 1)
+
+    def test_opt_in_distance_only_points_are_open_and_unconnected(self):
+        from matplotlib.collections import PathCollection
+        import matplotlib.pyplot as plt
+        import scripts.plot_planet_photometry as planet_plot
+
+        corrected = [
+            {
+                "planet": "Mars",
+                "camera_label": "MMTO skycam",
+                "observation_time_utc": time,
+                "extinction_corrected_distance_magnitude": magnitude,
+                "total_magnitude_uncertainty": 0.1,
+            }
+            for time, magnitude in (
+                ("2026-09-20T01:00:00Z", -12.0),
+                ("2026-09-21T01:00:00Z", -12.1),
+            )
+        ]
+        uncalibrated = [{
+            "planet": "Mars",
+            "camera_label": "MMTO skycam",
+            "observation_time_utc": "2026-09-22T01:00:00Z",
+            "distance_corrected_magnitude": -11.7,
+            "machine_magnitude_uncertainty": 0.2,
+        }]
+
+        figure, axis = planet_plot._build_extinction_corrected_distance_figure(
+            corrected,
+            {"MMTO skycam": "o"},
+            {"Mars": planet_plot.PLANET_COLOURS["Mars"]},
+            channel="G",
+            uncalibrated=uncalibrated,
+        )
+        self.addCleanup(plt.close, figure)
+
+        self.assertEqual(len(axis.lines), 1)
+        self.assertEqual(len(axis.lines[0].get_xdata()), 2)
+        open_collections = [
+            item
+            for item in axis.collections
+            if isinstance(item, PathCollection) and len(item.get_facecolors()) == 0
+        ]
+        self.assertEqual(len(open_collections), 1)
+        self.assertEqual(len(open_collections[0].get_offsets()), 1)
+        legend_text = " ".join(
+            text.get_text()
+            for plot_axis in figure.axes
+            if plot_axis.get_legend() is not None
+            for text in plot_axis.get_legend().get_texts()
+        )
+        self.assertIn("no nightly extinction", legend_text.lower())
+
     def test_extinction_corrected_plot_rejects_blind_epoch_identity(self):
         import scripts.plot_planet_photometry as planet_plot
 
