@@ -132,7 +132,18 @@ def generate(database: Path, manifest: Path, calibration: Path, output: Path, *,
 
 def main():
     parser = argparse.ArgumentParser(); parser.add_argument("--database", type=Path, required=True); parser.add_argument("--manifest", type=Path, required=True); parser.add_argument("--nightly-calibration", type=Path, required=True); parser.add_argument("--output", type=Path, required=True); parser.add_argument("--tolerance-minutes", type=float, default=5.0); parser.add_argument("--min-common-stars", type=int, default=20)
-    args = parser.parse_args(); print(json.dumps(generate(args.database, args.manifest, args.nightly_calibration, args.output, tolerance_minutes=args.tolerance_minutes, min_common_stars=args.min_common_stars), sort_keys=True)); return 0
+    args = parser.parse_args()
+    record = generate(
+        args.database, args.manifest, args.nightly_calibration, args.output,
+        tolerance_minutes=args.tolerance_minutes,
+        min_common_stars=args.min_common_stars,
+    )
+    terminal_summary = {
+        key: value for key, value in record.items() if key != "figures"
+    }
+    terminal_summary["figure_count"] = len(record["figures"])
+    print(json.dumps(terminal_summary, sort_keys=True))
+    return 0
 
 
 if __name__ == "__main__": raise SystemExit(main())

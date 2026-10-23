@@ -21,7 +21,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from v23.mmto_validation import (
-    known_airmass,
+    known_airmass_batch,
     planet_epoch_comparison,
     stellar_epoch_comparison,
     validate_blind_zenith,
@@ -132,13 +132,22 @@ def write_validation(database_path: Path, manifest_path: Path, output: Path) -> 
             })
 
             blind_airmass = {row.get("detection_id"): row for row in _rows(products.get("stellar_photometry.csv"))}
+            coordinates = []
             for coordinate in _rows(products.get("star_coordinates.csv")):
                 try:
                     ra = float(coordinate["measured_ra_deg"])
                     dec = float(coordinate["measured_dec_deg"])
                 except (KeyError, TypeError, ValueError):
                     continue
-                known = known_airmass(ra, dec, midpoint)
+                coordinates.append((coordinate, ra, dec))
+            known_rows = known_airmass_batch(
+                [ra for _, ra, _ in coordinates],
+                [dec for _, _, dec in coordinates],
+                midpoint,
+            )
+            for (coordinate, ra, dec), known in zip(
+                coordinates, known_rows, strict=True
+            ):
                 prior = blind_airmass.get(coordinate.get("detection_id"), {})
                 try:
                     blind_value = float(prior["airmass"])

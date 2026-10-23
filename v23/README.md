@@ -137,11 +137,15 @@ Post-processing adds these v23 directories below each pipeline output:
   dense-SVD failures for production nights containing thousands of stars.
 - `same-sidereal-transmission/` pairs distinct nights one-to-one by apparent
   sidereal time. Maps plot actual measured centroids only; sparse comparisons
-  are marked insufficient and never interpolated.
+  are marked insufficient and never interpolated. The saved manifest retains
+  every map path, while routine terminal output reports only the map count.
 - `known-site-time-validation/` reveals the MMTO header midpoint and site only
   after the blind products are fixed. It compares zenith, latitude, airmass,
   parallactic/refraction direction, stellar epoch and every saved blind planet
-  candidate without altering or reranking candidates.
+  candidate without altering or reranking candidates. Stellar coordinates are
+  transformed as one vector per exposure. Fitted Julian-year epochs are treated
+  as TDB for this post-fit comparison, so old blind estimates do not invoke an
+  extrapolated UTC leap-second conversion.
 - `differential-photometry/` compares a local stellar ensemble, random forest,
   gradient boosting, and a small neural network on rows jointly held out by
   night and star identity, with measured injected-signal recovery.

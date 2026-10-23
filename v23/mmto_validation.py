@@ -4,7 +4,7 @@ from __future__ import annotations
 from copy import deepcopy
 from datetime import datetime
 import math
-from typing import Any
+from typing import Any, Sequence
 
 import numpy as np
 from astropy import units as u
@@ -109,6 +109,55 @@ def known_airmass(
     }
 
 
+def known_airmass_batch(
+    ra_deg: Sequence[float],
+    dec_deg: Sequence[float],
+    midpoint_utc: datetime | str | Time,
+) -> list[dict[str, float | None | bool | str]]:
+    """Return known-site diagnostics with one vector transform per exposure."""
+
+    right_ascensions = np.asarray(ra_deg, dtype=float)
+    declinations = np.asarray(dec_deg, dtype=float)
+    if right_ascensions.ndim != 1 or declinations.ndim != 1:
+        raise ValueError("right ascensions and declinations must be one-dimensional")
+    if right_ascensions.shape != declinations.shape:
+        raise ValueError("right ascensions and declinations must have equal lengths")
+    if right_ascensions.size == 0:
+        return []
+
+    instant = _time(midpoint_utc)
+    coordinates = SkyCoord(
+        ra=right_ascensions * u.deg,
+        dec=declinations * u.deg,
+        frame=ICRS(),
+    )
+    apparent = coordinates.transform_to(
+        AltAz(obstime=instant, location=mmto_location(), pressure=0 * u.hPa)
+    )
+    altitudes = np.asarray(apparent.alt.to_value(u.deg), dtype=float)
+    vector = known_zenith_unit_vector(instant)
+    zenith = SkyCoord(
+        x=vector[0], y=vector[1], z=vector[2],
+        representation_type="cartesian", frame=ICRS(),
+    )
+    refraction_directions = np.asarray(
+        coordinates.position_angle(zenith).to_value(u.deg), dtype=float
+    )
+    return [
+        {
+            "used_in_fit": False,
+            "validation_stage": "post_blind_fit",
+            "altitude_deg": float(altitude),
+            "airmass": _kasten_young_airmass(float(altitude)),
+            "parallactic_angle_deg": float(direction),
+            "refraction_toward_zenith_position_angle_deg": float(direction),
+        }
+        for altitude, direction in zip(
+            altitudes, refraction_directions, strict=True
+        )
+    ]
+
+
 def stellar_epoch_comparison(
     fitted_jyear: float | None, midpoint_utc: datetime | str | Time
 ) -> dict[str, float | bool | str | None]:
@@ -120,7 +169,7 @@ def stellar_epoch_comparison(
             "stellar_minus_header_years": None,
             "absolute_difference_days": None,
         }
-    fitted = Time(float(fitted_jyear), format="jyear")
+    fitted = Time(float(fitted_jyear), format="jyear", scale="tdb")
     header = _time(midpoint_utc)
     delta_days = float((fitted.tdb - header.tdb).to_value(u.day))
     return {

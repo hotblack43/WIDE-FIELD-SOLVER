@@ -12,6 +12,18 @@ line.
   aperture reduced scatter, but introduced held-out magnitude/PSF trends.
 - Annuli scaled to detected blob width did not improve all three channels;
   the existing aperture+3 to aperture+7 pixel annulus remains the control.
+- Post-fit known-site validation transforms all stellar coordinates from one
+  exposure as a vector, rather than repeating the same Astropy frame setup for
+  every star. A 1,200-coordinate regression case fell from about 5.1 seconds to
+  about 1.6 seconds on the development machine, with unchanged altitude,
+  airmass and refraction-direction values.
+- Fitted stellar Julian years are interpreted as TDB during the separate
+  header-time comparison. This avoids extrapolating UTC leap seconds for old
+  blind epoch estimates; only the post-fit absolute time difference changes,
+  by the applicable TDB-minus-UTC offset (32.2 seconds for the observed
+  1937--1958 estimates). The fitted epoch and astrometry are unchanged.
+- Same-sidereal transmission keeps every map path in its saved manifest but
+  prints only the map count in routine terminal and pipeline-log output.
 
 ## V22 frozen implementation
 

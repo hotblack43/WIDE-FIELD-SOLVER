@@ -16,6 +16,7 @@ CHANGES = [
     "Fork the complete frozen v22 runtime into an independent v23 development package.",
     "Add native-FITS aperture-radius and sky-annulus sweeps on held-out nights.",
     "Retain the v22 aperture unless one global RGB geometry passes validation and final-test gates.",
+    "Batch post-fit coordinate validation, use TDB for fitted Julian epochs, and keep transmission-map terminal summaries compact.",
 ]
 
 
