@@ -19,6 +19,7 @@ CHANGES = [
     "Batch post-fit coordinate validation, use TDB for fitted Julian epochs, and keep transmission-map terminal summaries compact.",
     "Prioritize remote MMTO nights before cached backlog and mark distance-only recent planet measurements explicitly when nightly extinction is unavailable.",
     "Gate MMTO acquisition on fresh public summit humidity below 80 percent, fail open when telemetry is unavailable, and retain per-image audit decisions.",
+    "Report each v23 MMTO invocation's downloaded and reused images by observing night before optional photometry stages, and list latest plots with labelled older fallbacks.",
 ]
 
 

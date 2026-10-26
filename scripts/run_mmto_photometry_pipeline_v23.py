@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 from contextlib import closing, nullcontext
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
+import csv
 import json
 import math
 import os
@@ -86,6 +88,7 @@ class ReadyImage:
     source_sha256: str
     path: Path
     observed_bytes: int
+    acquisition: str = "unknown"
 
 
 @dataclass(frozen=True, slots=True)
@@ -961,6 +964,7 @@ def acquire_selected_images(
                 existing = manifest.verified_download(item.candidate, archive)
                 if existing is not None:
                     reused += 1
+                    acquisition = "reused"
                 else:
                     manifest.record_attempt(item.candidate)
                     try:
@@ -970,6 +974,7 @@ def acquire_selected_images(
                         )
                         manifest.record_success(item.candidate, existing, archive)
                         downloaded += 1
+                        acquisition = "downloaded"
                     except Exception as exc:
                         manifest.record_failure(item.candidate, str(exc))
                         raise
@@ -995,6 +1000,7 @@ def acquire_selected_images(
                         source_sha256=existing.sha256,
                         path=existing.path,
                         observed_bytes=existing.size_bytes,
+                        acquisition=acquisition,
                     )
                 )
     return tuple(ready), reused, downloaded
@@ -1035,6 +1041,69 @@ def solver_command(repo_root: Path, source: Path, results: Path) -> list[str]:
 
 def _utc_now() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def _write_acquisition_report(output: Path, summary: dict[str, object]) -> None:
+    """Save the actual per-image work before optional derived plots run."""
+    import matplotlib.pyplot as plt
+
+    output = Path(output)
+    records = summary.get("processed_images", [])
+    if not isinstance(records, list):
+        raise ValueError("processed_images must be a list")
+    fields = ("observed_utc", "observing_night", "source", "acquisition", "solver")
+    with (output / "acquisition_timeline.csv").open(
+        "w", newline="", encoding="utf-8"
+    ) as stream:
+        writer = csv.DictWriter(stream, fieldnames=fields, extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(records)
+
+    selection = summary["selection"]
+    acquisition = summary["acquisition"]
+    processing = summary["processing"]
+    assert isinstance(selection, dict)
+    assert isinstance(acquisition, dict)
+    assert isinstance(processing, dict)
+    nights = sorted({str(row["observing_night"]) for row in records}, reverse=True)
+    counts = Counter((str(row["observing_night"]), str(row["solver"])) for row in records)
+    fig, axis = plt.subplots(figsize=(10, max(3.8, 0.48 * len(nights) + 2.8)))
+    for position, night in enumerate(nights):
+        good = counts[(night, "succeeded")]
+        failed = counts[(night, "solver_failed")]
+        skipped = counts[(night, "receipt_skipped")]
+        axis.barh(position, good, color="#247a52", label="Solved" if position == 0 else None)
+        axis.barh(position, failed, left=good, color="#bc4c42", label="Solver failed" if position == 0 else None)
+        axis.barh(position, skipped, left=good + failed, color="#777777", label="Receipt skipped" if position == 0 else None)
+        downloaded = sum(
+            row["observing_night"] == night and row["acquisition"] == "downloaded"
+            for row in records
+        )
+        axis.text(good + failed + skipped + 0.15, position, f"{downloaded} downloaded", va="center", fontsize=9)
+    axis.set_yticks(range(len(nights)), nights)
+    axis.invert_yaxis()
+    axis.set_xlim(0, max(1, max((sum(counts[(night, status)] for status in ("succeeded", "solver_failed", "receipt_skipped")) for night in nights), default=0)) * 1.35 + 1)
+    axis.set_xlabel("Images processed in this invocation")
+    axis.set_ylabel("MMTO observing night (Arizona)")
+    axis.grid(axis="x", alpha=0.25)
+    axis.set_axisbelow(True)
+    if nights:
+        axis.legend(loc="lower right")
+    else:
+        axis.text(0.5, 0.5, "No images processed", ha="center", va="center", transform=axis.transAxes)
+    fig.suptitle("V23 MMTO acquisition and solver timeline")
+    fig.text(
+        0.02, 0.94,
+        f"Current night: {selection['current_night']}   "
+        f"older cursor: {selection['cursor_before']} → {selection.get('cursor_committed', 'pending')}\n"
+        f"Selected: {selection['selected']}   downloaded: {acquisition['downloaded']}   "
+        f"reused: {acquisition['reused']}   solved: {processing['succeeded']}   "
+        f"solver failed: {processing['solver_failed']}",
+        ha="left", va="top", fontsize=9,
+    )
+    fig.tight_layout(rect=(0, 0, 1, 0.87))
+    fig.savefig(output / "acquisition_timeline.pdf")
+    plt.close(fig)
 
 
 def main(
@@ -1157,8 +1226,10 @@ def main(
                     "solver_failed": 0,
                     "receipt_skipped": 0,
                 },
+                "processed_images": [],
                 "stages": [],
                 "outputs": {
+                    "acquisition_timeline": str(output / "acquisition_timeline.pdf"),
                     "stellar_lightcurves": str(output / "stellar-lightcurves"),
                     "nightly_extinction": str(output / "nightly-extinction"),
                     "variable_star_time_series": str(output / "variable-stars"),
@@ -1185,9 +1256,21 @@ def main(
 
                 processing = summary["processing"]
                 assert isinstance(processing, dict)
+                processed_images = summary["processed_images"]
+                assert isinstance(processed_images, list)
                 for number, image in enumerate(ready, 1):
+                    report_row = {
+                        "observed_utc": image.candidate.observed_at.astimezone(UTC)
+                        .isoformat().replace("+00:00", "Z"),
+                        "observing_night": observing_night_date(
+                            site, image.candidate.observed_at
+                        ).isoformat(),
+                        "source": str(image.path),
+                        "acquisition": image.acquisition,
+                    }
                     if _latest_v23_receipt(database, image.source_sha256) is not None:
                         processing["receipt_skipped"] += 1
+                        processed_images.append({**report_row, "solver": "receipt_skipped"})
                         _message(
                             f"SKIP [{number}/{len(ready)}] receipt exists: "
                             f"{image.source_sha256}",
@@ -1208,15 +1291,19 @@ def main(
                     receipt = _latest_v23_receipt(database, image.source_sha256)
                     if receipt is None:
                         raise OperationalFailure(
-                            "go22 produced no v23 database receipt for "
+                            "go23 produced no v23 database receipt for "
                             f"{image.source_sha256}"
                         )
                     if (return_code == 0) != (receipt == 0):
                         raise OperationalFailure(
-                            "go22 exit status disagrees with its database receipt for "
+                            "go23 exit status disagrees with its database receipt for "
                             f"{image.source_sha256}"
                         )
                     processing["succeeded" if receipt == 0 else "solver_failed"] += 1
+                    processed_images.append({
+                        **report_row,
+                        "solver": "succeeded" if receipt == 0 else "solver_failed",
+                    })
                     _write_summary(output, summary)
 
                 write_backfill_state_atomic(
@@ -1234,6 +1321,11 @@ def main(
                     for night in plan.state_after.pending_recent_nights
                 ]
                 _write_summary(output, summary)
+                _write_acquisition_report(output, summary)
+                _message(
+                    f"ACQUISITION TIMELINE {output / 'acquisition_timeline.pdf'}",
+                    log,
+                )
 
                 if not database.is_file():
                     raise OperationalFailure(
@@ -1282,6 +1374,9 @@ def main(
             except OSError:
                 pass
         print(f"MMTO v23 pipeline failed: {exc}", file=sys.stderr)
+        if output is not None and (Path(output) / "acquisition_timeline.pdf").is_file():
+            print(f"Acquisition timeline: {Path(output) / 'acquisition_timeline.pdf'}", file=sys.stderr)
+            print(f"Run summary: {Path(output) / 'pipeline_summary.json'}", file=sys.stderr)
         return 2
 
 

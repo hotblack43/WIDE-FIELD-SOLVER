@@ -4,6 +4,7 @@ from __future__ import annotations
 from datetime import date, datetime
 import hashlib
 import json
+import csv
 from pathlib import Path
 import tempfile
 import unittest
@@ -98,6 +99,43 @@ def record_verified(archive: Path, item: Candidate, payload: bytes) -> None:
 
 
 class V23RemoteFirstSelectionTests(unittest.TestCase):
+    def test_acquisition_report_shows_recent_and_backward_processing(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary)
+            summary = {
+                "started_utc": "2026-10-26T05:00:00Z",
+                "status": "running",
+                "selection": {
+                    "current_night": "2026-10-25",
+                    "cursor_before": "2026-09-25",
+                    "cursor_committed": "2026-09-23",
+                    "nights_listed": ["2026-10-25", "2026-09-25", "2026-09-24"],
+                    "selected": 3,
+                },
+                "acquisition": {"downloaded": 1, "reused": 2},
+                "processing": {"attempted": 3, "succeeded": 2, "solver_failed": 1},
+                "processed_images": [
+                    {"observed_utc": "2026-10-26T05:20:00Z", "observing_night": "2026-10-25", "source": "recent.fits", "acquisition": "downloaded", "solver": "succeeded"},
+                    {"observed_utc": "2026-09-26T02:20:00Z", "observing_night": "2026-09-25", "source": "old.fits", "acquisition": "reused", "solver": "solver_failed"},
+                    {"observed_utc": "2026-09-25T02:20:00Z", "observing_night": "2026-09-24", "source": "older.fits", "acquisition": "reused", "solver": "succeeded"},
+                ],
+            }
+
+            PIPELINE._write_acquisition_report(output, summary)
+
+            with (output / "acquisition_timeline.csv").open(newline="") as stream:
+                rows = list(csv.DictReader(stream))
+            self.assertEqual([row["observing_night"] for row in rows], [
+                "2026-10-25", "2026-09-25", "2026-09-24"
+            ])
+            self.assertEqual([row["acquisition"] for row in rows], [
+                "downloaded", "reused", "reused"
+            ])
+            self.assertEqual([row["solver"] for row in rows], [
+                "succeeded", "solver_failed", "succeeded"
+            ])
+            self.assertGreater((output / "acquisition_timeline.pdf").stat().st_size, 1000)
+
     def test_planet_stage_passes_verified_manifest_to_v23_plotter(self):
         commands = dict(
             PIPELINE._stage_commands(

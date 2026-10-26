@@ -157,6 +157,20 @@ The legacy nightly-extinction products are still generated for compatibility
 with inherited variable-star and planet plots. The new grey-corrected table
 uses `m_corrected = m_machine - k X - Z_i` and is separately auditable.
 
+The pipeline saves `acquisition_timeline.pdf` and `acquisition_timeline.csv`
+immediately after its image-processing pass. They show which MMTO observing
+nights were processed in this invocation, whether each image was downloaded
+or reused, and whether its v23 solve succeeded. The PDF also shows the current
+night and backward cursor. These files remain available if a later plotting
+stage fails; the pipeline prints their path in that case. This report does not
+change image selection or numerical analysis.
+
+Run `./remind_me.sh` from the repository to list the newest available v23
+PDF, PNG, SVG, and JPEG plots. It labels plots from an earlier run when the
+latest run stopped before producing them. The run summary and acquisition
+timeline appear first, so older fallback figures are not mistaken for current
+results.
+
 V23 runs every v19 plotting stage, including
 `variable-stars/variable_star_time_series.pdf`. Each panel is a chronological
 UTC time series for one confirmed VSX object. Each R, G, or B point is the
