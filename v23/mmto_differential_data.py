@@ -1,8 +1,8 @@
 """Read-only, auditable inputs for v23 differential photometry.
 
-The loader replays an explicit v21 run population when supplied.  It never
-writes either SQLite input and fails closed when saved products cannot be
-joined one-to-one.
+The loader replays the explicit cumulative run population from the freshly
+built photometry control. It never writes either SQLite input and fails closed
+when saved products cannot be joined one-to-one.
 """
 from __future__ import annotations
 
@@ -177,7 +177,7 @@ class MeasurementSet:
 
 
 @dataclass(frozen=True, slots=True)
-class V21Control:
+class PhotometryControl:
     selected_run_ids: frozenset[str]
     adopted_model: str
     corrected_magnitudes: Mapping[tuple[str, str, str, str], float]
@@ -201,6 +201,35 @@ def _read_only(path: Path) -> sqlite3.Connection:
     connection = sqlite3.connect(f"file:{path.resolve()}?mode=ro", uri=True, timeout=30)
     connection.execute("PRAGMA query_only=ON")
     return connection
+
+
+def _observations(
+    connection: sqlite3.Connection,
+) -> dict[str, tuple[str, float]]:
+    """Combine versioned FITS-header observation tables without conflicts."""
+
+    available = {
+        str(name)
+        for (name,) in connection.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        )
+    }
+    observations: dict[str, tuple[str, float]] = {}
+    for table in ("mmto_v21_observations", "mmto_v23_observations"):
+        if table not in available:
+            continue
+        for source_sha256, midpoint, exposure in connection.execute(
+            f"SELECT source_sha256,header_midpoint_utc,exposure_seconds FROM {table}"
+        ):
+            digest = str(source_sha256)
+            value = (str(midpoint), float(exposure))
+            previous = observations.get(digest)
+            if previous is not None and previous != value:
+                raise ValueError(
+                    f"conflicting FITS-header observations for {digest}"
+                )
+            observations[digest] = value
+    return observations
 
 
 def _finite(value: object) -> float | None:
@@ -447,12 +476,7 @@ def load_measurements(
     database_sha256 = _sha256(database)
     manifest_sha256 = _sha256(manifest)
     with _read_only(manifest) as connection:
-        observations = {
-            str(source_sha256): (str(midpoint), float(exposure))
-            for source_sha256, midpoint, exposure in connection.execute(
-                "SELECT source_sha256,header_midpoint_utc,exposure_seconds FROM mmto_v21_observations"
-            )
-        }
+        observations = _observations(connection)
 
     run_records: list[RunRecord] = []
     stellar: list[StellarMeasurement] = []
@@ -760,7 +784,7 @@ def load_measurements(
     )
 
 
-def load_v21_control(directory: Path) -> V21Control:
+def load_photometry_control(directory: Path) -> PhotometryControl:
     directory = Path(directory)
     manifest_path = directory / "calibration_manifest.json"
     corrected_path = directory / "corrected_stellar_photometry.csv"
@@ -769,10 +793,10 @@ def load_v21_control(directory: Path) -> V21Control:
     adopted = str(manifest.get("adopted_model", ""))
     raw_run_ids = manifest.get("selected_run_ids")
     if not adopted or not isinstance(raw_run_ids, list) or not raw_run_ids:
-        raise ValueError("invalid v21 calibration manifest")
+        raise ValueError("invalid photometry control manifest")
     selected = frozenset(str(value) for value in raw_run_ids)
     if len(selected) != len(raw_run_ids):
-        raise ValueError("duplicate selected run IDs in v21 control")
+        raise ValueError("duplicate selected run IDs in photometry control")
 
     corrected: dict[tuple[str, str, str, str], float] = {}
     with corrected_path.open(newline="", encoding="utf-8") as stream:
@@ -806,12 +830,12 @@ def load_v21_control(directory: Path) -> V21Control:
                 str(row.get("catalogue_sha256", "")),
             )
             if not all(key):
-                raise ValueError("invalid v21 extinction coefficient key")
+                raise ValueError("invalid photometry-control extinction coefficient key")
             if key in coefficients:
-                raise ValueError(f"duplicate v21 extinction coefficient: {key}")
+                raise ValueError(f"duplicate photometry-control extinction coefficient: {key}")
             coefficients[key] = value
 
-    return V21Control(
+    return PhotometryControl(
         selected_run_ids=selected,
         adopted_model=adopted,
         corrected_magnitudes=MappingProxyType(corrected),
@@ -822,7 +846,7 @@ def load_v21_control(directory: Path) -> V21Control:
     )
 
 
-def require_matching_runs(control: V21Control, data: MeasurementSet) -> None:
+def require_matching_runs(control: PhotometryControl, data: MeasurementSet) -> None:
     measured = frozenset(run.run_id for run in data.runs)
     if control.selected_run_ids != measured:
         missing = sorted(control.selected_run_ids - measured)

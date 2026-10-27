@@ -13,11 +13,12 @@ from typing import Mapping, Sequence
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
 import numpy as np
 
 from v23.mmto_differential_data import (
     load_measurements,
-    load_v21_control,
+    load_photometry_control,
     write_input_audit,
 )
 from v23.mmto_differential_features import (
@@ -153,15 +154,15 @@ def _write_validation(
             "channel",
             "sample_count",
             "raw_mae",
-            "v21_mae",
+            "nightly_control_mae",
             "corrected_mae",
             "raw_robust_scatter",
-            "v21_robust_scatter",
+            "nightly_control_robust_scatter",
             "corrected_robust_scatter",
             "raw_mae_improvement",
-            "v21_mae_improvement",
+            "nightly_control_mae_improvement",
             "raw_scatter_improvement",
-            "v21_scatter_improvement",
+            "nightly_control_scatter_improvement",
             "bootstrap_lower_improvement",
             "planet_like_degradation",
             "failures",
@@ -245,7 +246,13 @@ def _plot_residuals(results: Sequence[ValidationResult], output: Path) -> None:
         if rows:
             x = np.arange(len(rows))
             axis.plot(x, [row.raw_control_magnitude for row in rows], ".", label="raw", alpha=0.6)
-            axis.plot(x, [row.v21_control_magnitude for row in rows], ".", label="v21", alpha=0.6)
+            axis.plot(
+                x,
+                [row.nightly_control_magnitude for row in rows],
+                ".",
+                label="current nightly control",
+                alpha=0.6,
+            )
             axis.plot(x, [row.corrected_magnitude for row in rows], ".", label="v23", alpha=0.6)
         else:
             axis.text(0.5, 0.5, "No passing validation model", ha="center", va="center", transform=axis.transAxes)
@@ -291,15 +298,15 @@ def _plot_models(results: Sequence[ValidationResult], output: Path) -> None:
 def _plot_signals(results: Sequence[ValidationResult], output: Path) -> None:
     figure, axis = plt.subplots(figsize=(7, 6))
     all_values = []
+    total_rows = sum(len(result.signal_recovery) for result in results)
+    finite_rows = 0
     for result in results:
         rows = [
             row
             for row in result.signal_recovery
             if math.isfinite(row.recovered_signal_magnitude)
         ]
-        if len(rows) > 5000:
-            indices = np.linspace(0, len(rows) - 1, 5000, dtype=int)
-            rows = [rows[index] for index in indices]
+        finite_rows += len(rows)
         injected = np.asarray(
             [row.injected_signal_magnitude for row in rows], dtype=float
         )
@@ -309,7 +316,14 @@ def _plot_signals(results: Sequence[ValidationResult], output: Path) -> None:
         if len(injected):
             all_values.extend(injected.tolist())
             all_values.extend(recovered.tolist())
-            axis.scatter(injected, recovered, s=7, alpha=0.25, label=result.name)
+            axis.scatter(
+                injected,
+                recovered,
+                s=7,
+                alpha=0.25,
+                label=result.name,
+                rasterized=True,
+            )
     if all_values:
         values = np.asarray(all_values, dtype=float)
         limits = (float(values.min()), float(values.max()))
@@ -317,7 +331,14 @@ def _plot_signals(results: Sequence[ValidationResult], output: Path) -> None:
         axis.legend(fontsize=8)
     else:
         axis.text(0.5, 0.5, "No measured injected rows", ha="center", va="center", transform=axis.transAxes)
-    axis.set(xlabel="Injected signal (mag)", ylabel="Recovered signal (mag)", title="Measured validation signal preservation")
+    axis.set(
+        xlabel="Injected signal (mag)",
+        ylabel="Recovered signal (mag)",
+        title=(
+            "Measured validation signal preservation\n"
+            f"{finite_rows:,} / {total_rows:,} finite rows plotted"
+        ),
+    )
     axis.grid(alpha=0.2)
     figure.tight_layout()
     _save_figure(figure, output / "signal_recovery.pdf")
@@ -325,43 +346,85 @@ def _plot_signals(results: Sequence[ValidationResult], output: Path) -> None:
 
 def _plot_planets(rows: Sequence[CorrectedPlanetMeasurement], output: Path) -> None:
     figure, axes = plt.subplots(3, 1, figsize=(11, 9), sharex=True)
+    identities = sorted({row.identity_name for row in rows})
+    colours = {
+        identity: plt.get_cmap("tab10")(index % 10)
+        for index, identity in enumerate(identities)
+    }
     for axis, channel in zip(axes, "RGB", strict=True):
         selected = [row for row in rows if row.channel == channel]
-        for identity in sorted({row.identity_name for row in selected})[:8]:
+        for identity in identities:
             series = [row for row in selected if row.identity_name == identity]
+            if not series:
+                continue
             x = np.arange(len(series))
-            axis.plot(x, [row.raw_machine_magnitude for row in series], ".-", alpha=0.45, label=f"{identity} raw")
-            axis.plot(x, [row.v21_control_magnitude for row in series], ".-", alpha=0.45, label=f"{identity} v21")
+            axis.plot(
+                x,
+                [row.raw_machine_magnitude for row in series],
+                ".--",
+                color=colours[identity],
+                alpha=0.35,
+                label=identity,
+            )
+            axis.plot(
+                x,
+                [row.nightly_control_magnitude for row in series],
+                ".-",
+                color=colours[identity],
+                alpha=0.7,
+                label="_nolegend_",
+            )
             if any(
                 row.v23_relative_magnitude is not None
                 and math.isfinite(row.v23_relative_magnitude)
                 for row in series
             ):
-                axis.plot(x, [row.v23_relative_magnitude for row in series], "o-", alpha=0.8, label=f"{identity} v23")
+                axis.plot(
+                    x,
+                    [row.v23_relative_magnitude for row in series],
+                    "o-",
+                    color=colours[identity],
+                    alpha=0.9,
+                    label="_nolegend_",
+                )
         if not selected:
             axis.text(0.5, 0.5, "No planet rows", ha="center", va="center", transform=axis.transAxes)
         axis.set_ylabel(f"{channel} mag")
         axis.grid(alpha=0.2)
     axes[-1].set_xlabel("Observation order")
-    handles, labels = axes[0].get_legend_handles_labels()
-    if handles:
-        figure.legend(
-            handles[:12],
-            labels[:12],
-            loc="upper center",
-            bbox_to_anchor=(0.5, 0.955),
-            ncol=4,
-            fontsize=7,
-        )
     has_v23 = any(
         row.v23_relative_magnitude is not None
         and math.isfinite(row.v23_relative_magnitude)
         for row in rows
     )
+    handles, labels = axes[0].get_legend_handles_labels()
+    if handles:
+        style_handles = [
+            Line2D([], [], color="black", marker=".", linestyle="--", alpha=0.35),
+            Line2D([], [], color="black", marker=".", linestyle="-", alpha=0.7),
+        ]
+        style_labels = ["raw", "current nightly control"]
+        if has_v23:
+            style_handles.append(
+                Line2D([], [], color="black", marker="o", linestyle="-", alpha=0.9)
+            )
+            style_labels.append("confirmed v23")
+        figure.legend(
+            handles + style_handles,
+            labels + style_labels,
+            loc="upper center",
+            bbox_to_anchor=(0.5, 0.955),
+            ncol=4,
+            fontsize=7,
+        )
     figure.suptitle(
-        "Planet relative photometry: raw, v21 control, and confirmed v23"
+        f"Planet relative photometry ({len(identities)} identities, {len(rows):,} rows): "
+        "raw, current nightly control, and confirmed v23"
         if has_v23
-        else "Planet relative photometry: raw and v21 control; no v23 correction passed",
+        else (
+            f"Planet relative photometry ({len(identities)} identities, {len(rows):,} rows): "
+            "raw and current nightly control; no v23 correction passed"
+        ),
         y=0.995,
     )
     figure.tight_layout(rect=(0, 0, 1, 0.86))
@@ -404,7 +467,7 @@ def _serialize_model(model: ConfirmedModel, output: Path) -> tuple[str, str]:
 def run_benchmark(
     database: Path,
     manifest: Path,
-    v21_control: Path,
+    photometry_control: Path,
     output: Path,
     config: Path,
     *,
@@ -415,7 +478,7 @@ def run_benchmark(
     configuration = json.loads(Path(config).read_text(encoding="utf-8"))
     if not isinstance(configuration, dict):
         raise ValueError("benchmark configuration must be a JSON object")
-    control = load_v21_control(Path(v21_control))
+    control = load_photometry_control(Path(photometry_control))
     selected_ids = _read_run_ids(Path(run_ids)) if run_ids else control.selected_run_ids
     data = load_measurements(
         Path(database), Path(manifest), run_ids=frozenset(selected_ids)

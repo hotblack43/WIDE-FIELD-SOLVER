@@ -11,7 +11,7 @@ from v23.mmto_differential_data import (
     MeasurementSet,
     RunRecord,
     StellarMeasurement,
-    V21Control,
+    PhotometryControl,
 )
 from v23.mmto_differential_features import (
     ComparisonResidual,
@@ -105,8 +105,8 @@ def _data(runs: list[RunRecord], stars: list[StellarMeasurement]) -> Measurement
     )
 
 
-def _control(runs: list[RunRecord]) -> V21Control:
-    return V21Control(
+def _control(runs: list[RunRecord]) -> PhotometryControl:
+    return PhotometryControl(
         selected_run_ids=frozenset(run.run_id for run in runs),
         adopted_model="fixture",
         corrected_magnitudes=MappingProxyType({}),

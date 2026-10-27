@@ -17,7 +17,7 @@ class PredictionRow:
     target_group: str
     observed_magnitude: float
     raw_control_magnitude: float
-    v21_control_magnitude: float
+    nightly_control_magnitude: float
     predicted_nuisance: float
     corrected_magnitude: float
     status: str
@@ -29,15 +29,15 @@ class PredictionRow:
 class ChannelMetrics:
     sample_count: int
     raw_mae: float
-    v21_mae: float
+    nightly_control_mae: float
     corrected_mae: float
     raw_robust_scatter: float
-    v21_robust_scatter: float
+    nightly_control_robust_scatter: float
     corrected_robust_scatter: float
     raw_mae_improvement: float
-    v21_mae_improvement: float
+    nightly_control_mae_improvement: float
     raw_scatter_improvement: float
-    v21_scatter_improvement: float
+    nightly_control_scatter_improvement: float
     bootstrap_lower_improvement: float
     planet_like_degradation: float
 
@@ -46,10 +46,10 @@ class ChannelMetrics:
 class TrendMetric:
     feature_name: str
     raw_slope: float
-    v21_slope: float
+    nightly_control_slope: float
     corrected_slope: float
     raw_interval: tuple[float, float]
-    v21_interval: tuple[float, float]
+    nightly_control_interval: tuple[float, float]
     corrected_interval: tuple[float, float]
     passed: bool
 
@@ -164,7 +164,7 @@ def _bootstrap_lower_improvement(
         [
             (
                 np.mean([abs(row.raw_control_magnitude) for row in groups[name]]),
-                np.mean([abs(row.v21_control_magnitude) for row in groups[name]]),
+                np.mean([abs(row.nightly_control_magnitude) for row in groups[name]]),
                 np.mean([abs(row.corrected_magnitude) for row in groups[name]]),
             )
             for name in names
@@ -260,7 +260,7 @@ def evaluate_gate(
             math.isfinite(value)
             for value in (
                 row.raw_control_magnitude,
-                row.v21_control_magnitude,
+                row.nightly_control_magnitude,
                 row.corrected_magnitude,
             )
         )
@@ -273,17 +273,17 @@ def evaluate_gate(
             failures.append(f"{channel}:no_eligible_validation_rows")
             continue
         raw = np.array([row.raw_control_magnitude for row in rows])
-        v21 = np.array([row.v21_control_magnitude for row in rows])
+        nightly = np.array([row.nightly_control_magnitude for row in rows])
         corrected = np.array([row.corrected_magnitude for row in rows])
-        raw_mae, v21_mae, corrected_mae = _mae(raw), _mae(v21), _mae(corrected)
+        raw_mae, nightly_control_mae, corrected_mae = _mae(raw), _mae(nightly), _mae(corrected)
         raw_scatter, v21_scatter, corrected_scatter = (
             _scatter(raw),
-            _scatter(v21),
+            _scatter(nightly),
             _scatter(corrected),
         )
         improvements = (
             _improvement(raw_mae, corrected_mae),
-            _improvement(v21_mae, corrected_mae),
+            _improvement(nightly_control_mae, corrected_mae),
             _improvement(raw_scatter, corrected_scatter),
             _improvement(v21_scatter, corrected_scatter),
         )
@@ -299,7 +299,7 @@ def evaluate_gate(
             )
             planet_control = min(
                 _mae(np.array([row.raw_control_magnitude for row in planet_rows])),
-                _mae(np.array([row.v21_control_magnitude for row in planet_rows])),
+                _mae(np.array([row.nightly_control_magnitude for row in planet_rows])),
             )
             degradation = planet_candidate / planet_control - 1.0 if planet_control > 0 else math.inf
         else:
@@ -309,15 +309,15 @@ def evaluate_gate(
         by_channel[channel] = ChannelMetrics(
             sample_count=len(rows),
             raw_mae=raw_mae,
-            v21_mae=v21_mae,
+            nightly_control_mae=nightly_control_mae,
             corrected_mae=corrected_mae,
             raw_robust_scatter=raw_scatter,
-            v21_robust_scatter=v21_scatter,
+            nightly_control_robust_scatter=v21_scatter,
             corrected_robust_scatter=corrected_scatter,
             raw_mae_improvement=improvements[0],
-            v21_mae_improvement=improvements[1],
+            nightly_control_mae_improvement=improvements[1],
             raw_scatter_improvement=improvements[2],
-            v21_scatter_improvement=improvements[3],
+            nightly_control_scatter_improvement=improvements[3],
             bootstrap_lower_improvement=bootstrap,
             planet_like_degradation=degradation,
         )
@@ -326,7 +326,7 @@ def evaluate_gate(
     if usable:
         groups = np.array([row.target_group for row in usable])
         raw = np.array([row.raw_control_magnitude for row in usable])
-        v21 = np.array([row.v21_control_magnitude for row in usable])
+        nightly = np.array([row.nightly_control_magnitude for row in usable])
         corrected = np.array([row.corrected_magnitude for row in usable])
         for feature_index, name in enumerate(diagnostic_feature_names):
             x = np.array(
@@ -341,13 +341,13 @@ def evaluate_gate(
             if len(finite_x) < 3 or float(np.ptp(finite_x)) <= 0.0:
                 continue
             raw_slope = _slope(x, raw)
-            v21_slope = _slope(x, v21)
+            nightly_control_slope = _slope(x, nightly)
             corrected_slope = _slope(x, corrected)
             raw_interval = _bootstrap_slope_interval(
                 x, raw, groups, resamples=resamples, seed=seed + feature_index * 3
             )
-            v21_interval = _bootstrap_slope_interval(
-                x, v21, groups, resamples=resamples, seed=seed + feature_index * 3 + 1
+            nightly_control_interval = _bootstrap_slope_interval(
+                x, nightly, groups, resamples=resamples, seed=seed + feature_index * 3 + 1
             )
             corrected_interval = _bootstrap_slope_interval(
                 x,
@@ -359,15 +359,15 @@ def evaluate_gate(
             raw_significant = all(math.isfinite(v) for v in raw_interval) and not (
                 raw_interval[0] <= 0.0 <= raw_interval[1]
             )
-            v21_significant = all(math.isfinite(v) for v in v21_interval) and not (
-                v21_interval[0] <= 0.0 <= v21_interval[1]
+            v21_significant = all(math.isfinite(v) for v in nightly_control_interval) and not (
+                nightly_control_interval[0] <= 0.0 <= nightly_control_interval[1]
             )
             if raw_significant or v21_significant:
                 controls = [
                     abs(value)
                     for value, significant in (
                         (raw_slope, raw_significant),
-                        (v21_slope, v21_significant),
+                        (nightly_control_slope, v21_significant),
                     )
                     if significant
                 ]
@@ -384,10 +384,10 @@ def evaluate_gate(
                 TrendMetric(
                     feature_name=name,
                     raw_slope=raw_slope,
-                    v21_slope=v21_slope,
+                    nightly_control_slope=nightly_control_slope,
                     corrected_slope=corrected_slope,
                     raw_interval=raw_interval,
-                    v21_interval=v21_interval,
+                    nightly_control_interval=nightly_control_interval,
                     corrected_interval=corrected_interval,
                     passed=passed,
                 )

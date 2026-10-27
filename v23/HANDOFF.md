@@ -36,8 +36,14 @@ or time. Once the receipt and blind products are fixed, read-only stages write:
   sets `correction_available` false and leaves corrected magnitudes absent.
 
 The differential benchmark reads the databases without writing them and uses
-one immutable completed v21 nightly-extinction directory as its population and
-comparison control. It makes no network request.
+the fresh `nightly-extinction/` product from the same pipeline invocation as
+its population and comparison control. That sidecar records the latest
+successful run for every MMTO image in the accumulated database, so all four
+diagnostic PDFs change as the database grows instead of replaying one legacy
+v21 population. Held-out night/star roles remain mandatory for honest model
+validation. Planet identities and finite injected-signal recovery rows are
+plotted without hard-coded display caps, and non-finite recovery rows are
+counted in the figure. The stage makes no network request.
 
 The aperture benchmark is also read-only. Its 71-image test retained the v22
 production geometry: aperture `clamp(2.5 * major_sigma, 3, 9)` and sky annulus

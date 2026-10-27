@@ -12,7 +12,7 @@ import unittest
 from v23.mmto_differential_data import (
     PlanetMeasurement,
     load_measurements,
-    load_v21_control,
+    load_photometry_control,
     require_matching_runs,
     write_input_audit,
 )
@@ -179,7 +179,12 @@ def _insert_products(
         )
 
 
-def _fixture(root: Path, *, duplicate_join: bool = False) -> tuple[Path, Path]:
+def _fixture(
+    root: Path,
+    *,
+    duplicate_join: bool = False,
+    observation_table: str = "mmto_v21_observations",
+) -> tuple[Path, Path]:
     database = root / "stars.sqlite"
     connection = sqlite3.connect(database)
     connection.executescript(
@@ -240,7 +245,7 @@ def _fixture(root: Path, *, duplicate_join: bool = False) -> tuple[Path, Path]:
     manifest = root / "manifest.sqlite"
     connection = sqlite3.connect(manifest)
     connection.execute(
-        """CREATE TABLE mmto_v21_observations (
+        f"""CREATE TABLE {observation_table} (
         source_sha256 TEXT PRIMARY KEY, remote_url TEXT NOT NULL,
         discovery_utc TEXT NOT NULL, header_start_utc TEXT NOT NULL,
         header_midpoint_utc TEXT NOT NULL, exposure_seconds REAL NOT NULL,
@@ -248,7 +253,7 @@ def _fixture(root: Path, *, duplicate_join: bool = False) -> tuple[Path, Path]:
         instrument TEXT NOT NULL, recorded_utc TEXT NOT NULL)"""
     )
     connection.execute(
-        "INSERT INTO mmto_v21_observations VALUES (?,?,?,?,?,?,?,?,?,?)",
+        f"INSERT INTO {observation_table} VALUES (?,?,?,?,?,?,?,?,?,?)",
         (
             SOURCE_SHA256,
             "https://example.invalid/image",
@@ -347,6 +352,19 @@ def _sha256(path: Path) -> str:
 
 
 class DifferentialDataTests(unittest.TestCase):
+    def test_current_v23_observation_table_supplies_cumulative_population(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            database, manifest = _fixture(
+                Path(temporary), observation_table="mmto_v23_observations"
+            )
+
+            loaded = load_measurements(
+                database, manifest, run_ids=frozenset({"new"})
+            )
+
+        self.assertEqual([run.run_id for run in loaded.runs], ["new"])
+        self.assertEqual(loaded.runs[0].observed_utc, "2026-01-01T01:00:10+00:00")
+
     def test_latest_success_is_selected_and_exact_ids_replay_history(self):
         with tempfile.TemporaryDirectory() as temporary:
             database, manifest = _fixture(Path(temporary))
@@ -405,7 +423,7 @@ class DifferentialDataTests(unittest.TestCase):
     def test_control_keeps_only_the_recorded_adopted_model(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            control = load_v21_control(_control(root, ["new"]))
+            control = load_photometry_control(_control(root, ["new"]))
             self.assertEqual(control.selected_run_ids, frozenset({"new"}))
             self.assertEqual(control.adopted_model, "adopted")
             self.assertEqual(len(control.extinction_coefficients), 1)
@@ -416,7 +434,7 @@ class DifferentialDataTests(unittest.TestCase):
             root = Path(temporary)
             database, manifest = _fixture(root)
             current = load_measurements(database, manifest)
-            stale = load_v21_control(_control(root, ["old"]))
+            stale = load_photometry_control(_control(root, ["old"]))
             with self.assertRaisesRegex(ValueError, "control run mismatch"):
                 require_matching_runs(stale, current)
 

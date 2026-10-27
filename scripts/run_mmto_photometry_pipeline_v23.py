@@ -181,14 +181,6 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--archive", type=Path)
     parser.add_argument("--results-dir", type=Path)
     parser.add_argument("--output", type=Path)
-    parser.add_argument(
-        "--v21-control",
-        type=Path,
-        help=(
-            "immutable v21 nightly-extinction directory; by default use the "
-            "newest completed v21 photometry run"
-        ),
-    )
     parser.add_argument("--state-file", type=Path)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument(
@@ -465,7 +457,6 @@ def _stage_commands(
     manifest: Path,
     output: Path,
     *,
-    v21_control: Path,
     variable_min_period_days: float = 5.0,
     variable_max_period_days: float = 30.0,
     variable_max_catalogue_magnitude: float = 5.0,
@@ -534,7 +525,7 @@ def _stage_commands(
             str(Path(repo_root) / "run_v23_photometry_benchmark.sh"),
             "--database", str(Path(database)),
             "--manifest", str(Path(manifest)),
-            "--v21-control", str(Path(v21_control)),
+            "--photometry-control", str(Path(output) / "nightly-extinction"),
             "--output", str(Path(output) / "differential-photometry"),
             "--config", str(
                 Path(repo_root) / "v23" / "config" / "differential_photometry.json"
@@ -542,26 +533,6 @@ def _stage_commands(
         ],
     ))
     return tuple(stages)
-
-
-def _resolve_v21_control(results: Path, explicit: Path | None) -> Path:
-    required = (
-        "calibration_manifest.json",
-        "corrected_stellar_photometry.csv",
-        "nightly_extinction_coefficients.csv",
-    )
-    if explicit is not None:
-        candidates = [Path(explicit).resolve()]
-    else:
-        runs = Path(results) / "photometry-runs"
-        candidates = sorted(
-            runs.glob("v21-*/nightly-extinction"), reverse=True
-        ) if runs.is_dir() else []
-    for candidate in candidates:
-        if candidate.is_dir() and all((candidate / name).is_file() for name in required):
-            return candidate
-    requested = str(Path(explicit).resolve()) if explicit is not None else "a completed v21 photometry run"
-    raise OperationalFailure(f"cannot find immutable v21 control: {requested}")
 
 
 def _record_differential_benchmark(output: Path, summary: dict[str, object]) -> None:
@@ -1053,7 +1024,6 @@ def main(
     database = results / "stars.sqlite"
     state_path = (args.state_file or results / "mmto-v23-backfill-state.json").resolve()
     output = args.output
-    v21_control: Path | None = None
     summary: dict[str, object] | None = None
     registry = SourceRegistry.from_json(REPO_ROOT / "sources.json")
     adapter = adapter or registry.get_adapter("mmto")
@@ -1066,7 +1036,6 @@ def main(
             raise ValueError("oldest observing night follows current observing night")
         if not args.dry_run:
             results.mkdir(parents=True, exist_ok=True)
-            v21_control = _resolve_v21_control(results, args.v21_control)
             if output is None:
                 timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
                 output = results / "photometry-runs" / f"v23-{timestamp}"
@@ -1123,7 +1092,7 @@ def main(
                 "archive": str(archive),
                 "database": str(database),
                 "output": str(output),
-                "v21_control": str(v21_control),
+                "photometry_control": str(output / "nightly-extinction"),
                 "state_file": str(state_path),
                 "selection": {
                     "max_images": plan.max_images,
@@ -1239,7 +1208,6 @@ def main(
                     raise OperationalFailure(
                         f"results database does not exist after processing: {database}"
                     )
-                assert v21_control is not None
                 stages = summary["stages"]
                 assert isinstance(stages, list)
                 for name, command in _stage_commands(
@@ -1247,7 +1215,6 @@ def main(
                     database,
                     archive / "manifest.sqlite",
                     output,
-                    v21_control=v21_control,
                     variable_min_period_days=args.variable_min_period_days,
                     variable_max_period_days=args.variable_max_period_days,
                     variable_max_catalogue_magnitude=(

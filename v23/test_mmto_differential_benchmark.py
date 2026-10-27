@@ -11,8 +11,10 @@ from types import MappingProxyType
 import unittest
 from unittest.mock import patch
 
-from v23.mmto_differential_benchmark import run_benchmark
+from v23.mmto_differential_benchmark import _plot_planets, _plot_signals, run_benchmark
 from v23.mmto_differential_features import FeatureRow, FeatureTable
+from v23.mmto_differential_models import SignalRecoveryRow, ValidationResult
+from v23.mmto_planet_relative_photometry import CorrectedPlanetMeasurement
 from v23.test_mmto_planet_relative_photometry import _context
 
 
@@ -40,7 +42,7 @@ def _fixture_table() -> FeatureTable:
                         target_delta_magnitude=nuisance,
                         metric_target_magnitude=nuisance,
                         raw_control_magnitude=nuisance,
-                        v21_control_magnitude=0.8 * nuisance,
+                        nightly_control_magnitude=0.8 * nuisance,
                         deployable_features=(0.0,),
                         diagnostic_features=(-5.0, 5.0, 1.0, nuisance, 0.0, 1.5, float("nan")),
                         exposure_median_magnitude=nuisance,
@@ -72,7 +74,7 @@ def _fixture_table() -> FeatureTable:
         ),
         comparison_residuals=base.comparison_residuals,
         star_baselines=MappingProxyType({}),
-        v21_baselines=MappingProxyType({}),
+        nightly_baselines=MappingProxyType({}),
         data=base.data,
         control=base.control,
         config=MappingProxyType(
@@ -113,6 +115,88 @@ def _sha(path: Path) -> str:
 
 
 class DifferentialBenchmarkTests(unittest.TestCase):
+    def test_plot_products_do_not_truncate_planets_or_signal_rows(self):
+        identities = (
+            "Ceres",
+            "Jupiter",
+            "Mars",
+            "Mercury",
+            "Neptune",
+            "Saturn",
+            "Uranus",
+            "Venus",
+            "Vesta",
+        )
+        planets = tuple(
+            CorrectedPlanetMeasurement(
+                run_id=f"run-{identity}",
+                source_sha256="s" * 64,
+                observed_utc="2026-01-01T00:00:00Z",
+                night="2025-12-31",
+                identity_type="major_planet",
+                identity_name=identity,
+                identity_status="planet_candidate",
+                candidate_rank=1,
+                detection_id=identity,
+                channel=channel,
+                raw_machine_magnitude=-5.0,
+                nightly_control_magnitude=-5.1,
+                v23_relative_magnitude=None,
+                predicted_nuisance_magnitude=None,
+                correction_status="model_unavailable",
+                correction_reason="fixture",
+                distance_normalized_magnitude=None,
+                distance_status="distance_unavailable",
+                x_px=1.0,
+                y_px=1.0,
+                comparison_count=0,
+            )
+            for channel in "RGB"
+            for identity in identities
+        )
+        signal_rows = tuple(
+            SignalRecoveryRow(
+                row_index=index,
+                role="validation",
+                signal_type="constant",
+                injected_signal_magnitude=0.2,
+                recovered_signal_magnitude=0.2,
+                attenuation_fraction=0.0,
+                status="measured",
+            )
+            for index in range(5001)
+        )
+        result = ValidationResult(
+            name="fixture",
+            metrics=None,
+            gate_status="passed",
+            fitted_pipeline=None,
+            validation_predictions=(),
+            signal_recovery=signal_rows,
+        )
+        figures = []
+
+        def capture(figure, _path):
+            figures.append(figure)
+
+        with patch("v23.mmto_differential_benchmark._save_figure", side_effect=capture):
+            _plot_planets(planets, Path("/unused"))
+            _plot_signals((result,), Path("/unused"))
+
+        planet_figure, signal_figure = figures
+        for axis in planet_figure.axes:
+            labels = {line.get_label() for line in axis.lines}
+            for identity in identities:
+                self.assertIn(identity, labels)
+        legend_labels = {text.get_text() for text in planet_figure.legends[0].texts}
+        self.assertTrue(set(identities).issubset(legend_labels))
+        self.assertIn("9 identities, 27 rows", planet_figure._suptitle.get_text())
+        self.assertEqual(len(signal_figure.axes[0].collections[0].get_offsets()), 5001)
+        self.assertIn(
+            "5,001 / 5,001 finite rows plotted",
+            signal_figure.axes[0].get_title(),
+        )
+
     def test_launcher_help_pins_the_v23_environment(self):
         root = Path(__file__).resolve().parents[1]
         completed = subprocess.run(
@@ -124,14 +208,18 @@ class DifferentialBenchmarkTests(unittest.TestCase):
             stderr=subprocess.STDOUT,
         )
         self.assertEqual(completed.returncode, 0, completed.stdout)
-        self.assertIn("--v21-control", completed.stdout)
+        self.assertIn("--photometry-control", completed.stdout)
+        self.assertNotIn("--v21-control", completed.stdout)
         self.assertNotIn("wrong/environment", completed.stdout)
 
     def _run(self, root: Path, name: str, *, impossible: bool = False):
         table = _fixture_table()
         config = _config(root / f"{name}.json", impossible=impossible)
         with (
-            patch("v23.mmto_differential_benchmark.load_v21_control", return_value=table.control),
+            patch(
+                "v23.mmto_differential_benchmark.load_photometry_control",
+                return_value=table.control,
+            ),
             patch("v23.mmto_differential_benchmark.load_measurements", return_value=table.data),
             patch("v23.mmto_differential_benchmark.assign_splits", return_value=()),
             patch("v23.mmto_differential_benchmark.build_feature_table", return_value=table),
@@ -139,7 +227,7 @@ class DifferentialBenchmarkTests(unittest.TestCase):
             return run_benchmark(
                 Path("/read-only/stars.sqlite"),
                 Path("/read-only/manifest.sqlite"),
-                Path("/read-only/v21-control"),
+                Path("/read-only/current-photometry-control"),
                 root / name,
                 config,
             )

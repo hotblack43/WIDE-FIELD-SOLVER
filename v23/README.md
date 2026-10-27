@@ -148,7 +148,14 @@ Post-processing adds these v23 directories below each pipeline output:
   extrapolated UTC leap-second conversion.
 - `differential-photometry/` compares a local stellar ensemble, random forest,
   gradient boosting, and a small neural network on rows jointly held out by
-  night and star identity, with measured injected-signal recovery.
+  night and star identity, with measured injected-signal recovery. Its input
+  run IDs come from the fresh cumulative `nightly-extinction/` sidecar made in
+  the same invocation, rather than an immutable legacy population. The loader
+  combines the v21 and v23 FITS-header observation tables and fails on any
+  conflicting observation metadata. The planet PDF includes every accumulated
+  identity, and the injected-signal PDF draws every finite measured recovery
+  row while reporting both finite and total counts; neither display silently
+  truncates its population.
   The simplest passing method receives one final pseudo-planet test. Failed
   scientific gates are reported normally and publish no corrected planet value;
   they are not pipeline crashes.

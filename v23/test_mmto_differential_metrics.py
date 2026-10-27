@@ -20,7 +20,7 @@ def _predictions(*, weak_channel: str | None = None, trend: bool = False):
         for group in range(30):
             nuisance = (group - 14.5) / 10.0
             raw = nuisance
-            v21 = nuisance * 0.8
+            nightly = nuisance * 0.8
             corrected = nuisance * (0.79 if channel == weak_channel else 0.1)
             diagnostic = nuisance if trend else (group % 5) - 2.0
             rows.append(
@@ -30,7 +30,7 @@ def _predictions(*, weak_channel: str | None = None, trend: bool = False):
                     target_group=f"{channel}-{group}",
                     observed_magnitude=raw,
                     raw_control_magnitude=raw,
-                    v21_control_magnitude=v21,
+                    nightly_control_magnitude=nightly,
                     predicted_nuisance=raw - corrected,
                     corrected_magnitude=corrected,
                     status="corrected",
@@ -95,7 +95,7 @@ class DifferentialMetricTests(unittest.TestCase):
         self.assertTrue(report.passed, report.failures)
         self.assertLess(
             abs(report.trends[0].corrected_slope),
-            0.95 * abs(report.trends[0].v21_slope),
+            0.95 * abs(report.trends[0].nightly_control_slope),
         )
 
     def test_training_support_rejects_univariate_and_multivariate_extrapolation(self):

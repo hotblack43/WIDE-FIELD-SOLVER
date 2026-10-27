@@ -16,7 +16,7 @@ from scipy.spatial import cKDTree
 from v23.mmto_differential_data import (
     MeasurementSet,
     StellarMeasurement,
-    V21Control,
+    PhotometryControl,
     require_matching_runs,
 )
 
@@ -69,7 +69,7 @@ class FeatureRow:
     target_delta_magnitude: float
     metric_target_magnitude: float
     raw_control_magnitude: float
-    v21_control_magnitude: float
+    nightly_control_magnitude: float
     deployable_features: tuple[float, ...]
     diagnostic_features: tuple[float, ...]
     exposure_median_magnitude: float
@@ -94,9 +94,9 @@ class FeatureTable:
     diagnostic_feature_names: tuple[str, ...]
     comparison_residuals: tuple[ComparisonResidual, ...]
     star_baselines: Mapping[tuple[str, str, str], float]
-    v21_baselines: Mapping[tuple[str, str, str], float]
+    nightly_baselines: Mapping[tuple[str, str, str], float]
     data: MeasurementSet
-    control: V21Control
+    control: PhotometryControl
     config: Mapping[str, object]
 
 
@@ -236,10 +236,10 @@ def _baseline_map(
     return {key: _median(values) for key, values in grouped.items()}
 
 
-def _v21_baseline_map(
+def _nightly_baseline_map(
     rows: Sequence[StellarMeasurement],
     assignments: Mapping[tuple[str, str, str, str], SplitAssignment],
-    control: V21Control,
+    control: PhotometryControl,
 ) -> dict[tuple[str, str, str], float]:
     grouped: dict[tuple[str, str, str], list[float]] = {}
     for row in rows:
@@ -549,8 +549,8 @@ def _metric_centres(
     rows: Sequence[tuple[StellarMeasurement, SplitAssignment, float, float]]
 ) -> tuple[dict[tuple[str, str, str, str], float], dict[tuple[str, str, str, str], float]]:
     raw: dict[tuple[str, str, str, str], list[float]] = {}
-    v21: dict[tuple[str, str, str, str], list[float]] = {}
-    for measurement, assignment, target, v21_value in rows:
+    nightly: dict[tuple[str, str, str, str], list[float]] = {}
+    for measurement, assignment, target, nightly_value in rows:
         if assignment.role not in ("validation", "test"):
             continue
         key = (
@@ -561,17 +561,17 @@ def _metric_centres(
         )
         if math.isfinite(target):
             raw.setdefault(key, []).append(target)
-        if math.isfinite(v21_value):
-            v21.setdefault(key, []).append(v21_value)
+        if math.isfinite(nightly_value):
+            nightly.setdefault(key, []).append(nightly_value)
     return (
         {key: _median(values) for key, values in raw.items()},
-        {key: _median(values) for key, values in v21.items()},
+        {key: _median(values) for key, values in nightly.items()},
     )
 
 
 def build_feature_table(
     data: MeasurementSet,
-    control: V21Control,
+    control: PhotometryControl,
     splits: Sequence[SplitAssignment],
     config: Mapping[str, object],
 ) -> FeatureTable:
@@ -586,7 +586,7 @@ def build_feature_table(
         raise ValueError("comparison minima must be positive")
 
     baselines = _baseline_map(data.stellar, assignments)
-    v21_baselines = _v21_baseline_map(data.stellar, assignments, control)
+    nightly_baselines = _nightly_baseline_map(data.stellar, assignments, control)
     residuals = tuple(
         ComparisonResidual(
             source_sha256=row.source_sha256,
@@ -622,13 +622,13 @@ def build_feature_table(
         corrected = control.corrected_magnitudes.get(
             (row.source_sha256, row.catalogue_sha256, row.star_id, row.channel)
         )
-        v21_value = (
-            corrected - v21_baselines[key]
-            if corrected is not None and key in v21_baselines
+        nightly_value = (
+            corrected - nightly_baselines[key]
+            if corrected is not None and key in nightly_baselines
             else math.nan
         )
-        staged.append((row, assignment, target, v21_value))
-    raw_centres, v21_centres = _metric_centres(staged)
+        staged.append((row, assignment, target, nightly_value))
+    raw_centres, nightly_centres = _metric_centres(staged)
     deployable_names, has_background = _feature_schema(data, radii)
     diagnostic_names = (
         "machine_magnitude",
@@ -640,7 +640,7 @@ def build_feature_table(
         "aperture_background_adu",
     )
     output: list[FeatureRow] = []
-    for row, assignment, target, v21_value in staged:
+    for row, assignment, target, nightly_value in staged:
         exposure_median, exposure_mad, exposure_count, local = _indexed_context(
             row,
             exposure_indices.get(
@@ -670,10 +670,10 @@ def build_feature_table(
             if assignment.role == "train"
             else target - raw_centres.get(centre_key, 0.0)
         )
-        metric_v21 = (
-            v21_value
-            if assignment.role == "train" or not math.isfinite(v21_value)
-            else v21_value - v21_centres.get(centre_key, 0.0)
+        metric_nightly = (
+            nightly_value
+            if assignment.role == "train" or not math.isfinite(nightly_value)
+            else nightly_value - nightly_centres.get(centre_key, 0.0)
         )
         x_norm = (row.x_px - row.image_width_px / 2.0) / max(row.image_width_px / 2.0, 1.0)
         y_norm = (row.y_px - row.image_height_px / 2.0) / max(row.image_height_px / 2.0, 1.0)
@@ -704,7 +704,7 @@ def build_feature_table(
                 target_delta_magnitude=target,
                 metric_target_magnitude=metric_target,
                 raw_control_magnitude=metric_target,
-                v21_control_magnitude=metric_v21,
+                nightly_control_magnitude=metric_nightly,
                 deployable_features=deployable,
                 diagnostic_features=diagnostic,
                 exposure_median_magnitude=exposure_median,
@@ -736,7 +736,7 @@ def build_feature_table(
         diagnostic_feature_names=diagnostic_names,
         comparison_residuals=residuals,
         star_baselines=MappingProxyType(baselines),
-        v21_baselines=MappingProxyType(v21_baselines),
+        nightly_baselines=MappingProxyType(nightly_baselines),
         data=data,
         control=control,
         config=MappingProxyType(dict(config)),

@@ -63,7 +63,6 @@ class V23RuntimeBoundaryTests(unittest.TestCase):
             ROOT / "results" / "stars.sqlite",
             ROOT / "raw_allsky_samples" / "manifest.sqlite",
             Path("/output"),
-            v21_control=Path("/controls/v21"),
         )
         for name, command in stages:
             with self.subTest(name):

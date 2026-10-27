@@ -43,7 +43,7 @@ class CorrectedPlanetMeasurement:
     detection_id: str
     channel: str
     raw_machine_magnitude: float | None
-    v21_control_magnitude: float | None
+    nightly_control_magnitude: float | None
     v23_relative_magnitude: float | None
     predicted_nuisance_magnitude: float | None
     correction_status: str
@@ -121,7 +121,7 @@ def _airmass(row: PlanetMeasurement, geometry) -> float | None:
     return 1.0 / denominator if denominator > 0.0 else None
 
 
-def _v21_control(
+def _nightly_control(
     row: PlanetMeasurement, context: FeatureTable, airmass: float | None
 ) -> float | None:
     if row.machine_magnitude is None:
@@ -221,7 +221,7 @@ def apply_to_planets(
     for row in planets:
         raw = row.machine_magnitude
         airmass = _airmass(row, geometries.get(row.run_id))
-        v21 = _v21_control(row, context, airmass)
+        nightly = _nightly_control(row, context, airmass)
         if not row.valid_measurement or raw is None:
             prediction, status, count = None, "invalid_measurement", 0
             reason = ";".join(row.exclusion_reasons) or "invalid_measurement"
@@ -249,7 +249,7 @@ def apply_to_planets(
                 detection_id=row.detection_id,
                 channel=row.channel,
                 raw_machine_magnitude=raw,
-                v21_control_magnitude=v21,
+                nightly_control_magnitude=nightly,
                 v23_relative_magnitude=corrected,
                 predicted_nuisance_magnitude=prediction,
                 correction_status=status,

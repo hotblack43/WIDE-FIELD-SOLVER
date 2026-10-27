@@ -12,6 +12,11 @@ line.
   aperture reduced scatter, but introduced held-out magnitude/PSF trends.
 - Annuli scaled to detected blob width did not improve all three channels;
   the existing aperture+3 to aperture+7 pixel annulus remains the control.
+- The differential-photometry figure set now consumes the fresh cumulative
+  nightly-extinction population built by the same v23 invocation. It no longer
+  replays the fixed v21 run list, and plot legends/metric fields call this the
+  current nightly control. Versioned v21 and v23 FITS-header observation tables
+  are combined read-only so newly accumulated v23 images enter the figures.
 - Post-fit known-site validation transforms all stellar coordinates from one
   exposure as a vector, rather than repeating the same Astropy frame setup for
   every star. A 1,200-coordinate regression case fell from about 5.1 seconds to

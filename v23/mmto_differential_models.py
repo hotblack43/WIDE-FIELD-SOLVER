@@ -398,7 +398,7 @@ def _predictions(
                 target_group=target_group,
                 observed_magnitude=row.target_delta_magnitude,
                 raw_control_magnitude=row.raw_control_magnitude,
-                v21_control_magnitude=row.v21_control_magnitude,
+                nightly_control_magnitude=row.nightly_control_magnitude,
                 predicted_nuisance=predicted,
                 corrected_magnitude=metric_corrected,
                 status=status,

@@ -22,7 +22,12 @@ def main() -> int:
     )
     parser.add_argument("--database", type=Path, required=True)
     parser.add_argument("--manifest", type=Path, required=True)
-    parser.add_argument("--v21-control", type=Path, required=True)
+    parser.add_argument(
+        "--photometry-control",
+        type=Path,
+        required=True,
+        help="fresh cumulative nightly-extinction directory for this pipeline run",
+    )
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument(
         "--config",
@@ -34,7 +39,7 @@ def main() -> int:
     summary = run_benchmark(
         args.database,
         args.manifest,
-        args.v21_control,
+        args.photometry_control,
         args.output,
         args.config,
         run_ids=args.run_ids,

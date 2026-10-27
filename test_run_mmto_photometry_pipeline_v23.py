@@ -105,7 +105,6 @@ class V23RemoteFirstSelectionTests(unittest.TestCase):
                 Path("/results/stars.sqlite"),
                 Path("/archive/manifest.sqlite"),
                 Path("/output"),
-                v21_control=Path("/control"),
             )
         )
 
@@ -115,6 +114,23 @@ class V23RemoteFirstSelectionTests(unittest.TestCase):
         self.assertEqual(
             planet[planet.index("--manifest") + 1],
             "/archive/manifest.sqlite",
+        )
+
+    def test_differential_plots_use_fresh_all_database_nightly_population(self):
+        commands = dict(
+            PIPELINE._stage_commands(
+                Path("/repo"),
+                Path("/results/stars.sqlite"),
+                Path("/archive/manifest.sqlite"),
+                Path("/output"),
+            )
+        )
+
+        command = commands["differential_photometry"]
+        self.assertNotIn("--v21-control", command)
+        self.assertEqual(
+            command[command.index("--photometry-control") + 1],
+            "/output/nightly-extinction",
         )
 
     def test_remote_cursor_is_scanned_before_cached_local_backlog(self):

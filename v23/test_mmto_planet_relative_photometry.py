@@ -14,7 +14,7 @@ from v23.mmto_differential_data import (
     MeasurementSet,
     PlanetMeasurement,
     RunRecord,
-    V21Control,
+    PhotometryControl,
 )
 from v23.mmto_differential_features import ComparisonResidual, FeatureTable
 from v23.mmto_differential_metrics import GateReport
@@ -104,7 +104,7 @@ def _context(comparison_count: int = 12) -> FeatureTable:
         manifest_sha256="m" * 64,
         input_solver_version="0.21.0",
     )
-    control = V21Control(
+    control = PhotometryControl(
         selected_run_ids=frozenset({"run"}),
         adopted_model="fixture",
         corrected_magnitudes=MappingProxyType({}),
@@ -134,7 +134,7 @@ def _context(comparison_count: int = 12) -> FeatureTable:
         diagnostic_feature_names=(),
         comparison_residuals=residuals,
         star_baselines=MappingProxyType({}),
-        v21_baselines=MappingProxyType({}),
+        nightly_baselines=MappingProxyType({}),
         data=data,
         control=control,
         config=MappingProxyType(
@@ -186,7 +186,7 @@ class PlanetRelativePhotometryTests(unittest.TestCase):
         self.assertTrue(math.isnan(exposure[0]))
         self.assertTrue(math.isnan(features["local_median_128_px"]))
 
-    def test_corrected_local_planet_keeps_raw_and_v21_controls(self):
+    def test_corrected_local_planet_keeps_raw_and_nightly_controls(self):
         with patch(
             "v23.mmto_planet_relative_photometry._airmass", return_value=1.0
         ):
@@ -195,11 +195,11 @@ class PlanetRelativePhotometryTests(unittest.TestCase):
             )[0]
         self.assertEqual(result.correction_status, "corrected")
         self.assertAlmostEqual(result.raw_machine_magnitude, -5.0)
-        self.assertIsNotNone(result.v21_control_magnitude)
+        self.assertIsNotNone(result.nightly_control_magnitude)
         self.assertAlmostEqual(result.v23_relative_magnitude, -5.2)
         self.assertEqual(result.distance_status, "distance_unavailable")
 
-    def test_every_failure_status_retains_raw_and_v21_values(self):
+    def test_every_failure_status_retains_raw_and_nightly_values(self):
         cases = (
             (None, _planet(), _context(), "model_unavailable"),
             (_confirmed(), _planet(), _context(comparison_count=3), "insufficient_local_stars"),
@@ -229,7 +229,7 @@ class PlanetRelativePhotometryTests(unittest.TestCase):
                     result = apply_to_planets(model, (planet,), context)[0]
                 self.assertEqual(result.correction_status, expected)
                 self.assertEqual(result.raw_machine_magnitude, planet.machine_magnitude)
-                self.assertIsNotNone(result.v21_control_magnitude)
+                self.assertIsNotNone(result.nightly_control_magnitude)
                 self.assertIsNone(result.v23_relative_magnitude)
 
 
