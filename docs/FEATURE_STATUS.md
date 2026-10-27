@@ -6,6 +6,13 @@ line.
 
 ## V23 in development
 
+- MMTO v23 now writes `acquisition_timeline.pdf` and its per-image CSV after
+  acquisition and solver processing, before derived photometry. The report
+  separates newly downloaded from reused images by observing night and shows
+  solver successes and failures, plus the current night and durable backward
+  cursor. Its path is repeated in the terminal if a later stage fails. This
+  changes reporting only; selection, receipts, fits, and numerical results are
+  unchanged.
 - Preserves v22 and tests aperture and local-sky radii read-only on native FITS.
 - Uses held-out nights and requires one radius rule to improve R, G and B.
 - The 71-image, 36-night test retained the v22 production rule. A 4-sigma

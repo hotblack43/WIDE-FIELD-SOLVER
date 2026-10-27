@@ -21,6 +21,7 @@ CHANGES = [
     "Gate MMTO acquisition on fresh public summit humidity below 80 percent, fail open when telemetry is unavailable, and retain per-image audit decisions.",
     "Rebuild every differential-photometry figure from the fresh cumulative database population instead of a fixed legacy run list.",
     "Plot every accumulated planet identity and every finite injected-signal recovery row without display truncation, reporting total recovery counts.",
+    "Report each v23 MMTO invocation's downloaded and reused images by observing night before optional photometry stages, and list latest plots with labelled older fallbacks.",
 ]
 
 

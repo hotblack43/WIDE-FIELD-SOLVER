@@ -9,7 +9,8 @@
     "Prioritize remote MMTO nights before cached backlog and mark distance-only recent planet measurements explicitly when nightly extinction is unavailable.",
     "Gate MMTO acquisition on fresh public summit humidity below 80 percent, fail open when telemetry is unavailable, and retain per-image audit decisions.",
     "Rebuild every differential-photometry figure from the fresh cumulative database population instead of a fixed legacy run list.",
-    "Plot every accumulated planet identity and every finite injected-signal recovery row without display truncation, reporting total recovery counts."
+    "Plot every accumulated planet identity and every finite injected-signal recovery row without display truncation, reporting total recovery counts.",
+    "Report each v23 MMTO invocation's downloaded and reused images by observing night before optional photometry stages, and list latest plots with labelled older fallbacks."
   ],
   "parent_snapshot": "../docs/v22-runtime.json",
   "release_status": "development",
@@ -21,7 +22,7 @@
     "HANDOFF.md": "cca2903b048ec5a63b353922e376d6787a7b6f6e178540d16c96555212975e5c",
     "LICENSE": "3d661ea2c728a20a4812041586a427a44ee048b342450bdb606b8cc896c36df7",
     "NOTICE.md": "44fc2fb88778bfb25c11e43289576aee103f3def1f1b8145b8dd516615c56b59",
-    "README.md": "b027c35aba061eac224aa3dfac9eb217b5ac03f535c9d1c5d0668e6c81964430",
+    "README.md": "14283634c3dde4900d26493c15079c181491d45309e09940942ce7fd549b9244",
     "analyse.sh": "bd8063986a846c903de917868f54596deb2ddb2a6eceecd715adce7bf27d055b",
     "analyse_image.py": "ad45d74894068bf0f97a6586c05de1dec60076fb7d753433393f085d710bdd07",
     "barghini_model.py": "43bebded8f0a68a1d85634b99178c010a4a7354ece5e323b0b6c4c67c60cc9ad",
@@ -165,7 +166,7 @@
     "scripts/rebuild_catalogue.py": "eecc182c6e1a443f70481149878c89ea6800f33a8aec173fa58ff11c1a0a1f79",
     "scripts/run_demo.py": "9026dff7d7484821f2a2c1075e4ba0a2db86af415b1f1ac573be4e1c58ed1885",
     "scripts/run_mmto_demo.py": "d1416ce160951859bb3b7856b4810473a997e36d77ffc312ce5c36db9807c24a",
-    "scripts/update_v23_manifest.py": "0212e0acc557a9cc265e8171c306dbec4d7716c87ac9fec3471465926cccef09",
+    "scripts/update_v23_manifest.py": "e1f4965e91c874caca3439e97c154cb6222d4629b8dde00d74b1d29073af49e3",
     "solve.sh": "886203a27150edfa4c208564d942b30aec98287b845155d03c3c65031563e8af",
     "test_blind_photometry.py": "96d97567c0955671d8ab636e3f5e60dc7116d6cca796e6636eb0170c11c914e5",
     "test_catalogue_comparison.py": "7899a08af9f49156c7ff10ba59b10e81a63c10247563135ea333cb9f2b8a1a7f",
