@@ -107,9 +107,10 @@ def _record_pair(observation: AnonymousObservation, designation: str, obscode: s
     _put(first, 60, 61, f"{arcminutes:02d}")
     _put(first, 63, 68, f"{arcseconds:06.3f}")
     for sigma, first_column in ((observation.sigma_ra_arcsec, 41), (observation.sigma_dec_arcsec, 48)):
-        if not 0 < sigma <= 999.99:
-            raise ValueError("MPC3 angular uncertainty must be in (0, 999.99] arcsec")
-        _put(second, first_column, first_column + 5, f"{sigma:06.2f}")
+        if not 0 < sigma < 1000.0:
+            raise ValueError("MPC3 angular uncertainty must be below 1000 arcsec")
+        encoded = f"{sigma:06.3f}" if sigma < 100.0 else f"{sigma / 10.0:04.1f}E1"
+        _put(second, first_column, first_column + 5, encoded)
     _put(second, 57, 64, f"{0.0:8.5f}")
     code = _obscode_field(obscode)
     _put(first, 129, 132, code)
@@ -155,10 +156,17 @@ def parse_mpc3_records(path: Path) -> tuple[Mpc3Record, ...]:
         degrees, arcminutes, arcseconds = int(first[56:58]), int(first[59:61]), float(first[62:68])
         dec_deg = sign * (degrees + arcminutes / 60.0 + arcseconds / 3600.0)
         code = first[128:132]
+        if second[42] == ".":
+            sigma_ra = float(second[40:46])
+            sigma_dec = float(second[47:53])
+        else:
+            radians_to_arcsec = 180.0 * 3600.0 / math.pi
+            sigma_ra = float(second[40] + "." + second[41:48]) * 1.0e-7 * radians_to_arcsec
+            sigma_dec = float(second[48] + "." + second[49:56]) * 1.0e-7 * radians_to_arcsec
         output.append(Mpc3Record(
             designation=first[7:16].strip(), observation_time_utc=epoch,
             ra_deg=ra_deg, dec_deg=dec_deg,
-            sigma_ra_arcsec=float(second[40:46]), sigma_dec_arcsec=float(second[47:53]),
+            sigma_ra_arcsec=sigma_ra, sigma_dec_arcsec=sigma_dec,
             correlation=float(second[56:64]), obscode=code[1:] if code.startswith("0") else code,
         ))
     return tuple(output)
