@@ -4,6 +4,20 @@ The published checkpoint remains v0.11.0. Historical runtime boundaries through
 v22 are frozen by their manifests. V23 is the active aperture-photometry test
 line.
 
+## Independent OpenOrb planet experiment
+
+- `go_find_planet_openorb_v1.sh` is a new, independent native OpenOrb 1.3.0
+  workflow; it does not change or import any frozen solver runtime.
+- A controlled answer-key stage exports anonymous dated MMTO directions, then
+  withholds every fifth observing night before OpenOrb sees the fit input.
+- Two date-only statistical-ranging seeds each request 5,000 accepted samples;
+  OpenOrb LSL supplies the nominal elements and covariance, and OpenOrb itself
+  predicts the withheld epochs.
+- The first real end-to-end run is predictive relative to fixed-direction and
+  angular-velocity baselines but remains `multimodal`. The known-planet
+  comparison occurs only after the anonymous evidence is sealed and does not
+  establish a Mars identification.
+
 ## V23 in development
 
 - MMTO v23 now writes `acquisition_timeline.pdf` and its per-image CSV after
