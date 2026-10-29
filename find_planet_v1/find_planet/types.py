@@ -46,3 +46,23 @@ class AnonymousDirection:
     source_class: str
     saturated: bool
     integrated_refraction_status: str
+
+
+@dataclass(frozen=True)
+class ObserverState:
+    jd_tdb: float
+    position_au: tuple[float, float, float]
+    velocity_au_per_day: tuple[float, float, float]
+    earth_position_au: tuple[float, float, float]
+    earth_velocity_au_per_day: tuple[float, float, float]
+    topocentre_position_au: tuple[float, float, float]
+    topocentre_velocity_au_per_day: tuple[float, float, float]
+
+
+@dataclass(frozen=True)
+class Observation:
+    direction: AnonymousDirection
+    jd_tdb: float
+    measured_unit: tuple[float, float, float]
+    sigma_arcmin: float
+    observer: ObserverState
