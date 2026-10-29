@@ -65,6 +65,7 @@ def _solution_from_fit(
     config: FitConfig,
     cost: float,
     seed_index: int,
+    jacobian: np.ndarray,
 ) -> OrbitSolution:
     state = _state(parameters, epoch)
     elements = _admissible(state, config)
@@ -87,7 +88,15 @@ def _solution_from_fit(
                 reason="",
             )
         )
-    return OrbitSolution(state, elements, float(cost), True, tuple(rows), seed_index)
+    return OrbitSolution(
+        state,
+        elements,
+        float(cost),
+        True,
+        tuple(rows),
+        seed_index,
+        tuple(tuple(float(value) for value in row) for row in jacobian),
+    )
 
 
 def _same_family(
@@ -162,6 +171,7 @@ def fit_orbit_families(
                 config,
                 float(optimum.cost),
                 seed_index,
+                optimum.jac,
             )
         except (ValueError, RuntimeError, OverflowError):
             audit.append(FitSeedAudit(seed_index, "rejected", "inadmissible_fitted_state", float(optimum.cost)))

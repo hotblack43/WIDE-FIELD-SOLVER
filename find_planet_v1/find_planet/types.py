@@ -124,6 +124,7 @@ class OrbitSolution:
     success: bool
     observation_fits: tuple[ObservationFit, ...]
     seed_index: int
+    jacobian: tuple[tuple[float, ...], ...] = ()
 
 
 @dataclass(frozen=True)
