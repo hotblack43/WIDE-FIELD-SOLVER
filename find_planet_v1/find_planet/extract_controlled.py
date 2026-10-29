@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import json
 import math
+import os
 from pathlib import Path
 from typing import Mapping, Sequence
 
@@ -189,7 +190,12 @@ def write_answer_key_audit(
     if not audit_rows:
         raise ControlledExtractionError("answer-key audit needs at least one row")
     fieldnames = list(audit_rows[0])
-    with Path(path).open("w", newline="", encoding="utf-8") as handle:
+    path = Path(path)
+    temporary = path.with_name(f".{path.name}.tmp")
+    with temporary.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(audit_rows)
+        handle.flush()
+        os.fsync(handle.fileno())
+    temporary.replace(path)
