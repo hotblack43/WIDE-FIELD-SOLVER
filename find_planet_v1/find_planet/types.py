@@ -66,3 +66,22 @@ class Observation:
     measured_unit: tuple[float, float, float]
     sigma_arcmin: float
     observer: ObserverState
+
+
+@dataclass(frozen=True)
+class HeliocentricState:
+    reference_jd_tdb: float
+    position_au: tuple[float, float, float]
+    velocity_au_per_day: tuple[float, float, float]
+
+
+@dataclass(frozen=True)
+class OrbitalElements:
+    reference_jd_tdb: float
+    semimajor_axis_au: float
+    eccentricity: float
+    inclination_deg: float
+    longitude_ascending_node_deg: float | None
+    argument_perihelion_deg: float | None
+    mean_anomaly_deg: float | None
+    singular_flags: tuple[str, ...]
