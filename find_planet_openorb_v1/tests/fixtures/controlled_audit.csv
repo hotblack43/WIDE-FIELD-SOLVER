@@ -1,0 +1,6 @@
+night,channel,planet,observation_time_utc,source_path,source_sha256,run_id,detection_id,source_class,identity_status,metadata_association_status,association_measured_x_px,association_measured_y_px,stellar_only_fit_rms_arcmin,saturated
+2026-09-03,B,Mars,2026-09-04T05:00:00Z,/archive/image-c.fits,sha-c,run-c,30,compact,metadata_time_match,metadata_time_associated,303.5,403.5,2.5,False
+2026-09-01,B,Saturn,2026-09-02T04:00:00Z,/archive/image-s.fits,sha-s,run-s,40,compact,metadata_time_match,metadata_time_associated,500.0,600.0,1.5,False
+2026-09-01,B,Mars,2026-09-02T03:00:00Z,/archive/image-a.fits,sha-a,run-a,10,compact,metadata_time_match,metadata_time_associated,101.5,201.5,0.6,False
+2026-09-01,B,Mars,2026-09-02T03:20:00Z,/archive/image-a-copy.fits,sha-a,run-a-copy,11,compact,metadata_time_match,metadata_time_associated,102.5,202.5,0.7,False
+2026-09-02,B,Mars,2026-09-03T04:00:00Z,/archive/image-b.fits,sha-b,run-b,20,broad_blob,metadata_time_match,no_metadata_match,202.5,302.5,3.5,True

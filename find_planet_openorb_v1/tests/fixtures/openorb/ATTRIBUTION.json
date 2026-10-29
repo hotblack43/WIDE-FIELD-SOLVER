@@ -1,0 +1,14 @@
+{
+  "source": "OpenOrb v1.3.0 official K08K42V sample",
+  "license": "GPL-3.0-only",
+  "upstream_commit": "945178476f016dae8f3981b54a937f61de81360f",
+  "executable_sha256": "139d9c859548adf56d57237a78f638d6ef8bf83aa94969514b9ed5ca6b657e27",
+  "ranging_input_sha256": "5539c1cc81aa8d6498bcddd0c520b1ee084300c8b4b378e86e37ded5d108cb23",
+  "lsl_input_sha256": "4323749f5e01b7f77c49944b2e9135dd9b51df0c1156ec4caf870f891db2296f",
+  "commands": [
+    "oorb --task=ranging --obs-in=K08K42V_ranging.mpc --orb-out=ranging.orb --fixran",
+    "oorb --task=lsl --obs-in=K08K42V_lsl.mpc --orb-in=ranging.orb --orb-out=lsl.orb --fixran",
+    "oorb --task=ephemeris --obs-in=K08K42V_lsl.mpc --orb-in=lsl.orb --fixran"
+  ],
+  "note": "Ranging has 20 samples for a compact parser fixture; ephemeris is an attributed two-row excerpt."
+}

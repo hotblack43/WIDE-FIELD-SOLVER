@@ -352,3 +352,19 @@ The historical Monster2 dispatcher in `run_distributed_gobig.py` is pinned to
 the frozen v11 goBIG format and must not be used for v21. A v21-aware remote
 dispatcher would need its own synchronization, shared-database import and
 receipt tests before remote batch work.
+
+### Native OpenOrb anonymous-planet experiment
+
+Build the pinned repository-local OpenOrb 1.3.0 runtime once, then run the
+controlled anonymous orbit experiment:
+
+```bash
+./go_find_planet_openorb_setup_v1.sh
+./go_find_planet_openorb_v1.sh
+./go_find_planet_openorb_v1.sh --reveal-known-planets
+```
+
+The reveal switch writes a separate post-seal comparison; it never supplies a
+planet name, position, range or element to OpenOrb. Each run uses a fresh
+directory below `results/find-planet-openorb-v1/` and preserves both converged
+families, raw samples, covariance, withheld ephemerides, figures and seal.
