@@ -60,12 +60,13 @@ class RuntimeBoundaryTests(unittest.TestCase):
         data.mkdir()
         executable.write_text("#!/bin/sh\nexit 0\n")
         executable.chmod(0o755)
+        (vendor / "oorb.conf").write_text("planetary_ephemeris_fname: de441.dat\n")
         (data / "OBSCODE.dat").write_text("observatories\n")
         (data / "TAI-UTC.dat").write_text("time\n")
         (data / "ET-UT.dat").write_text("earth time\n")
         (data / "de441.dat").write_text("ephemeris\n")
         files = {}
-        for path in (executable, *sorted(data.iterdir())):
+        for path in (executable, vendor / "oorb.conf", *sorted(data.iterdir())):
             files[str(path.relative_to(vendor))] = hashlib.sha256(path.read_bytes()).hexdigest()
         receipt = {
             "release": "v1.3.0",

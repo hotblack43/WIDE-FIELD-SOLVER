@@ -172,8 +172,8 @@ def validate_mpc3_with_openorb(
     records = parse_mpc3_records(path)
     converted = Path(path).with_suffix(".native.mpc")
     command = (
-        str(installation.executable), "--task=mpc3tompc", f"--obs-in={Path(path).resolve()}",
-        f"--obs-out={converted.resolve()}", "--fixran",
+        str(installation.executable), "--task=tompc", f"--obs-in={Path(path).resolve()}",
+        f"--obs-out={converted.resolve()}", f"--conf={installation.configuration}", "--fixran",
     )
     environment = {"PATH": "/usr/bin:/bin", "OORB_DATA": str(installation.data_directory), "LC_ALL": "C"}
     result = subprocess.run(command, cwd=Path(path).parent, env=environment, text=True, capture_output=True, check=False)

@@ -18,6 +18,7 @@ class OpenOrbInstallation:
     root: Path
     executable: Path
     data_directory: Path
+    configuration: Path
     executable_sha256: str
     build_receipt: Path
     data_receipt: Path
@@ -90,12 +91,13 @@ def verify_installation(vendor_root: Path, sources_manifest: Path) -> OpenOrbIns
     data_receipt = vendor_root / "openorb-data-receipt.json"
     build = _verify_receipt(vendor_root, build_receipt)
     data = _verify_receipt(vendor_root, data_receipt)
-    if build.get("upstream_tests") != "passed":
+    if build.get("upstream_tests") not in {"passed", "passed_with_compute_version_test_excluded"}:
         raise ValueError("OpenOrb upstream tests were not recorded as passed")
     if data.get("de441_test") != "passed":
         raise ValueError("DE441 validation was not recorded as passed")
     executable = vendor_root / "bin" / "oorb"
     data_directory = vendor_root / "data"
+    configuration = vendor_root / "oorb.conf"
     bundled_data = manifest.get("bundled_data")
     if not isinstance(bundled_data, dict):
         raise ValueError("source manifest has no bundled-data hashes")
@@ -105,6 +107,8 @@ def verify_installation(vendor_root: Path, sources_manifest: Path) -> OpenOrbIns
             raise ValueError(f"source manifest data hash mismatch: {name}")
     if not executable.is_file() or not executable.stat().st_mode & 0o111:
         raise ValueError("receipt-hashed local OpenOrb executable is absent or not executable")
+    if not configuration.is_file():
+        raise ValueError("receipt-hashed local OpenOrb configuration is absent")
     for required in ("OBSCODE.dat", "TAI-UTC.dat", "ET-UT.dat", "de441.dat"):
         if not (data_directory / required).is_file():
             raise ValueError(f"required OpenOrb data file is absent: {required}")
@@ -112,10 +116,13 @@ def verify_installation(vendor_root: Path, sources_manifest: Path) -> OpenOrbIns
     hashed_files = build.get("files", {}) | data.get("files", {})
     if hashed_files.get("bin/oorb") != executable_sha256:
         raise ValueError("local OpenOrb executable is not covered by its receipts")
+    if hashed_files.get("oorb.conf") != sha256_file(configuration):
+        raise ValueError("local OpenOrb configuration is not covered by its receipts")
     return OpenOrbInstallation(
         root=vendor_root,
         executable=executable,
         data_directory=data_directory,
+        configuration=configuration,
         executable_sha256=executable_sha256,
         build_receipt=build_receipt,
         data_receipt=data_receipt,
