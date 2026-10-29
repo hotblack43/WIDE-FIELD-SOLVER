@@ -1,0 +1,14 @@
+[project]
+name = "find-planet"
+version = "1.0.0"
+description = "Anonymous topocentric orbit determination from MMTO measurements"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "astropy==7.2.0",
+    "matplotlib==3.11.1",
+    "numpy==2.4.4",
+    "scipy==1.17.1",
+]
+
+[tool.uv]
+package = false
