@@ -1,0 +1,25 @@
+{
+  "schema": 1,
+  "release": "v1.3.0",
+  "commit": "945178476f016dae8f3981b54a937f61de81360f",
+  "repository": "https://github.com/oorb/oorb",
+  "license": {
+    "spdx": "GPL-3.0-only",
+    "source": "https://github.com/oorb/oorb/blob/v1.3.0/COPYING"
+  },
+  "source_archive": {
+    "url": "https://github.com/oorb/oorb/archive/945178476f016dae8f3981b54a937f61de81360f.tar.gz",
+    "sha256": "29d07e87f9373ac6fa4222ae7889409d56a1678e795891fe6cdbaa041ef172ca",
+    "bytes": 662751
+  },
+  "bundled_data": {
+    "OBSCODE.dat": "220b2233f6ad1308c6b780e588791abb584d83b3a33f7b3c3ac16fc0f6e6bbb7",
+    "TAI-UTC.dat": "51d6c532e6b14e1d50ae046aeebe4c18f8e620c8bf9cf2b811b19e4cfd119614",
+    "ET-UT.dat": "2f721ce5d531120d0e63f3de5c5ab00cc5f14f0b8aeec784284acd7e02d91b41"
+  },
+  "ephemeris": {
+    "name": "de441.dat",
+    "source": "JPL DE441 ASCII files downloaded by the pinned OpenOrb build recipe",
+    "test": "OpenOrb data/JPL_ephemeris ephtester EPH_TYPE=441"
+  }
+}

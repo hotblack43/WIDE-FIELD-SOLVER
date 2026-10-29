@@ -26,3 +26,4 @@ results/
 /raw_allsky_samples/mmto/mmto-skycam/
 /data/zenodo-3736793/all/
 /reports/planet_database_extract_*/
+/find_planet_openorb_v1/.vendor/
