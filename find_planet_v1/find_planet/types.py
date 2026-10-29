@@ -85,3 +85,49 @@ class OrbitalElements:
     argument_perihelion_deg: float | None
     mean_anomaly_deg: float | None
     singular_flags: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class RangeSeedAudit:
+    distance_au: float
+    range_rate_au_per_day: float | None
+    status: str
+    reason: str
+    state: HeliocentricState | None
+
+
+@dataclass(frozen=True)
+class ObservationFit:
+    run_id: str
+    east_arcmin: float
+    north_arcmin: float
+    norm_arcmin: float
+    sigma_arcmin: float
+    robust_weight: float
+    status: str
+    reason: str
+
+
+@dataclass(frozen=True)
+class FitSeedAudit:
+    seed_index: int
+    status: str
+    reason: str
+    cost: float | None
+
+
+@dataclass(frozen=True)
+class OrbitSolution:
+    state: HeliocentricState
+    elements: OrbitalElements
+    cost: float
+    success: bool
+    observation_fits: tuple[ObservationFit, ...]
+    seed_index: int
+
+
+@dataclass(frozen=True)
+class OrbitFitResult:
+    reference_jd_tdb: float
+    solutions: tuple[OrbitSolution, ...]
+    seed_audit: tuple[FitSeedAudit, ...]
