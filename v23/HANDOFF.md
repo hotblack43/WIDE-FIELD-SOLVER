@@ -6,6 +6,14 @@ without a v23 receipt by default, reuse local files, download only selected
 gaps, analyse them, and regenerate inherited and v23 post-fit products.
 The original `go_mmto_photometry.sh` remains pinned to v11.
 
+Image analysis uses four concurrent worker processes by default. Use
+`--solver-workers N` to change that bound or `--solver-workers 1` for the prior
+serial resource profile. Every worker remains internally single-threaded for
+BLAS/OpenMP, writes a unique run directory and appends through the existing
+atomic SQLite transaction. The batch runner invokes the pinned v23 interpreter
+directly with `--offline`; this removes repeated shell/uv startup and
+display-only SIMBAD network waits while retaining the bundled name cache.
+
 The v23 queue never requests a multi-night historical listing. It drains
 downloaded images without v23 receipts first, checks the current night, and then
 continues from `RESULTS_DIR/mmto-v23-backfill-state.json`, one night per remote
@@ -58,7 +66,9 @@ run are required before designing a separate Monster2 v23 dispatcher.
 The variable product uses `m_corrected = m_machine - k_night,channel X` from
 the nightly-extinction sidecar, then flux-averages all measurements by VSX
 object, observing night, and native channel before converting the mean flux
-back to magnitude. It is not distance corrected or phase folded. The default
+back to magnitude. It is not distance corrected. The PDF phase-folds each star
+into `[0,1)` with its published period and earliest plotted UTC as phase zero;
+the folding changes only the plotted horizontal coordinate. The default
 selection is the strict interval `5 < period < 30` days and catalogue magnitude
 `< 5.0`; all three limits are adjustable with `--variable-min-period-days`,
 `--variable-max-period-days`, and `--variable-max-catalogue-magnitude`. The
@@ -68,7 +78,7 @@ plotted. The frozen local VSX association keeps runtime operation offline.
 
 For each R/G/B channel, v23 fits the nightly points with the published period
 held fixed. The unweighted magnitude-space model is
-`m(t) = mean - A cos(2 pi ((t-reference)/period - phase_brightest))`.
+`m(phase) = mean - A cos(2 pi (phase - phase_brightest))`.
 The common reference is the star's earliest plotted nightly UTC. The PDF draws
 the fitted curves and labels the brightest-light phase; the fit CSV records the
 phase in cycles and days, first brightest epoch, mean, semi-amplitude, RMS, and

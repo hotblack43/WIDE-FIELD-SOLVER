@@ -1,12 +1,17 @@
 """V23 acquisition must prefer unseen remote images to cached leftovers."""
 from __future__ import annotations
 
+from contextlib import redirect_stdout
 from datetime import date, datetime
 import hashlib
+from io import StringIO
 import json
 import csv
 from pathlib import Path
+import sys
 import tempfile
+import threading
+import time
 import unittest
 from zoneinfo import ZoneInfo
 
@@ -99,6 +104,139 @@ def record_verified(archive: Path, item: Candidate, payload: bytes) -> None:
 
 
 class V23RemoteFirstSelectionTests(unittest.TestCase):
+    def test_solver_jobs_run_concurrently_with_bounded_workers_and_keep_order(self):
+        active = 0
+        peak_active = 0
+        completion_order: list[int] = []
+        lock = threading.Lock()
+        both_started = threading.Event()
+
+        def solve(item: int) -> str:
+            nonlocal active, peak_active
+            with lock:
+                active += 1
+                peak_active = max(peak_active, active)
+                if active == 2:
+                    both_started.set()
+            self.assertTrue(both_started.wait(timeout=1.0))
+            if item == 1:
+                time.sleep(0.05)
+            with lock:
+                active -= 1
+            return f"solved-{item}"
+
+        results = PIPELINE._run_solver_jobs(
+            (1, 2, 3),
+            2,
+            solve,
+            completed=lambda item, _result: completion_order.append(item),
+        )
+
+        self.assertEqual(results, ("solved-1", "solved-2", "solved-3"))
+        self.assertEqual(peak_active, 2)
+        self.assertNotEqual(completion_order[0], 1)
+        self.assertCountEqual(completion_order, [1, 2, 3])
+
+    def test_solver_worker_default_uses_four_processes(self):
+        args = PIPELINE._build_parser().parse_args([])
+
+        self.assertEqual(args.solver_workers, 4)
+
+    def test_solver_log_is_flushed_before_process_finishes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            run_dir = Path(directory)
+            result: list[tuple[int, str]] = []
+            command = [
+                sys.executable,
+                "-c",
+                (
+                    "import time; print('solver-started', flush=True); "
+                    "time.sleep(0.5); print('solver-finished', flush=True)"
+                ),
+            ]
+            worker = threading.Thread(
+                target=lambda: result.append(
+                    PIPELINE._run_logged_solver(
+                        command,
+                        run_dir,
+                        cwd=ROOT,
+                        prefix="PROCESS test\n",
+                    )
+                )
+            )
+            worker.start()
+            deadline = time.monotonic() + 2.0
+            live_log = ""
+            while time.monotonic() < deadline:
+                log_path = run_dir / "run.log"
+                if log_path.is_file():
+                    live_log = log_path.read_text(encoding="utf-8")
+                if "solver-started" in live_log:
+                    break
+                time.sleep(0.01)
+
+            self.assertIn("PROCESS test", live_log)
+            self.assertIn("solver-started", live_log)
+            self.assertTrue(worker.is_alive())
+            worker.join(timeout=2.0)
+            self.assertFalse(worker.is_alive())
+            self.assertEqual(result[0][0], 0)
+            self.assertIn("solver-finished", result[0][1])
+
+    def test_batch_solver_runs_directly_offline_in_unique_result_directories(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "image.fits.bz2"
+            source.write_bytes(b"fixture")
+            results = root / "results"
+
+            first_dir, first = PIPELINE._prepare_solver_run(root, source, results)
+            second_dir, second = PIPELINE._prepare_solver_run(root, source, results)
+
+        self.assertNotEqual(first_dir, second_dir)
+        self.assertEqual(
+            first[:4],
+            ["env", "OPENBLAS_NUM_THREADS=1", "OMP_NUM_THREADS=1", sys.executable],
+        )
+        self.assertEqual(first[4], str(root / "v23" / "analyse_image.py"))
+        self.assertIn("--offline", first)
+        self.assertIn("--blind-planets", first)
+        self.assertEqual(first[first.index("--output") + 1], str(first_dir / "analysis"))
+        self.assertEqual(
+            first[first.index("--database") + 1], str(results / "stars.sqlite")
+        )
+        self.assertEqual(second[second.index("--output") + 1], str(second_dir / "analysis"))
+
+    def test_final_figure_list_summarizes_same_sidereal_maps(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary)
+            ordinary_pdf = output / "acquisition_timeline.pdf"
+            ordinary_png = output / "planet-photometry" / "planet.png"
+            maps = output / "same-sidereal-transmission"
+            nested_map = maps / "night-pair" / "pair-0001_R.png"
+            second_map = maps / "pair-0001_G.png"
+            for path in (ordinary_pdf, ordinary_png, nested_map, second_map):
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b"figure")
+            (maps / "transmission_manifest.json").write_text("{}\n")
+            terminal = StringIO()
+            log = StringIO()
+
+            with redirect_stdout(terminal):
+                PIPELINE._list_v23_figures(output, log)
+
+            terminal_text = terminal.getvalue()
+            self.assertEqual(terminal_text, log.getvalue())
+            self.assertIn("FIGURES (2)", terminal_text)
+            self.assertIn(str(ordinary_pdf), terminal_text)
+            self.assertIn(str(ordinary_png), terminal_text)
+            self.assertNotIn("pair-0001_R.png", terminal_text)
+            self.assertNotIn("pair-0001_G.png", terminal_text)
+            self.assertIn(
+                f"SAME-SIDEREAL TRANSMISSION MAPS (2): {maps}",
+                terminal_text,
+            )
+
     def test_acquisition_report_shows_recent_and_backward_processing(self):
         with tempfile.TemporaryDirectory() as temporary:
             output = Path(temporary)
@@ -152,6 +290,23 @@ class V23RemoteFirstSelectionTests(unittest.TestCase):
         self.assertEqual(
             planet[planet.index("--manifest") + 1],
             "/archive/manifest.sqlite",
+        )
+
+    def test_variable_star_stage_is_named_for_phase_curves(self):
+        commands = dict(
+            PIPELINE._stage_commands(
+                Path("/repo"),
+                Path("/results/stars.sqlite"),
+                Path("/archive/manifest.sqlite"),
+                Path("/output"),
+            )
+        )
+
+        self.assertIn("variable_star_phase_curves", commands)
+        self.assertNotIn("variable_star_time_series", commands)
+        self.assertEqual(
+            commands["variable_star_phase_curves"][0],
+            "/repo/plot_mmto_variable_stars_v23.sh",
         )
 
     def test_differential_plots_use_fresh_all_database_nightly_population(self):

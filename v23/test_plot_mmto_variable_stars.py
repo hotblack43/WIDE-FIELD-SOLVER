@@ -1,4 +1,4 @@
-"""Tests for v23 chronological variable-star products."""
+"""Tests for v23 phase-folded variable-star products."""
 from __future__ import annotations
 
 import csv
@@ -14,8 +14,8 @@ from v23.scripts.plot_mmto_variable_stars import (
     PlotPoint,
     StarSeries,
     generate_products,
-    make_time_series_page,
 )
+from v23.scripts import plot_mmto_variable_stars as variable_star_plots
 
 
 UTC = timezone.utc
@@ -220,6 +220,35 @@ class VariableStarSelectionTests(unittest.TestCase):
 
 
 class VariableStarOutputTests(unittest.TestCase):
+    def test_phase_wraps_at_catalogue_period_from_earliest_observation(self):
+        phase_for_observation = getattr(
+            variable_star_plots, "phase_for_observation", None
+        )
+        self.assertTrue(
+            callable(phase_for_observation),
+            "phase_for_observation must define the plotted phase convention",
+        )
+        reference = datetime(2026, 8, 1, tzinfo=UTC)
+
+        self.assertAlmostEqual(
+            phase_for_observation(
+                datetime(2026, 8, 3, tzinfo=UTC), reference, 8.0
+            ),
+            0.25,
+        )
+        self.assertAlmostEqual(
+            phase_for_observation(
+                datetime(2026, 8, 9, tzinfo=UTC), reference, 8.0
+            ),
+            0.0,
+        )
+        self.assertAlmostEqual(
+            phase_for_observation(
+                datetime(2026, 8, 11, tzinfo=UTC), reference, 8.0
+            ),
+            0.25,
+        )
+
     def test_fixed_period_sine_fit_recovers_brightest_phase(self):
         corrected_magnitudes = (
             "2.0",
@@ -307,7 +336,7 @@ class VariableStarOutputTests(unittest.TestCase):
         self.assertEqual(fits[0]["status"], "insufficient_independent_phases")
         self.assertEqual(fits[0]["phase_offset_cycles_brightest"], "")
 
-    def test_page_has_four_by_three_inverted_magnitude_panels(self):
+    def test_phase_page_has_four_by_three_inverted_magnitude_panels(self):
         series = [
             StarSeries(
                 vsx_oid=str(index), vsx_name=f"Star {index}", vsx_type="EA",
@@ -317,7 +346,11 @@ class VariableStarOutputTests(unittest.TestCase):
             for index in range(12)
         ]
 
-        figure = make_time_series_page(series)
+        make_phase_curve_page = getattr(
+            variable_star_plots, "make_phase_curve_page", None
+        )
+        self.assertTrue(callable(make_phase_curve_page))
+        figure = make_phase_curve_page(series)
 
         self.assertEqual(len(figure.axes), 12)
         grid = figure.axes[0].get_subplotspec().get_gridspec()
@@ -327,6 +360,35 @@ class VariableStarOutputTests(unittest.TestCase):
         self.assertIn("nightly flux-averaged", title)
         self.assertIn("5 < P < 30 d", title)
         self.assertIn("catalogue mag < 5", title)
+
+    def test_phase_page_plots_points_modulo_period_on_zero_to_one_axis(self):
+        series = [StarSeries(
+            vsx_oid="1", vsx_name="Folded", vsx_type="EA", period_days=8.0,
+            points=tuple(
+                PlotPoint(
+                    datetime(2026, 8, day, tzinfo=UTC),
+                    "G",
+                    magnitude,
+                    f"source-{day}",
+                    "catalogue",
+                    "star",
+                )
+                for day, magnitude in ((1, 2.0), (3, 1.5), (9, 2.1))
+            ),
+        )]
+        make_phase_curve_page = getattr(
+            variable_star_plots, "make_phase_curve_page", None
+        )
+        self.assertTrue(callable(make_phase_curve_page))
+
+        figure = make_phase_curve_page(series)
+        axis = figure.axes[0]
+        plotted_phases = list(axis.collections[0].get_offsets()[:, 0])
+
+        self.assertEqual(plotted_phases, [0.0, 0.25, 0.0])
+        self.assertEqual(axis.get_xlim(), (0.0, 1.0))
+        self.assertEqual(axis.get_xlabel(), "Phase (cycles from earliest plotted UTC)")
+        self.assertIn("phase folded", figure._suptitle.get_text())
 
     def test_page_overlays_fixed_period_sine_and_labels_brightest_phase(self):
         points = tuple(
@@ -345,7 +407,11 @@ class VariableStarOutputTests(unittest.TestCase):
             points=points,
         )]
 
-        figure = make_time_series_page(series)
+        make_phase_curve_page = getattr(
+            variable_star_plots, "make_phase_curve_page", None
+        )
+        self.assertTrue(callable(make_phase_curve_page))
+        figure = make_phase_curve_page(series)
 
         self.assertEqual(len(figure.axes[0].lines), 1)
         self.assertEqual(figure.axes[0].lines[0].get_color(), "#d62728")
@@ -353,16 +419,19 @@ class VariableStarOutputTests(unittest.TestCase):
         self.assertIn("bright phase: R=0.250", annotations)
         self.assertIn("solid curves: fixed-period sine fits", figure._suptitle.get_text())
 
-    def test_single_timestamp_panel_uses_two_day_window_not_multiple_years(self):
+    def test_single_timestamp_panel_uses_full_phase_window(self):
         series = [StarSeries(
             vsx_oid="1", vsx_name="Sparse", vsx_type="EA", period_days=2.0,
             points=(PlotPoint(datetime(2026, 8, 1, tzinfo=UTC), "G", 2.0, "s", "c", "id"),),
         )]
 
-        figure = make_time_series_page(series)
-        minimum, maximum = figure.axes[0].get_xlim()
+        make_phase_curve_page = getattr(
+            variable_star_plots, "make_phase_curve_page", None
+        )
+        self.assertTrue(callable(make_phase_curve_page))
+        figure = make_phase_curve_page(series)
 
-        self.assertLessEqual(maximum - minimum, 2.01)
+        self.assertEqual(figure.axes[0].get_xlim(), (0.0, 1.0))
 
     def test_thirteen_objects_make_two_pages_without_dropping_stars(self):
         crossmatch = [_crossmatch_row(f"star-{i}", str(i), str(i + 6)) for i in range(13)]
@@ -373,7 +442,7 @@ class VariableStarOutputTests(unittest.TestCase):
             fixture = ProductFixture(Path(temporary), crossmatch, measurements)
             summary = fixture.generate()
             pdf_info = subprocess.run(
-                ["pdfinfo", str(fixture.output / "variable_star_time_series.pdf")],
+                ["pdfinfo", str(fixture.output / "variable_star_phase_curves.pdf")],
                 check=True, text=True, stdout=subprocess.PIPE,
             ).stdout
 
@@ -391,7 +460,7 @@ class VariableStarOutputTests(unittest.TestCase):
             summary = fixture.generate()
             with (fixture.output / "variable_star_measurements.csv").open() as source:
                 rows = list(csv.DictReader(source))
-            pdf = fixture.output / "variable_star_time_series.pdf"
+            pdf = fixture.output / "variable_star_phase_curves.pdf"
             pdf_size = pdf.stat().st_size
 
         self.assertEqual(summary["selected_star_count"], 0)
@@ -411,7 +480,16 @@ class VariableStarOutputTests(unittest.TestCase):
                 summary["inputs"]["corrected_csv_sha256"],
                 hashlib.sha256(fixture.corrected.read_bytes()).hexdigest(),
             )
-            self.assertIn("variable_star_time_series.pdf", summary["output_sha256"])
+            self.assertIn("variable_star_phase_curves.pdf", summary["output_sha256"])
+            self.assertNotIn("variable_star_time_series.pdf", summary["output_sha256"])
+            self.assertTrue(summary["phase_folding_applied"])
+            self.assertEqual(
+                summary["phase_reference"],
+                "earliest plotted UTC for each star",
+            )
+            self.assertFalse(
+                (fixture.output / "variable_star_time_series.pdf").exists()
+            )
             with self.assertRaises(FileExistsError):
                 fixture.generate()
 

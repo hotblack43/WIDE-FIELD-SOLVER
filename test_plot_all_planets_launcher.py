@@ -9,6 +9,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parent
 LAUNCHER = ROOT / "plot_ALL_planets.sh"
+V23_IMPLEMENTATION = ROOT / "v23" / "plot_ALL_planets_impl_v23.sh"
 
 
 class PlotAllPlanetsLauncherTests(unittest.TestCase):
@@ -27,7 +28,7 @@ class PlotAllPlanetsLauncherTests(unittest.TestCase):
         fake_uv = self.bin_dir / "uv"
         fake_uv.write_text(
             "#!/usr/bin/env bash\n"
-            "printf '%s\\n' \"$*\" >> \"$FAKE_UV_LOG\"\n",
+            "printf '%s|%s\\n' \"${VIRTUAL_ENV-unset}\" \"$*\" >> \"$FAKE_UV_LOG\"\n",
             encoding="utf-8",
         )
         fake_uv.chmod(0o755)
@@ -36,6 +37,7 @@ class PlotAllPlanetsLauncherTests(unittest.TestCase):
         environment = dict(os.environ)
         environment["PATH"] = f"{self.bin_dir}:{environment['PATH']}"
         environment["FAKE_UV_LOG"] = str(self.uv_log)
+        environment["VIRTUAL_ENV"] = "/wrong/environment"
         return subprocess.run(
             [
                 "bash", str(LAUNCHER),
@@ -118,6 +120,38 @@ class PlotAllPlanetsLauncherTests(unittest.TestCase):
             "historical evidence\n",
         )
         self.assertFalse(self.uv_log.exists())
+
+    def test_v23_runs_all_planet_channels_in_one_python_process(self):
+        environment = dict(os.environ)
+        environment["PATH"] = f"{self.bin_dir}:{environment['PATH']}"
+        environment["FAKE_UV_LOG"] = str(self.uv_log)
+        environment["VIRTUAL_ENV"] = "/wrong/environment"
+
+        result = subprocess.run(
+            [
+                "bash", str(V23_IMPLEMENTATION),
+                "--database", str(self.database),
+                "--nightly-calibration", str(self.nightly_calibration),
+                "--output", str(self.output),
+            ],
+            cwd=self.work,
+            env=environment,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stdout)
+        invocations = self.uv_log.read_text(encoding="utf-8").splitlines()
+        planet_runs = [
+            line for line in invocations
+            if "v23/scripts/plot_planet_photometry.py" in line
+        ]
+        self.assertEqual(len(planet_runs), 1)
+        self.assertIn("--channel RGB", planet_runs[0])
+        self.assertIn(f"--output {self.output}", planet_runs[0])
+        self.assertTrue(all(line.startswith("unset|") for line in invocations))
 
 
 if __name__ == "__main__":

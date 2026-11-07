@@ -2018,6 +2018,64 @@ class PlanetPhotometryLoadingTests(unittest.TestCase):
         self.assertGreater(estimate["count_rate_uncertainty_adu_per_s"], 0.0)
         self.assertGreater(estimate["machine_magnitude_uncertainty"], 0.0)
 
+    def test_v23_rgb_uncertainty_lookup_opens_each_fits_once(self):
+        planet_plot = load_v23_planet_plot_module()
+
+        source = Path(self.temporary.name) / "rgb-source.fits"
+        pixels = np.full((31, 31), 10.0)
+        yy, xx = np.mgrid[:31, :31]
+        radius = np.hypot(xx - 15.0, yy - 15.0)
+        pixels[(xx + yy).astype(int) % 2 == 0] = 9.0
+        pixels[(xx + yy).astype(int) % 2 == 1] = 11.0
+        aperture = radius <= 3.0
+        pixels[aperture] = 10.0 + 1000.0 / int(aperture.sum())
+        fits.PrimaryHDU(np.stack([pixels, pixels, pixels])).writeto(source)
+        digest = hashlib.sha256(source.read_bytes()).hexdigest()
+        self.add_run(
+            "rgb-run", digest, "2026-09-20T01:00:00Z", source_path=str(source)
+        )
+        with closing(sqlite3.connect(self.database)) as connection, connection:
+            connection.execute(
+                "INSERT INTO measurements VALUES (?,?,?,?,?,?)",
+                (
+                    "rgb-run", "dots/star_candidates.csv", 1, "", "1",
+                    json.dumps({
+                        "x_px": "15.0", "y_px": "15.0",
+                        "major_sigma_px": "1.2",
+                    }),
+                ),
+            )
+        row = {
+            "run_id": "rgb-run", "detection_id": "1",
+            "source_path": str(source), "source_sha256": digest,
+            "exposure_seconds": 20.0, "count_rate_adu_per_s": 50.0,
+        }
+        rows_by_channel = {channel: [dict(row)] for channel in "RGB"}
+
+        lookup_builder = getattr(
+            planet_plot, "_photometric_uncertainty_lookups", None
+        )
+        self.assertTrue(callable(lookup_builder))
+        if not callable(lookup_builder):
+            return
+        with mock.patch.object(
+            planet_plot,
+            "_file_matches_sha256",
+            wraps=planet_plot._file_matches_sha256,
+        ) as checksum, mock.patch.object(
+            planet_plot,
+            "_fits_rgb_pixels",
+            wraps=planet_plot._fits_rgb_pixels,
+        ) as decode:
+            lookups = lookup_builder(rows_by_channel, self.database)
+
+        self.assertEqual(checksum.call_count, 1)
+        self.assertEqual(decode.call_count, 1)
+        for channel in "RGB":
+            estimate = lookups[channel][("rgb-run", "1")]
+            self.assertEqual(estimate["uncertainty_status"], "available")
+            self.assertGreater(estimate["machine_magnitude_uncertainty"], 0.0)
+
     def test_planet_colour_and_camera_marker_encodings_are_independent(self):
         import scripts.plot_planet_photometry as planet_plot
 
@@ -2145,6 +2203,124 @@ class PlanetPhotometryLoadingTests(unittest.TestCase):
 
         self.assertEqual(status, 0)
         self.assertTrue((output / "planet_measurements.csv").is_file())
+
+    def test_v23_rgb_command_reuses_shared_uncertainty_and_distance_work(self):
+        planet_plot = load_v23_planet_plot_module()
+        output = Path(self.temporary.name) / "rgb-cli-output"
+        sidecar = Path(self.temporary.name) / "rgb-cli-sidecar"
+        sidecar.mkdir()
+        manifest = Path(self.temporary.name) / "manifest.sqlite"
+        manifest.touch()
+        rows_by_channel = {
+            channel: [{
+                "channel": channel,
+                "planet": "Mars",
+                "photometry_usable": True,
+                "source_sha256": "a" * 64,
+                "source_path": "/image.fits",
+            }]
+            for channel in "RGB"
+        }
+        audits = {
+            channel: {"detected_planet_rows": 1} for channel in "RGB"
+        }
+
+        def load_channel(unused_database, unused_manifest, *, channel):
+            return rows_by_channel[channel], audits[channel]
+
+        shared_uncertainties = {channel: {} for channel in "RGB"}
+        shared_distances = {("Mars", "2026-09-20T01:00:00Z"): {}}
+        summary = {
+            "plotted_counts": {"measurements": 1},
+            "uncalibrated_plotted_counts": {"measurements": 0},
+        }
+        with mock.patch.object(
+            planet_plot,
+            "load_mmto_manifest_planet_measurements",
+            side_effect=load_channel,
+        ) as loader, mock.patch.object(
+            planet_plot,
+            "_photometric_uncertainty_lookups",
+            return_value=shared_uncertainties,
+        ) as uncertainty_builder, mock.patch.object(
+            planet_plot,
+            "_horizons_distance_lookup",
+            return_value=shared_distances,
+        ) as distance_builder, mock.patch.object(
+            planet_plot,
+            "write_extinction_corrected_distance_outputs",
+            return_value=summary,
+        ) as writer:
+            status = planet_plot.main([
+                "--database", str(self.database),
+                "--manifest", str(manifest),
+                "--nightly-calibration", str(sidecar),
+                "--output", str(output),
+                "--channel", "RGB",
+                "--include-uncalibrated",
+                "--extinction-corrected-distance-corrected",
+            ])
+
+        self.assertEqual(status, 0)
+        self.assertEqual(loader.call_count, 3)
+        uncertainty_builder.assert_called_once()
+        distance_builder.assert_called_once()
+        self.assertEqual(writer.call_count, 3)
+        for call, channel in zip(writer.call_args_list, "RGB"):
+            self.assertEqual(call.args[:2], (rows_by_channel[channel], audits[channel]))
+            self.assertEqual(call.args[2], output / channel)
+            self.assertIs(
+                call.kwargs["uncertainty_lookup"], shared_uncertainties[channel]
+            )
+            self.assertIs(call.kwargs["distance_lookup"], shared_distances)
+
+    def test_v23_rgb_command_uses_sidecar_population_without_manifest_opt_in(self):
+        planet_plot = load_v23_planet_plot_module()
+        output = Path(self.temporary.name) / "rgb-sidecar-output"
+        sidecar = Path(self.temporary.name) / "rgb-sidecar"
+        sidecar.mkdir()
+        rows = [{
+            "planet": "Mars", "photometry_usable": True,
+            "source_sha256": "a" * 64, "source_path": "/image.fits",
+        }]
+        loaded = (rows, {"detected_planet_rows": 1})
+        summary = {
+            "plotted_counts": {"measurements": 1},
+            "uncalibrated_plotted_counts": {"measurements": 0},
+        }
+
+        with mock.patch.object(
+            planet_plot,
+            "load_mmto_metadata_planet_measurements",
+            return_value=loaded,
+        ) as sidecar_loader, mock.patch.object(
+            planet_plot, "load_mmto_manifest_planet_measurements"
+        ) as manifest_loader, mock.patch.object(
+            planet_plot,
+            "_photometric_uncertainty_lookups",
+            return_value={channel: {} for channel in "RGB"},
+        ), mock.patch.object(
+            planet_plot, "_horizons_distance_lookup", return_value={}
+        ), mock.patch.object(
+            planet_plot,
+            "write_extinction_corrected_distance_outputs",
+            return_value=summary,
+        ):
+            status = planet_plot.main([
+                "--database", str(self.database),
+                "--nightly-calibration", str(sidecar),
+                "--output", str(output),
+                "--channel", "RGB",
+                "--extinction-corrected-distance-corrected",
+            ])
+
+        self.assertEqual(status, 0)
+        self.assertEqual(sidecar_loader.call_count, 3)
+        self.assertEqual(
+            [call.kwargs["channel"] for call in sidecar_loader.call_args_list],
+            list("RGB"),
+        )
+        manifest_loader.assert_not_called()
 
     def test_standalone_script_can_import_manifest_loader_dependencies(self):
         script = (

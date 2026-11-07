@@ -20,6 +20,18 @@ line.
 
 ## V23 in development
 
+- The MMTO v23 pipeline runs four independent, single-threaded image solvers
+  concurrently by default; `--solver-workers N` changes the bound. Each solve
+  still receives its own run directory and appends one atomic SQLite receipt.
+  The batch path invokes the pinned v23 interpreter directly and forces
+  display-name resolution offline, avoiding repeated shell/uv startup and
+  failed SIMBAD waits without changing astrometry, photometry, or epoch fits.
+- The variable-star product is now
+  `variable-stars/variable_star_phase_curves.pdf`; v23 no longer emits the
+  inherited chronological `variable_star_time_series.pdf`. Each star is folded
+  into `[0,1)` with its frozen VSX period and earliest plotted UTC as phase zero.
+  Magnitudes, nightly flux averaging, selection, and fixed-period sine-fit
+  values are unchanged.
 - MMTO v23 now writes `acquisition_timeline.pdf` and its per-image CSV after
   acquisition and solver processing, before derived photometry. The report
   separates newly downloaded from reused images by observing night and shows
@@ -49,7 +61,9 @@ line.
   by the applicable TDB-minus-UTC offset (32.2 seconds for the observed
   1937--1958 estimates). The fitted epoch and astrometry are unchanged.
 - Same-sidereal transmission keeps every map path in its saved manifest but
-  prints only the map count in routine terminal and pipeline-log output.
+  prints only the map count and directory in routine stage output and the
+  final terminal/pipeline-log figure listing; individual map paths are not
+  enumerated there.
 - MMTO acquisition checks the current and intervening remote nights, then the
   durable older-night cursor, before spending any remaining image allowance on
   cached local backlog. Within a listed night, previously unseen remote images
@@ -69,6 +83,10 @@ line.
   unconnected distance-only points, with aperture-only uncertainty, and are
   exported to `planet_distance_only_uncalibrated_measurements.csv`; filled
   points remain the fully extinction- and distance-corrected population.
+- The v23 planet-photometry stage now handles R, G, and B in one process.
+  Each source FITS is checksum-verified and decoded once for all three
+  uncertainty calculations, and the shared distance ephemeris is built once;
+  the existing per-channel CSV and PDF products remain unchanged.
 
 ## V22 frozen implementation
 

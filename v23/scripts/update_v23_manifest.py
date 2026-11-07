@@ -16,12 +16,15 @@ CHANGES = [
     "Fork the complete frozen v22 runtime into an independent v23 development package.",
     "Add native-FITS aperture-radius and sky-annulus sweeps on held-out nights.",
     "Retain the v22 aperture unless one global RGB geometry passes validation and final-test gates.",
-    "Batch post-fit coordinate validation, use TDB for fitted Julian epochs, and keep transmission-map terminal summaries compact.",
+    "Batch post-fit coordinate validation, use TDB for fitted Julian epochs, and replace individual transmission-map paths in stage and final terminal output with one count-and-directory summary.",
     "Prioritize remote MMTO nights before cached backlog and mark distance-only recent planet measurements explicitly when nightly extinction is unavailable.",
     "Gate MMTO acquisition on fresh public summit humidity below 80 percent, fail open when telemetry is unavailable, and retain per-image audit decisions.",
     "Rebuild every differential-photometry figure from the fresh cumulative database population instead of a fixed legacy run list.",
     "Plot every accumulated planet identity and every finite injected-signal recovery row without display truncation, reporting total recovery counts.",
     "Report each v23 MMTO invocation's downloaded and reused images by observing night before optional photometry stages, and list latest plots with labelled older fallbacks.",
+    "Replace chronological variable-star time-series plotting with phase-folded curves using each star's earliest plotted UTC as phase zero.",
+    "Run bounded MMTO image solves concurrently and bypass batch-only display-name network waits without changing numerical fitting.",
+    "Generate RGB planet photometry in one process so each source FITS is verified and decoded once while preserving separate channel products.",
 ]
 
 

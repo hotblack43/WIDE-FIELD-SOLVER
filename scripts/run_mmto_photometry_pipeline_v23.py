@@ -4,17 +4,20 @@ from __future__ import annotations
 
 import argparse
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import closing, nullcontext
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 import csv
+from io import StringIO
 import json
 import math
 import os
 from pathlib import Path
 import sqlite3
 import sys
-from typing import Sequence
+import tempfile
+from typing import Callable, cast, Sequence, TextIO, TypeVar
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -33,7 +36,7 @@ from allsky_download.processing import OperationalFailure, validated_input
 from allsky_download.registry import SourceRegistry
 from allsky_download.solar import filter_by_solar_altitude
 from scripts.run_mmto_photometry_pipeline_v19 import (
-    _list_figures,
+    FIGURE_SUFFIXES,
     _message,
     _pipeline_lock,
     _run_command,
@@ -46,14 +49,39 @@ from v23.mmto_time import read_mmto_observation
 
 
 SOLVER_VERSION = "0.23.0"
-SOLVER_LAUNCHER = "go23.sh"
+SOLVER_ENTRYPOINT = Path("v23/analyse_image.py")
 DEFAULT_MAX_IMAGES = 40
+DEFAULT_SOLVER_WORKERS = 4
 DEFAULT_MAX_HUMIDITY_PERCENT = 80.0
 DEFAULT_WEATHER_MAX_AGE_SECONDS = 120.0
 DEFAULT_OLDEST_NIGHT = date(2026, 6, 30)
 UTC = timezone.utc
 CADENCE = timedelta(minutes=20)
 CADENCE_BOUNDARY_TOLERANCE = timedelta(minutes=2)
+T = TypeVar("T")
+R = TypeVar("R")
+
+
+def _list_v23_figures(output: Path, log: TextIO) -> None:
+    """List user-facing figures without enumerating every transmission map."""
+
+    sidereal_output = output / "same-sidereal-transmission"
+    paths = sorted(
+        path
+        for path in output.rglob("*")
+        if path.is_file() and path.suffix.lower() in FIGURE_SUFFIXES
+    )
+    sidereal_maps = [path for path in paths if path.is_relative_to(sidereal_output)]
+    listed_paths = [path for path in paths if not path.is_relative_to(sidereal_output)]
+    _message(f"FIGURES ({len(listed_paths)})", log)
+    for path in listed_paths:
+        _message(str(path), log)
+    if sidereal_maps:
+        _message(
+            f"SAME-SIDEREAL TRANSMISSION MAPS ({len(sidereal_maps)}): "
+            f"{sidereal_output}",
+            log,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -161,6 +189,15 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--max-images", type=_positive_int, default=DEFAULT_MAX_IMAGES)
     parser.add_argument(
+        "--solver-workers",
+        type=_positive_int,
+        default=DEFAULT_SOLVER_WORKERS,
+        help=(
+            "number of independent single-threaded image solves to run concurrently "
+            "(default: 4)"
+        ),
+    )
+    parser.add_argument(
         "--max-humidity-percent",
         type=_humidity_percent,
         default=DEFAULT_MAX_HUMIDITY_PERCENT,
@@ -207,7 +244,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--variable-start-utc",
         default="2026-06-30T00:00:00Z",
-        help="inclusive UTC start for variable-star time series",
+        help="inclusive UTC start for variable-star phase curves",
     )
     parser.add_argument(
         "--lock-file",
@@ -480,7 +517,7 @@ def _stage_commands(
     for index, (name, command) in enumerate(stages):
         if name == "variable_star_time_series":
             stages[index] = (
-                name,
+                "variable_star_phase_curves",
                 [str(Path(repo_root) / "plot_mmto_variable_stars_v23.sh"), *command[1:]],
             )
         elif name == "planet_photometry":
@@ -1000,14 +1037,97 @@ def _latest_v23_receipt(database_path: Path, source_sha256: str) -> int | None:
     return None if row is None else int(row[0])
 
 
-def solver_command(repo_root: Path, source: Path, results: Path) -> list[str]:
-    return [
-        str(Path(repo_root) / SOLVER_LAUNCHER),
+def _prepare_solver_run(
+    repo_root: Path, source: Path, results: Path
+) -> tuple[Path, list[str]]:
+    """Create one private run directory and bypass shell/uv startup overhead."""
+
+    source = Path(source)
+    results = Path(results)
+    runs = results / "runs"
+    runs.mkdir(parents=True, exist_ok=True)
+    stem = "".join(
+        character if character.isalnum() or character in "._-" else "_"
+        for character in source.name
+    )[:80] or "image"
+    timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    run_dir = Path(
+        tempfile.mkdtemp(
+            prefix=f"{stem}-v{SOLVER_VERSION}-{timestamp}-",
+            dir=runs,
+        )
+    )
+    command = [
+        "env",
+        "OPENBLAS_NUM_THREADS=1",
+        "OMP_NUM_THREADS=1",
+        sys.executable,
+        str(Path(repo_root) / SOLVER_ENTRYPOINT),
         str(Path(source)),
-        "--results-dir",
-        str(Path(results)),
+        "--catalog",
+        str(Path(repo_root) / "v23" / "data" / "stars_gaia_dr3_g75.csv"),
+        "--epoch-mode",
+        "fit",
+        "--output",
+        str(run_dir / "analysis"),
+        "--database",
+        str(results / "stars.sqlite"),
         "--blind-planets",
+        "--offline",
     ]
+    return run_dir, command
+
+
+def _run_solver_jobs(
+    items: Sequence[T],
+    workers: int,
+    solve: Callable[[T], R],
+    *,
+    completed: Callable[[T, R], None] | None = None,
+) -> tuple[R, ...]:
+    """Run independent solves concurrently, report completion, and retain order."""
+
+    if workers <= 0:
+        raise ValueError("solver workers must be positive")
+    if not items:
+        return ()
+    missing = object()
+    results: list[object] = [missing] * len(items)
+    first_error: Exception | None = None
+    with ThreadPoolExecutor(max_workers=min(workers, len(items))) as executor:
+        futures = {
+            executor.submit(solve, item): (index, item)
+            for index, item in enumerate(items)
+        }
+        for future in as_completed(futures):
+            index, item = futures[future]
+            try:
+                result = future.result()
+            except Exception as exc:
+                if first_error is None:
+                    first_error = exc
+                continue
+            results[index] = result
+            if completed is not None:
+                completed(item, result)
+    if first_error is not None:
+        raise first_error
+    if any(result is missing for result in results):
+        raise RuntimeError("solver job completed without a result")
+    return cast(tuple[R, ...], tuple(results))
+
+
+def _run_logged_solver(
+    command: list[str], run_dir: Path, *, cwd: Path, prefix: str
+) -> tuple[int, str]:
+    """Run one solver while durably streaming its complete per-run log."""
+
+    log_path = Path(run_dir) / "run.log"
+    with log_path.open("w", encoding="utf-8", buffering=1) as run_log:
+        run_log.write(prefix)
+        run_log.flush()
+        return_code = _run_command(command, run_log, cwd=Path(cwd))
+    return return_code, log_path.read_text(encoding="utf-8")
 
 
 def _utc_now() -> str:
@@ -1190,6 +1310,7 @@ def main(
                     audit_path=weather_audit,
                 ),
                 "processing": {
+                    "solver_workers": args.solver_workers,
                     "attempted": 0,
                     "succeeded": 0,
                     "solver_failed": 0,
@@ -1201,7 +1322,7 @@ def main(
                     "acquisition_timeline": str(output / "acquisition_timeline.pdf"),
                     "stellar_lightcurves": str(output / "stellar-lightcurves"),
                     "nightly_extinction": str(output / "nightly-extinction"),
-                    "variable_star_time_series": str(output / "variable-stars"),
+                    "variable_star_phase_curves": str(output / "variable-stars"),
                     "planet_photometry": str(output / "planet-photometry"),
                     "planet_empirical_extinction": str(
                         output / "planet-empirical-extinction"
@@ -1227,6 +1348,8 @@ def main(
                 assert isinstance(processing, dict)
                 processed_images = summary["processed_images"]
                 assert isinstance(processed_images, list)
+                pending_solves: list[tuple[int, ReadyImage, Path, dict[str, str]]] = []
+                processed_rows: dict[int, dict[str, str]] = {}
                 for number, image in enumerate(ready, 1):
                     report_row = {
                         "observed_utc": image.candidate.observed_at.astimezone(UTC)
@@ -1239,7 +1362,10 @@ def main(
                     }
                     if _latest_v23_receipt(database, image.source_sha256) is not None:
                         processing["receipt_skipped"] += 1
-                        processed_images.append({**report_row, "solver": "receipt_skipped"})
+                        processed_rows[number] = {
+                            **report_row,
+                            "solver": "receipt_skipped",
+                        }
                         _message(
                             f"SKIP [{number}/{len(ready)}] receipt exists: "
                             f"{image.source_sha256}",
@@ -1252,28 +1378,113 @@ def main(
                         image.observed_bytes,
                         image.source_sha256,
                     )
-                    processing["attempted"] += 1
-                    _message(f"PROCESS [{number}/{len(ready)}] {source}", log)
-                    return_code = _run_command(
-                        solver_command(repo_root, source, results), log, cwd=repo_root
+                    pending_solves.append((number, image, source, report_row))
+
+                processing["attempted"] += len(pending_solves)
+                processed_images[:] = [
+                    processed_rows[index] for index in sorted(processed_rows)
+                ]
+                _write_summary(output, summary)
+                solver_errors: list[Exception] = []
+
+                def solve_image(
+                    job: tuple[int, ReadyImage, Path, dict[str, str]],
+                ) -> tuple[int, dict[str, str], int | None, str, Exception | None]:
+                    number, image, source, report_row = job
+                    transcript = StringIO()
+                    run_log_path: Path | None = None
+                    _message(
+                        f"PROCESS [{number}/{len(ready)}] {source}", transcript
                     )
-                    receipt = _latest_v23_receipt(database, image.source_sha256)
-                    if receipt is None:
-                        raise OperationalFailure(
-                            "go23 produced no v23 database receipt for "
-                            f"{image.source_sha256}"
+                    try:
+                        run_dir, command = _prepare_solver_run(
+                            repo_root, source, results
                         )
-                    if (return_code == 0) != (receipt == 0):
-                        raise OperationalFailure(
-                            "go23 exit status disagrees with its database receipt for "
-                            f"{image.source_sha256}"
+                        run_log_path = run_dir / "run.log"
+                        _message(f"Run folder: {run_dir}", transcript)
+                        return_code, transcript_text = _run_logged_solver(
+                            command,
+                            run_dir,
+                            cwd=repo_root,
+                            prefix=transcript.getvalue(),
                         )
+                        receipt = _latest_v23_receipt(database, image.source_sha256)
+                        if receipt is None:
+                            raise OperationalFailure(
+                                "v23 analysis produced no database receipt for "
+                                f"{image.source_sha256}"
+                            )
+                        if (return_code == 0) != (receipt == 0):
+                            raise OperationalFailure(
+                                "v23 analysis exit status disagrees with its database receipt for "
+                                f"{image.source_sha256}"
+                            )
+                        if return_code == 0 and not (
+                            run_dir / "analysis" / "report.pdf"
+                        ).is_file():
+                            raise OperationalFailure(
+                                "v23 analysis finished without a report PDF: "
+                                f"{run_dir}"
+                            )
+                        return (
+                            number,
+                            report_row,
+                            receipt,
+                            transcript_text,
+                            None,
+                        )
+                    except (
+                        OSError,
+                        RuntimeError,
+                        ValueError,
+                        sqlite3.Error,
+                        OperationalFailure,
+                    ) as exc:
+                        transcript_text = transcript.getvalue()
+                        if run_log_path is not None:
+                            try:
+                                transcript_text = run_log_path.read_text(
+                                    encoding="utf-8"
+                                )
+                            except OSError:
+                                pass
+                        return number, report_row, None, transcript_text, exc
+
+                def publish_solve(
+                    _job: tuple[int, ReadyImage, Path, dict[str, str]],
+                    result: tuple[
+                        int,
+                        dict[str, str],
+                        int | None,
+                        str,
+                        Exception | None,
+                    ],
+                ) -> None:
+                    number, report_row, receipt, transcript, error = result
+                    log.write(transcript)
+                    log.flush()
+                    if error is not None:
+                        solver_errors.append(error)
+                        return
+                    assert receipt is not None
                     processing["succeeded" if receipt == 0 else "solver_failed"] += 1
-                    processed_images.append({
+                    processed_rows[number] = {
                         **report_row,
                         "solver": "succeeded" if receipt == 0 else "solver_failed",
-                    })
+                    }
+                    processed_images[:] = [
+                        processed_rows[index] for index in sorted(processed_rows)
+                    ]
                     _write_summary(output, summary)
+
+                _run_solver_jobs(
+                    pending_solves,
+                    args.solver_workers,
+                    solve_image,
+                    completed=publish_solve,
+                )
+                if solver_errors:
+                    raise solver_errors[0]
 
                 write_backfill_state_atomic(
                     state_path,
@@ -1329,7 +1540,7 @@ def main(
                 summary["finished_utc"] = _utc_now()
                 _write_summary(output, summary)
                 _message(f"MMTO v23 pipeline complete: {output}", log)
-                _list_figures(output, log)
+                _list_v23_figures(output, log)
         return 0
     except (OSError, RuntimeError, ValueError, sqlite3.Error, OperationalFailure) as exc:
         if output is not None and Path(output).is_dir() and summary is not None:

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Plot v23 MMTO variable-star time series from the nightly extinction sidecar.
+# Plot v23 MMTO variable-star phase curves from the nightly extinction sidecar.
 set -euo pipefail
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 unset VIRTUAL_ENV

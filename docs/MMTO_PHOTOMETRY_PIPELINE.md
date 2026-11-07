@@ -1,8 +1,21 @@
 # One-command MMTO processing and photometry
 
-For current work, use `go_mmto_photometry_v20.sh`. It retains every v19 product
-and processes a bounded backward batch without inventorying the complete MMTO
-archive. The unversioned launcher remains the preserved v0.11.0 workflow.
+Current v23 runs replace the inherited variable-star time-series PDF with
+`variable-stars/variable_star_phase_curves.pdf`. Each selected VSX object is
+folded into `[0,1)` with its catalogue period and earliest plotted UTC as phase
+zero; the magnitude calculation and CSV sidecars are unchanged. The v20
+description below remains the frozen historical behavior of that launcher.
+
+The current v23 launcher runs four independent single-threaded image solves at
+once by default. `--solver-workers N` changes the bound. Its batch-only direct
+execution path uses the pinned v23 interpreter and bundled display-name cache
+offline, avoiding repeated shell/uv startup and failed SIMBAD connection waits;
+the fitted science and per-image SQLite receipt remain unchanged.
+
+For the preserved v20 workflow, use `go_mmto_photometry_v20.sh`. It retains
+every v19 product and processes a bounded backward batch without inventorying
+the complete MMTO archive. The unversioned launcher remains the preserved
+v0.11.0 workflow.
 
 V20 asks MMTO for one observing-night directory at a time. It first selects
 already-downloaded images that lack any solver receipt, checks the current
@@ -198,3 +211,6 @@ contains the invoked commands and their combined output. After successful
 completion the launcher prints `FIGURES (N)` followed by the absolute path of
 every PDF or PNG actually present below that run directory. CSV, JSON, log and
 working files are deliberately omitted from this operator-facing figure list.
+For v23, the numerous files below `same-sidereal-transmission/` are omitted
+from that final path listing and replaced by one line giving their count and
+directory; the maps themselves and their manifest entries remain unchanged.

@@ -44,6 +44,16 @@ evidence. Pause only when a material ambiguity would change the result, or when
 the next step would erase or overwrite user data, create an irreversible effect,
 publish externally, or require authority beyond the request.
 
+## Respect astronomical expertise
+
+Peter is an astronomer. When he asks to see, locate, compare, or inspect solver
+or photometry outputs, show the requested material and identify it precisely,
+then stop. Do not explain foundational astronomy, including the magnitude
+system, unless Peter explicitly asks for an explanation. Do not append
+unsolicited advice about what he should notice in a figure. Add interpretation
+only when requested or when it is necessary to report a concrete scientific
+error or ambiguity.
+
 ## State action honestly and react immediately
 
 Use language that distinguishes these states exactly:

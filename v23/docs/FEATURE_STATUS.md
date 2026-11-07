@@ -1,5 +1,17 @@
 # Point-source feature status, version 0.23.0
 
+**Parallel offline MMTO batch solving (6 November 2026):** the v23 MMTO
+pipeline runs four independent single-threaded image solves concurrently by
+default, with an explicit `--solver-workers` override. The batch path calls the
+pinned v23 Python interpreter directly and disables display-only SIMBAD
+queries. Unique run directories, complete per-run logs, atomic SQLite receipts,
+blind fitting, acquisition order, and all numerical products are preserved.
+
+**Compact same-sidereal map reporting (5 November 2026):** v23 continues to
+save every transmission map and every manifest path, but the final terminal and
+pipeline-log figure listing omits the individual map paths. One line reports
+their count and output directory; other PDF and PNG paths remain listed.
+
 **Bounded backward MMTO acquisition (16 October 2026):** v23 is based directly
 on frozen v19 and retains every v19 solver and derived product. Its default
 queue selects at most 40 unfinished images, asks MMTO for only one observing
@@ -7,21 +19,24 @@ night per request, prioritises existing unreceipted downloads and the current
 night, then resumes a durable backward cursor. Any solver receipt marks the
 source checksum complete. The default historical floor is 2026-06-30.
 
-**MMTO variable-star time series (15 October 2026):** v23 retains v19's chronological
-R/G/B extinction-corrected instrumental machine-magnitude plots for confirmed
-VSX variables, without distance correction or phase folding. Measurements are
-grouped by physical VSX object, MMTO observing night, and native channel; their
-corrected relative fluxes are averaged and converted back to one plotted
-magnitude. The default strict selection is `5 < period < 30` days and catalogue
-magnitude `< 5.0`; each limit remains command-line configurable. The variable
-product alone begins at 2026-06-30 UTC, leaving the isolated March measurement
-in the database and measurement audit. A frozen 1-arcsecond VSX cross-match
-makes plotting offline and cannot seed fitting or identification.
+**MMTO variable-star phase curves (5 November 2026):** v23 replaces v19's
+chronological PDF with `variable_star_phase_curves.pdf`. Confirmed VSX variables
+are folded into `[0,1)` with their catalogue periods and each star's earliest
+plotted UTC as phase zero. R/G/B extinction-corrected instrumental machine
+magnitudes remain unchanged and receive no distance correction or catalogue
+zero-point shift. Measurements are grouped by physical VSX object, MMTO
+observing night, and native channel; their corrected relative fluxes are
+averaged and converted back to one plotted magnitude. The default strict
+selection is `5 < period < 30` days and catalogue magnitude `< 5.0`; each limit
+remains command-line configurable. The variable product alone begins at
+2026-06-30 UTC, leaving the isolated March measurement in the database and
+measurement audit. A frozen 1-arcsecond VSX cross-match makes plotting offline
+and cannot seed fitting or identification.
 Each channel is also fitted independently in magnitude space with the
 catalogue period fixed. The PDF overlays the sinusoid and reports the
-brightest-light phase relative to the star's earliest plotted UTC. A dedicated
-CSV retains the fitted mean, semi-amplitude, phase in cycles and days, RMS, and
-explicit insufficient-data or rank-deficient status.
+brightest-light phase under the same earliest-plotted-UTC convention. A
+dedicated CSV retains the fitted mean, semi-amplitude, phase in cycles and days,
+RMS, and explicit insufficient-data or rank-deficient status.
 
 **Planet-only empirical extinction (10 October 2026):** the v16 MMTO pipeline
 adds a required fourth stage that fits each planet/night/channel/camera sequence

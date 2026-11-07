@@ -17,7 +17,6 @@ from typing import Sequence
 
 import matplotlib
 matplotlib.use("Agg")
-import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.lines import Line2D
@@ -139,6 +138,17 @@ def _utc_text(value: datetime) -> str:
     return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
 
 
+def phase_for_observation(
+    observed_utc: datetime,
+    reference_utc: datetime,
+    period_days: float,
+) -> float:
+    """Return cycles since the per-star reference UTC, folded into [0, 1)."""
+
+    elapsed_days = (observed_utc - reference_utc).total_seconds() / 86400.0
+    return (elapsed_days / period_days) % 1.0
+
+
 def fit_fixed_period_sine(
     points: Sequence[PlotPoint],
     period_days: float,
@@ -228,13 +238,13 @@ def _write_csv(path: Path, fields: Sequence[str], rows: Sequence[dict[str, objec
         writer.writerows(rows)
 
 
-def make_time_series_page(
+def make_phase_curve_page(
     series: Sequence[StarSeries], *, page_number: int = 1, page_count: int = 1,
     min_period_days: float = DEFAULT_MIN_PERIOD_DAYS,
     max_period_days: float = DEFAULT_MAX_PERIOD_DAYS,
     max_catalogue_magnitude: float = DEFAULT_MAX_CATALOGUE_MAGNITUDE,
 ) -> plt.Figure:
-    """Return one 4-by-3 chronological corrected-magnitude figure page."""
+    """Return one 4-by-3 phase-folded corrected-magnitude figure page."""
 
     figure, axes_grid = plt.subplots(4, 3, figsize=(11.7, 13.2), squeeze=False)
     axes = list(axes_grid.flat)
@@ -247,8 +257,14 @@ def make_time_series_page(
                 key=lambda point: point.observed_utc,
             )
             if points:
+                phases = [
+                    phase_for_observation(
+                        point.observed_utc, reference_utc, star.period_days
+                    )
+                    for point in points
+                ]
                 axis.scatter(
-                    [point.observed_utc for point in points],
+                    phases,
                     [point.corrected_magnitude for point in points],
                     s=8,
                     alpha=0.75,
@@ -261,27 +277,19 @@ def make_time_series_page(
                     assert fit.phase_offset_cycles_brightest is not None
                     assert fit.mean_corrected_magnitude is not None
                     assert fit.semi_amplitude_magnitude is not None
-                    span_seconds = (
-                        points[-1].observed_utc - points[0].observed_utc
-                    ).total_seconds()
-                    curve_times = [
-                        points[0].observed_utc
-                        + timedelta(seconds=span_seconds * index / 399.0)
-                        for index in range(400)
-                    ]
+                    curve_phases = np.linspace(0.0, 1.0, 400)
                     curve_magnitudes = [
                         fit.mean_corrected_magnitude
                         - fit.semi_amplitude_magnitude * math.cos(
                             2.0 * math.pi * (
-                                (value - reference_utc).total_seconds()
-                                / 86400.0 / star.period_days
+                                phase
                                 - fit.phase_offset_cycles_brightest
                             )
                         )
-                        for value in curve_times
+                        for phase in curve_phases
                     ]
                     axis.plot(
-                        curve_times,
+                        curve_phases,
                         curve_magnitudes,
                         color=CHANNEL_COLOURS[channel],
                         linewidth=0.8,
@@ -304,22 +312,16 @@ def make_time_series_page(
                 zorder=3,
             )
         axis.invert_yaxis()
-        unique_times = sorted({point.observed_utc for point in star.points})
-        if len(unique_times) == 1:
-            axis.set_xlim(
-                unique_times[0] - timedelta(days=1),
-                unique_times[0] + timedelta(days=1),
-            )
+        axis.set_xlim(0.0, 1.0)
         axis.grid(alpha=0.2, linewidth=0.4)
-        axis.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d", tz=UTC))
-        axis.tick_params(axis="x", labelrotation=25, labelsize=7)
+        axis.tick_params(axis="x", labelsize=7)
         axis.tick_params(axis="y", labelsize=7)
         axis.set_title(
             f"{star.vsx_name or star.vsx_oid} · {star.vsx_type or 'type ?'} · "
             f"P={star.period_days:g} d · N={len(star.points)}",
             fontsize=8,
         )
-        axis.set_xlabel("Observation time (UTC)", fontsize=7)
+        axis.set_xlabel("Phase (cycles from earliest plotted UTC)", fontsize=7)
         axis.set_ylabel("Extinction-corrected machine magnitude", fontsize=7)
     for axis in axes[len(series):]:
         axis.set_visible(False)
@@ -334,8 +336,8 @@ def make_time_series_page(
         f"Page {page_number} of {page_count} · "
         f"{min_period_days:g} < P < {max_period_days:g} d · "
         f"catalogue mag < {max_catalogue_magnitude:g} · "
-        "no distance correction · no phase folding\n"
-        "solid curves: fixed-period sine fits; phase is brightest light after each star's reference UTC",
+        "no distance correction · phase folded from each star's earliest plotted UTC\n"
+        "solid curves: fixed-period sine fits; labels give brightest-light phase",
         fontsize=11,
     )
     figure.tight_layout(rect=(0.02, 0.02, 0.98, 0.93))
@@ -364,7 +366,7 @@ def _write_pdf(
             plt.close(figure)
         else:
             for page_index, start in enumerate(range(0, len(stars), 12), 1):
-                figure = make_time_series_page(
+                figure = make_phase_curve_page(
                     stars[start:start + 12],
                     page_number=page_index,
                     page_count=page_count,
@@ -633,14 +635,14 @@ def generate_products(
             sine_fit_rows,
         )
         page_count = _write_pdf(
-            temporary / "variable_star_time_series.pdf",
+            temporary / "variable_star_phase_curves.pdf",
             stars,
             min_period_days,
             max_period_days,
             max_catalogue_magnitude,
         )
         outputs = (
-            "variable_star_time_series.pdf",
+            "variable_star_phase_curves.pdf",
             "variable_star_measurements.csv",
             "variable_star_selection_audit.csv",
             "variable_star_measurement_audit.csv",
@@ -654,10 +656,11 @@ def generate_products(
                 "m_night = -2.5 log10(mean(10^(-0.4 m_corrected)))"
             ),
             "distance_correction_applied": False,
-            "phase_folding_applied": False,
+            "phase_folding_applied": True,
+            "phase_reference": "earliest plotted UTC for each star",
             "fixed_period_sine_fit_applied": True,
             "fixed_period_sine_formula": (
-                "m(t) = mean - semi_amplitude*cos(2*pi*((t-reference)/period-phase_brightest))"
+                "m(phase) = mean - semi_amplitude*cos(2*pi*(phase-phase_brightest))"
             ),
             "sine_fit_weighting": "unweighted nightly points",
             "min_period_days_exclusive": min_period_days,
@@ -752,10 +755,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"Variable-star plotting failed: {exc}")
         return 2
     print(
-        f"Variable-star time series: {summary['selected_star_count']} stars, "
+        f"Variable-star phase curves: {summary['selected_star_count']} stars, "
         f"{summary['plotted_point_count']} points, {summary['page_count']} pages"
     )
-    print(Path(args.output).resolve() / "variable_star_time_series.pdf")
+    print(Path(args.output).resolve() / "variable_star_phase_curves.pdf")
     return 0
 
 

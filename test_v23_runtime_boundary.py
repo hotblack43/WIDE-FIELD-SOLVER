@@ -43,11 +43,11 @@ def _tracked_runtime(version: str, root_files: set[str]) -> set[str]:
 class V23RuntimeBoundaryTests(unittest.TestCase):
     def test_v23_pipeline_invokes_only_the_v23_solver(self):
         from scripts.run_mmto_photometry_pipeline_v23 import (
-            SOLVER_LAUNCHER, SOLVER_VERSION,
+            SOLVER_ENTRYPOINT, SOLVER_VERSION,
         )
 
         self.assertEqual(SOLVER_VERSION, "0.23.0")
-        self.assertEqual(SOLVER_LAUNCHER, "go23.sh")
+        self.assertEqual(SOLVER_ENTRYPOINT, Path("v23/analyse_image.py"))
 
     def test_v23_owns_the_planet_retry_wrapper_named_by_its_pipeline(self):
         wrapper = ROOT / "v23" / "plot_ALL_planets_v23.sh"

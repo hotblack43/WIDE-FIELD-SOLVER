@@ -27,6 +27,16 @@ uv run --frozen python -m unittest discover -v
 Keep `uv.lock` committed. Document numerical changes and their reasons. Leave
 the historical comparison with solve-field factual and bounded by its tests.
 
+## Respect astronomical expertise
+
+Peter is an astronomer. When he asks to see, locate, compare, or inspect solver
+or photometry outputs, show the requested material and identify it precisely,
+then stop. Do not explain foundational astronomy, including the magnitude
+system, unless Peter explicitly asks for an explanation. Do not append
+unsolicited advice about what he should notice in a figure. Add interpretation
+only when requested or when it is necessary to report a concrete scientific
+error or ambiguity.
+
 ## State action honestly and react immediately
 
 Use language that distinguishes these states exactly:

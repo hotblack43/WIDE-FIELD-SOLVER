@@ -94,6 +94,12 @@ full. Change the cap with:
 ./go_mmto_photometry_v23.sh --max-images 12
 ```
 
+The pipeline solves four images concurrently by default. Override the bound
+with `--solver-workers N`; use `--solver-workers 1` for serial execution. Each
+worker uses one BLAS/OpenMP thread, a unique run directory, and the existing
+atomic SQLite append. Routine batch solves use the bundled display-name cache
+offline, so unavailable SIMBAD service cannot delay numerical processing.
+
 Any v23 solver receipt for an image SHA-256 counts as completed v23 work,
 including a recorded scientific failure. Earlier-version receipts remain
 preserved but do not suppress v23 reprocessing. Downloads without v23 receipts
@@ -112,6 +118,11 @@ failed attempt remains beside the requested output as
 failures stop immediately. A retry starts with the requested
 `planet-photometry/` path clear, so successful products retain the correct
 absolute output paths in their provenance.
+
+The R, G and B planet products are generated in one Python process. Each
+source FITS is checksum-verified and decoded once for the three empirical
+uncertainty calculations, and one shared distance lookup feeds the unchanged
+per-channel CSV and PDF outputs.
 
 Before every solve, the recognised MMTO FITS header is checked and its exposure
 start, duration and midpoint are stored in the existing download manifest's
@@ -138,7 +149,8 @@ Post-processing adds these v23 directories below each pipeline output:
 - `same-sidereal-transmission/` pairs distinct nights one-to-one by apparent
   sidereal time. Maps plot actual measured centroids only; sparse comparisons
   are marked insufficient and never interpolated. The saved manifest retains
-  every map path, while routine terminal output reports only the map count.
+  every map path. Routine stage output and the final figure listing report only
+  the map count and directory, rather than enumerating every map path.
 - `known-site-time-validation/` reveals the MMTO header midpoint and site only
   after the blind products are fixed. It compares zenith, latitude, airmass,
   parallactic/refraction direction, stellar epoch and every saved blind planet
@@ -178,22 +190,23 @@ latest run stopped before producing them. The run summary and acquisition
 timeline appear first, so older fallback figures are not mistaken for current
 results.
 
-V23 runs every v19 plotting stage, including
-`variable-stars/variable_star_time_series.pdf`. Each panel is a chronological
-UTC time series for one confirmed VSX object. Each R, G, or B point is the
-flux-space average of all qualifying measurements for that object, observing
-night, and channel. Individual measurements first use the nightly stellar
-correction
+V23 replaces the inherited chronological variable-star PDF with
+`variable-stars/variable_star_phase_curves.pdf`. Each panel phase-folds one
+confirmed VSX object into `[0,1)` using its catalogue period and its earliest
+plotted UTC as phase zero. Each R, G, or B point is the flux-space average of
+all qualifying measurements for that object, observing night, and channel.
+Individual measurements first use the nightly stellar correction
 
 ```text
 m_corrected = m_machine - k_night,channel X
 ```
 
 The nightly value is `-2.5 log10(mean(10^(-0.4 m_corrected)))`. No distance
-correction, catalogue zero-point shift, or phase folding is applied. The
-default selection is strictly `5 < period < 30` days and catalogue magnitude
-`< 5.0`. It starts at `2026-06-30T00:00:00Z`, excluding the isolated March
-datum only from this added product. Change these controls with
+correction or catalogue zero-point shift is applied. Phase folding changes only
+the plotted horizontal coordinate; it does not change any measured or corrected
+magnitude. The default selection is strictly `5 < period < 30` days and
+catalogue magnitude `< 5.0`. It starts at `2026-06-30T00:00:00Z`, excluding the
+isolated March datum only from this added product. Change these controls with
 `--variable-min-period-days`, `--variable-max-period-days`,
 `--variable-max-catalogue-magnitude`, and `--variable-start-utc`. VSX
 associations are read from the frozen v23 file; routine plotting is offline.
@@ -201,9 +214,9 @@ associations are read from the frozen v23 file; routine plotting is offline.
 Each channel with at least three independent nightly phases also receives an
 unweighted sinusoidal least-squares fit in magnitude space. The VSX period is
 held fixed while the mean magnitude, semi-amplitude, and phase are fitted. The
-reported phase is the brightest-light phase in `[0,1)`, measured after the
-earliest plotted nightly UTC for that star. Solid same-colour curves and phase
-labels appear in the PDF; exact parameters and explicit non-fit statuses are in
+reported phase is the brightest-light phase in `[0,1)` under the same
+earliest-plotted-UTC convention. Solid same-colour curves and phase labels
+appear in the PDF; exact parameters and explicit non-fit statuses are in
 `variable-stars/variable_star_sine_fits.csv`.
 
 ## Outputs

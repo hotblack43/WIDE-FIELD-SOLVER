@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
+unset VIRTUAL_ENV
 
 V23_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 ROOT_DIR=$(cd -- "$V23_DIR/.." && pwd -P)
@@ -110,36 +111,30 @@ printf 'Output directory: %s\n' "$OUTPUT"
 printf 'Product: extinction- and distance-corrected photometry\n'
 printf 'Channels: R, G, B\n'
 
-run_number=0
-for channel in R G B; do
-    channel_output="$OUTPUT/$channel"
-    common=(
-        uv run --project "$ROOT_DIR" --frozen python
-        "$V23_DIR/scripts/plot_planet_photometry.py"
-        --database "$DATABASE"
-        --output "$channel_output"
-        --channel "$channel"
-        --skip-earliest-observations "$SKIP_EARLIEST"
-    )
-    if ((INCLUDE_UNCALIBRATED)); then
-        common+=(--manifest "$MANIFEST" --include-uncalibrated)
-    fi
+common=(
+    env -u VIRTUAL_ENV uv run --project "$ROOT_DIR" --frozen python
+    "$V23_DIR/scripts/plot_planet_photometry.py"
+    --database "$DATABASE"
+    --output "$OUTPUT"
+    --channel RGB
+    --skip-earliest-observations "$SKIP_EARLIEST"
+)
+if ((INCLUDE_UNCALIBRATED)); then
+    common+=(--manifest "$MANIFEST" --include-uncalibrated)
+fi
 
-    ((++run_number))
-    printf '\n[%d/5] %s channel: extinction- and distance-corrected photometry\n' \
-        "$run_number" "$channel"
-    "${common[@]}" \
-        --extinction-corrected-distance-corrected \
-        --nightly-calibration "$NIGHTLY_CALIBRATION"
-done
+printf '\n[1/3] R, G, and B: shared extinction- and distance-corrected photometry\n'
+"${common[@]}" \
+    --extinction-corrected-distance-corrected \
+    --nightly-calibration "$NIGHTLY_CALIBRATION"
 
-printf '\n[4/5] Combined planetary colour-colour diagram\n'
+printf '\n[2/3] Combined planetary colour-colour diagram\n'
 uv run --project "$ROOT_DIR" --frozen python \
     "$ROOT_DIR/scripts/plot_planet_colours.py" \
     --input-root "$OUTPUT" \
     --output "$OUTPUT"
 
-printf '\n[5/5] Brightness-matched stellar extinction diagnostic\n'
+printf '\n[3/3] Brightness-matched stellar extinction diagnostic\n'
 uv run --project "$ROOT_DIR" --frozen python \
     "$ROOT_DIR/scripts/plot_brightness_matched_planet_extinction.py" \
     --stellar-measurements \

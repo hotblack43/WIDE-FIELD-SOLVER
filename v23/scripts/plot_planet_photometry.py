@@ -1031,26 +1031,32 @@ def _horizons_distance_lookup(rows, *, timeout=120):
     return lookup
 
 
-def _fits_channel_pixels(source_path, channel):
-    """Read a native FITS channel without display scaling or normalization."""
+def _fits_rgb_pixels(source_path):
+    """Read native FITS pixels once and return all three channel planes."""
     import numpy as np
     from astropy.io import fits
 
-    index = {"R": 0, "G": 1, "B": 2}[channel]
     with fits.open(source_path, memmap=False) as hdus:
         arrays = [hdu.data for hdu in hdus if hdu.data is not None]
         if not arrays:
             raise ValueError("FITS source has no image array")
         data = np.asarray(arrays[0], dtype=float)
     if data.ndim == 2:
-        return data
+        return {channel: data for channel in "RGB"}
     if data.ndim != 3:
         raise ValueError("FITS image must be two- or three-dimensional")
     if 3 <= data.shape[0] <= 4:
-        return data[index]
+        return {channel: data[index] for index, channel in enumerate("RGB")}
     if 3 <= data.shape[-1] <= 4:
-        return data[..., index]
+        return {
+            channel: data[..., index] for index, channel in enumerate("RGB")
+        }
     raise ValueError("FITS channel axis is not identifiable")
+
+
+def _fits_channel_pixels(source_path, channel):
+    """Read one native FITS channel without display scaling or normalization."""
+    return _fits_rgb_pixels(source_path)[channel]
 
 
 def _file_matches_sha256(source_path, expected_sha256):
@@ -1064,11 +1070,21 @@ def _file_matches_sha256(source_path, expected_sha256):
     return digest.hexdigest() == expected
 
 
-def _photometric_uncertainty_lookup(rows, database, *, channel):
-    """Reproduce saved apertures and derive empirical background-only errors."""
+def _photometric_uncertainty_lookups(rows_by_channel, database):
+    """Derive requested RGB uncertainties with one FITS read per source."""
+    requested_channels = tuple(rows_by_channel)
+    if not requested_channels or any(
+        channel not in {"R", "G", "B"} for channel in requested_channels
+    ):
+        raise ValueError("rows_by_channel must contain one or more RGB channels")
     geometry = {}
+    run_ids = {
+        row["run_id"]
+        for rows in rows_by_channel.values()
+        for row in rows
+    }
     with closing(_readonly_database(database)) as connection:
-        for run_id in sorted({row["run_id"] for row in rows}):
+        for run_id in sorted(run_ids):
             query = connection.execute(
                 """SELECT detection_id,values_json FROM measurements
                    WHERE run_id=? AND product='dots/star_candidates.csv'""",
@@ -1084,79 +1100,100 @@ def _photometric_uncertainty_lookup(rows, database, *, channel):
                         x, y, min(9.0, max(3.0, 2.5 * sigma))
                     )
 
-    lookup = {}
+    lookups = {channel: {} for channel in requested_channels}
     grouped = {}
-    for row in rows:
-        grouped.setdefault(
-            (row["source_path"], row["source_sha256"]), []
-        ).append(row)
-    for (source_path, source_sha256), source_rows in grouped.items():
+    for channel, rows in rows_by_channel.items():
+        for row in rows:
+            grouped.setdefault(
+                (row["source_path"], row["source_sha256"]), {}
+            ).setdefault(channel, []).append(row)
+    for (source_path, source_sha256), channel_rows in grouped.items():
         path = Path(source_path)
         suffixes = {suffix.casefold() for suffix in path.suffixes}
+        unavailable_status = None
         if not path.is_file():
-            for row in source_rows:
-                lookup[(row["run_id"], str(row["detection_id"]))] = {
-                    "uncertainty_status": "source_missing"
-                }
+            unavailable_status = "source_missing"
+        elif not _file_matches_sha256(path, source_sha256):
+            unavailable_status = "source_checksum_mismatch"
+        elif not suffixes.intersection({".fits", ".fit", ".fts"}):
+            unavailable_status = "unsupported_source_format"
+        if unavailable_status is None:
+            try:
+                pixels_by_channel = _fits_rgb_pixels(path)
+            except (OSError, ValueError, TypeError):
+                unavailable_status = "source_decode_failed"
+        if unavailable_status is not None:
+            for channel, source_rows in channel_rows.items():
+                for row in source_rows:
+                    lookups[channel][
+                        (row["run_id"], str(row["detection_id"]))
+                    ] = {"uncertainty_status": unavailable_status}
             continue
-        if not _file_matches_sha256(path, source_sha256):
+        for channel, source_rows in channel_rows.items():
+            pixels = pixels_by_channel[channel]
+            lookup = lookups[channel]
             for row in source_rows:
-                lookup[(row["run_id"], str(row["detection_id"]))] = {
-                    "uncertainty_status": "source_checksum_mismatch"
+                key = (row["run_id"], str(row["detection_id"]))
+                position = geometry.get(key)
+                if position is None:
+                    lookup[key] = {
+                        "uncertainty_status": "measurement_geometry_unavailable"
+                    }
+                    continue
+                estimate = _background_only_aperture_uncertainty(
+                    pixels,
+                    x=position[0],
+                    y=position[1],
+                    aperture_radius=position[2],
+                )
+                exposure = _finite(row.get("exposure_seconds"))
+                rate = _finite(row.get("count_rate_adu_per_s"))
+                if (
+                    estimate is None
+                    or exposure is None
+                    or exposure <= 0
+                    or rate is None
+                    or rate <= 0
+                ):
+                    lookup[key] = {
+                        "uncertainty_status": "background_uncertainty_unavailable"
+                    }
+                    continue
+                saved_counts = rate * exposure
+                if not math.isclose(
+                    estimate["aperture_counts_adu"],
+                    saved_counts,
+                    rel_tol=1e-8,
+                    abs_tol=1e-6,
+                ):
+                    lookup[key] = {
+                        "uncertainty_status": "saved_aperture_not_reproduced"
+                    }
+                    continue
+                rate_uncertainty = estimate["flux_uncertainty_adu"] / exposure
+                magnitude_uncertainty = (
+                    2.5 / math.log(10.0) * rate_uncertainty / rate
+                )
+                lookup[key] = {
+                    "count_rate_uncertainty_adu_per_s": rate_uncertainty,
+                    "machine_magnitude_uncertainty": magnitude_uncertainty,
+                    "background_noise_adu": estimate["background_noise_adu"],
+                    "aperture_pixels": estimate["aperture_pixels"],
+                    "background_annulus_pixels": estimate[
+                        "background_annulus_pixels"
+                    ],
+                    "uncertainty_status": "available",
+                    "uncertainty_source": (
+                        "checksum-verified native FITS; robust annulus MAD; "
+                        "background-only aperture variance"
+                    ),
                 }
-            continue
-        if not suffixes.intersection({".fits", ".fit", ".fts"}):
-            for row in source_rows:
-                lookup[(row["run_id"], str(row["detection_id"]))] = {
-                    "uncertainty_status": "unsupported_source_format"
-                }
-            continue
-        try:
-            pixels = _fits_channel_pixels(path, channel)
-        except (OSError, ValueError, TypeError):
-            for row in source_rows:
-                lookup[(row["run_id"], str(row["detection_id"]))] = {
-                    "uncertainty_status": "source_decode_failed"
-                }
-            continue
-        for row in source_rows:
-            key = (row["run_id"], str(row["detection_id"]))
-            position = geometry.get(key)
-            if position is None:
-                lookup[key] = {"uncertainty_status": "measurement_geometry_unavailable"}
-                continue
-            estimate = _background_only_aperture_uncertainty(
-                pixels, x=position[0], y=position[1], aperture_radius=position[2]
-            )
-            exposure = _finite(row.get("exposure_seconds"))
-            rate = _finite(row.get("count_rate_adu_per_s"))
-            if estimate is None or exposure is None or exposure <= 0 or rate is None or rate <= 0:
-                lookup[key] = {"uncertainty_status": "background_uncertainty_unavailable"}
-                continue
-            saved_counts = rate * exposure
-            if not math.isclose(
-                estimate["aperture_counts_adu"], saved_counts,
-                rel_tol=1e-8, abs_tol=1e-6,
-            ):
-                lookup[key] = {"uncertainty_status": "saved_aperture_not_reproduced"}
-                continue
-            rate_uncertainty = estimate["flux_uncertainty_adu"] / exposure
-            magnitude_uncertainty = (
-                2.5 / math.log(10.0) * rate_uncertainty / rate
-            )
-            lookup[key] = {
-                "count_rate_uncertainty_adu_per_s": rate_uncertainty,
-                "machine_magnitude_uncertainty": magnitude_uncertainty,
-                "background_noise_adu": estimate["background_noise_adu"],
-                "aperture_pixels": estimate["aperture_pixels"],
-                "background_annulus_pixels": estimate["background_annulus_pixels"],
-                "uncertainty_status": "available",
-                "uncertainty_source": (
-                    "checksum-verified native FITS; robust annulus MAD; "
-                    "background-only aperture variance"
-                ),
-            }
-    return lookup
+    return lookups
+
+
+def _photometric_uncertainty_lookup(rows, database, *, channel):
+    """Derive one channel's empirical background-only uncertainties."""
+    return _photometric_uncertainty_lookups({channel: rows}, database)[channel]
 
 
 def _normalise_utc(value):
@@ -3520,6 +3557,72 @@ def main(argv=None):
         )
     if args.include_uncalibrated and args.manifest is None:
         parser.error("--include-uncalibrated requires --manifest PATH")
+    if args.channel == "RGB":
+        if not args.extinction_corrected_distance_corrected:
+            parser.error(
+                "--channel RGB requires "
+                "--extinction-corrected-distance-corrected"
+            )
+        if args.include_uncalibrated:
+            load_channel = lambda channel: load_mmto_manifest_planet_measurements(
+                args.database, args.manifest, channel=channel
+            )
+        else:
+            load_channel = lambda channel: load_mmto_metadata_planet_measurements(
+                args.database, args.nightly_calibration, channel=channel
+            )
+        loaded = {channel: load_channel(channel) for channel in "RGB"}
+        selected_by_channel = {}
+        for channel, (channel_rows, unused_audit) in loaded.items():
+            complete = [
+                row for row in channel_rows if row["photometry_usable"]
+            ]
+            observation_order = list(dict.fromkeys(
+                row["source_sha256"] or row["source_path"] for row in complete
+            ))
+            omitted = set(
+                observation_order[:args.skip_earliest_observations]
+            )
+            selected_by_channel[channel] = [
+                row for row in complete
+                if (row["source_sha256"] or row["source_path"]) not in omitted
+            ]
+        uncertainty_lookups = _photometric_uncertainty_lookups(
+            selected_by_channel, args.database
+        )
+        distance_lookup = _horizons_distance_lookup([
+            row
+            for channel_rows in selected_by_channel.values()
+            for row in channel_rows
+        ])
+        for channel in "RGB":
+            rows, audit = loaded[channel]
+            summary = write_extinction_corrected_distance_outputs(
+                rows,
+                audit,
+                args.output / channel,
+                database=args.database,
+                channel=channel,
+                skip_earliest_observations=args.skip_earliest_observations,
+                nightly_calibration=args.nightly_calibration,
+                include_uncalibrated=args.include_uncalibrated,
+                uncertainty_lookup=uncertainty_lookups[channel],
+                distance_lookup=distance_lookup,
+            )
+            uncalibrated_count = summary.get(
+                "uncalibrated_plotted_counts", {}
+            ).get("measurements", 0)
+            uncalibrated_text = (
+                f", {uncalibrated_count} open distance-only points"
+                if uncalibrated_count else ""
+            )
+            print(
+                f"Planet photometry: {audit.get('detected_planet_rows', 0)} "
+                f"detections, {summary['plotted_counts']['measurements']} plotted "
+                f"{channel}-channel corrected points{uncalibrated_text}"
+            )
+            print(f"Outputs: {(args.output / channel).resolve()}")
+        return 0
     writer_arguments = {}
     if args.extinction_corrected or args.extinction_corrected_distance_corrected:
         if args.include_uncalibrated:
