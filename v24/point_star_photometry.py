@@ -68,12 +68,23 @@ def _moffat_wing_fit(pixels, valid, saturated, x, y, fit_radius, background):
 
 def measure_channel(pixels, valid_mask, saturated_mask, *, x, y,
                     aperture_radius, exposure_seconds=None,
-                    annulus_inner_radius=None, annulus_outer_radius=None):
+                    annulus_inner_radius=None, annulus_outer_radius=None,
+                    static_visible_mask=None, dynamic_valid_mask=None):
     """Measure one channel; saturated fits are separate model estimates."""
     pixels = np.asarray(pixels, float)
-    valid = np.asarray(valid_mask, bool) & np.isfinite(pixels)
+    finite_valid = np.asarray(valid_mask, bool) & np.isfinite(pixels)
+    static_valid = (np.ones(pixels.shape, dtype=bool)
+                    if static_visible_mask is None
+                    else np.asarray(static_visible_mask, bool))
+    dynamic_valid = (np.ones(pixels.shape, dtype=bool)
+                     if dynamic_valid_mask is None
+                     else np.asarray(dynamic_valid_mask, bool))
+    valid = finite_valid & static_valid & dynamic_valid
     saturated_mask = np.asarray(saturated_mask, bool)
-    if pixels.ndim != 2 or valid.shape != pixels.shape or saturated_mask.shape != pixels.shape:
+    if (pixels.ndim != 2 or valid.shape != pixels.shape
+            or saturated_mask.shape != pixels.shape
+            or static_valid.shape != pixels.shape
+            or dynamic_valid.shape != pixels.shape):
         raise ValueError('Channel pixels and masks must be equally shaped 2-D arrays')
     inner = (aperture_radius + 3. if annulus_inner_radius is None
              else float(annulus_inner_radius))
@@ -91,13 +102,24 @@ def measure_channel(pixels, valid_mask, saturated_mask, *, x, y,
     yy, xx = np.mgrid[y0:y1, x0:x1]
     radius = np.hypot(xx-x, yy-y)
     local_valid = valid[y0:y1, x0:x1]
+    local_finite = finite_valid[y0:y1, x0:x1]
+    local_static = static_valid[y0:y1, x0:x1]
+    local_dynamic = dynamic_valid[y0:y1, x0:x1]
     local_saturated = saturated_mask[y0:y1, x0:x1]
     aperture = radius <= aperture_radius
     annulus = (radius >= inner) & (radius <= outer)
+    required = aperture | annulus
+    exclusion_reason = None
+    if np.any(required & ~local_dynamic):
+        exclusion_reason = 'aperture_or_annulus_intersects_dynamic_footprint'
+    elif np.any(required & ~local_finite):
+        exclusion_reason = 'aperture_or_annulus_contains_nonfinite_pixel'
+    elif np.any(required & ~local_static):
+        exclusion_reason = 'aperture_or_annulus_intersects_visible_sky_mask'
     use_aperture = aperture & local_valid
     use_annulus = annulus & local_valid & ~local_saturated
     saturated_pixels = int(np.sum(aperture & local_saturated))
-    if use_aperture.any() and use_annulus.sum() >= 3:
+    if exclusion_reason is None and use_aperture.any() and use_annulus.sum() >= 3:
         background = float(np.median(pixels[y0:y1, x0:x1][use_annulus]))
         counts = float(np.sum(pixels[y0:y1, x0:x1][use_aperture])
                        - background*np.sum(use_aperture))
@@ -113,6 +135,8 @@ def measure_channel(pixels, valid_mask, saturated_mask, *, x, y,
         annulus_outer_radius_px=float(outer),
         aperture_valid_pixels=int(np.sum(use_aperture)),
         saturated=bool(saturated),
+        photometry_usable=exclusion_reason is None and np.isfinite(counts),
+        photometry_exclusion_reason=exclusion_reason,
         saturated_pixels_in_aperture=saturated_pixels,
         measurement_method=('saturated_aperture_lower_bound' if saturated
                             else ('aperture' if np.isfinite(counts) else 'unavailable')),

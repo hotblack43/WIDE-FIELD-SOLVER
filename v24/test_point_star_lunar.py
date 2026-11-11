@@ -190,7 +190,7 @@ class LunarEvidenceTests(unittest.TestCase):
         }
 
     def annotate(self, *, pixels=None, detections=None, stars=None, valid_mask=None,
-                 prediction_function=None):
+                 static_visible_mask=None, prediction_function=None):
         from point_star_lunar import annotate_lunar_evidence
         return annotate_lunar_evidence(
             self.answer(),
@@ -199,6 +199,7 @@ class LunarEvidenceTests(unittest.TestCase):
             self.detections if detections is None else detections,
             self.stars if stars is None else stars,
             valid_mask=valid_mask,
+            static_visible_mask=static_visible_mask,
             prediction_function=prediction_function or self.prediction,
         )
 
@@ -295,7 +296,8 @@ class LunarEvidenceTests(unittest.TestCase):
 
         mask = np.ones(self.camera.shape, dtype=bool)
         mask[118:123, 158:163] = False
-        cases.append(("missing_expected_moon", dict(valid_mask=mask), "contradict"))
+        cases.append(("masked_obstruction",
+                      dict(static_visible_mask=mask), "neutral"))
 
         signal = self.pixels.copy()
         yy, xx = np.indices(signal.shape)

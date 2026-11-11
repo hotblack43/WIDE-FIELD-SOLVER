@@ -7,6 +7,29 @@ from point_star_photometry import measure_channel
 
 
 class ChannelPhotometryTests(unittest.TestCase):
+    def test_aperture_and_annulus_mask_layers_have_distinct_unusable_reasons(self):
+        pixels = np.full((41, 41), 100.0)
+        saturated = np.zeros(pixels.shape, bool)
+        cases = [
+            ('static', 'aperture_or_annulus_intersects_visible_sky_mask'),
+            ('dynamic', 'aperture_or_annulus_intersects_dynamic_footprint'),
+            ('finite', 'aperture_or_annulus_contains_nonfinite_pixel'),
+        ]
+        for layer, reason in cases:
+            with self.subTest(layer=layer):
+                finite = np.ones(pixels.shape, bool)
+                static = np.ones(pixels.shape, bool)
+                dynamic = np.ones(pixels.shape, bool)
+                target = {'static': static, 'dynamic': dynamic, 'finite': finite}[layer]
+                target[20, 27] = False  # sky annulus, not the source aperture
+                answer = measure_channel(
+                    pixels, finite, saturated, x=20., y=20., aperture_radius=4.,
+                    static_visible_mask=static, dynamic_valid_mask=dynamic)
+                self.assertFalse(answer['photometry_usable'])
+                self.assertEqual(answer['photometry_exclusion_reason'], reason)
+                self.assertEqual(answer['measurement_method'], 'unavailable')
+                self.assertTrue(np.isnan(answer['aperture_counts_adu']))
+
     def test_unsaturated_aperture_count_rate_is_direct_measurement(self):
         yy, xx = np.mgrid[:31, :31]
         pixels = 100. + 900.*np.exp(-((xx-15.2)**2+(yy-14.8)**2)/(2*1.4**2))

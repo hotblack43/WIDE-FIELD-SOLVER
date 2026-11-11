@@ -20,15 +20,26 @@ def _true(value):
 
 class LocalDetectability:
     """Use fainter surrounding catalogue stars as empirical sensitivity witnesses."""
-    def __init__(self, pixels, detections, stars, *, core_radius_px=3., valid_mask=None):
+    def __init__(self, pixels, detections, stars, *, core_radius_px=3., valid_mask=None,
+                 static_visible_mask=None, dynamic_valid_mask=None, finite_mask=None):
         self.pixels=np.asarray(pixels,dtype=float)
         if self.pixels.ndim==3:
             self.pixels=self.pixels[:,:,:3]@np.array([.2126,.7152,.0722])
         if self.pixels.ndim!=2:
             raise ValueError('Detectability requires monochrome or RGB pixels')
-        self.mask=np.isfinite(self.pixels) if valid_mask is None else np.asarray(valid_mask,bool)&np.isfinite(self.pixels)
+        shape=self.pixels.shape
+        self.static_mask=(np.ones(shape,bool) if static_visible_mask is None
+                          else np.asarray(static_visible_mask,bool))
+        self.dynamic_mask=(np.ones(shape,bool) if dynamic_valid_mask is None
+                           else np.asarray(dynamic_valid_mask,bool))
+        self.finite_mask=(np.isfinite(self.pixels) if finite_mask is None
+                          else np.asarray(finite_mask,bool)&np.isfinite(self.pixels))
+        self.mask=(self.static_mask&self.dynamic_mask&self.finite_mask if valid_mask is None
+                   else np.asarray(valid_mask,bool)&self.finite_mask)
         if self.mask.shape!=self.pixels.shape:
             raise ValueError('Visibility mask shape differs from image')
+        if any(mask.shape!=shape for mask in (self.static_mask,self.dynamic_mask,self.finite_mask)):
+            raise ValueError('Visibility mask layer shape differs from image')
         self.core_radius=float(core_radius_px)
         self.xy=np.array([[float(r['x_px']),float(r['y_px'])] for r in detections]).reshape(-1,2)
         self.tree=cKDTree(self.xy) if len(self.xy) else None
@@ -78,6 +89,18 @@ class LocalDetectability:
                     dark_fraction=float(np.mean(cut[area]<=0)),gradient=float(np.ptp(medians)),
                     core_deficit=background-float(np.median(cut[core])))
 
+    def region_covered(self, mask, point):
+        x,y=map(float,point)
+        radius=self.probe_radius
+        half=int(np.ceil(3*radius))
+        ix,iy=int(round(x)),int(round(y))
+        h,w=self.pixels.shape
+        if ix-half<0 or iy-half<0 or ix+half>=w or iy+half>=h:
+            return False
+        yy,xx=np.mgrid[-half:half+1,-half:half+1]
+        area=np.hypot(xx+ix-x,yy+iy-y)<=3*radius
+        return bool(mask[iy-half:iy+half+1,ix-half:ix+half+1][area].all())
+
     def assess(self,name,point,magnitude):
         name=name.lower()
         point=np.asarray(point,float)
@@ -92,6 +115,12 @@ class LocalDetectability:
             return finish('not_tested_faint_planet')
         if not np.isfinite(point).all() or not np.isfinite(magnitude):
             return finish('inconclusive_projection_or_brightness')
+        if not self.region_covered(self.dynamic_mask,point):
+            return finish('inconclusive_mask_or_edge')
+        if not self.region_covered(self.finite_mask,point):
+            return finish('inconclusive_mask_or_edge')
+        if not self.region_covered(self.static_mask,point):
+            return finish('masked_obstruction')
         distance=float(self.tree.query(point)[0]) if self.tree is not None else None
         record['nearest_detection_px']=distance
         record['probe_radius_px']=self.probe_radius
@@ -215,7 +244,7 @@ def apply_evidence(answer,evidence_rows):
     return out
 
 
-def check_candidate_absences(image_path,answer,camera,detections,stars,vector_function,*,magnitude_function=planet_brightness,valid_mask=None,solution=None):
+def check_candidate_absences(image_path,answer,camera,detections,stars,vector_function,*,magnitude_function=planet_brightness,valid_mask=None,solution=None,static_visible_mask=None,dynamic_valid_mask=None,finite_mask=None):
     """Evaluate all saved positional trials at their own epoch before final selection."""
     from point_star_planets import _visible_projection
     candidates=answer.get('candidates') or []
@@ -226,8 +255,22 @@ def check_candidate_absences(image_path,answer,camera,detections,stars,vector_fu
     if tuple(pixels.shape)!=tuple(camera.shape):
         raise ValueError('Image shape differs from the fixed camera')
     native_mask=image.valid_mask
+    if solution is not None and any(value is None for value in (
+            static_visible_mask,dynamic_valid_mask,finite_mask)):
+        from point_star_planets import _load_sky_mask_layers
+        layers=_load_sky_mask_layers(solution)
+        if layers is not None:
+            static_visible_mask=(layers['static'] if static_visible_mask is None
+                                 else static_visible_mask)
+            dynamic_valid_mask=(layers['dynamic'] if dynamic_valid_mask is None
+                                else dynamic_valid_mask)
+            finite_mask=(layers['finite'] if finite_mask is None else finite_mask)
+            valid_mask=(layers['combined'] if valid_mask is None else valid_mask)
     valid_mask=native_mask if valid_mask is None else np.asarray(valid_mask,bool)&native_mask
-    local=LocalDetectability(pixels,detections,stars,core_radius_px=3.,valid_mask=valid_mask)
+    local=LocalDetectability(
+        pixels,detections,stars,core_radius_px=3.,valid_mask=valid_mask,
+        static_visible_mask=static_visible_mask,
+        dynamic_valid_mask=dynamic_valid_mask,finite_mask=finite_mask)
     dates=np.array([c['jd_tdb'] for c in candidates])
     zenith=np.asarray(answer['visibility']['zenith_unit_vector'],float)
     zenith/=np.linalg.norm(zenith)

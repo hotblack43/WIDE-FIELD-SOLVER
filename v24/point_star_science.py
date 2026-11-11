@@ -141,7 +141,8 @@ def _full_horizon_geometric_zenith(solution, camera):
     with np.load(path) as saved:
         if 'valid_mask' not in saved:
             raise ValueError('Saved sky-footprint file has no valid_mask')
-        mask = np.asarray(saved['valid_mask'], dtype=bool)
+        mask = np.asarray(saved['dynamic_mask'] if 'dynamic_mask' in saved
+                          else saved['valid_mask'], dtype=bool)
     if mask.shape != tuple(camera.shape):
         raise ValueError('Saved sky-footprint shape does not match the fitted camera')
     evidence = centred_full_horizon(mask)
@@ -173,6 +174,23 @@ def measure_photometry(image_path, solution, result, refraction):
     """Measure every detection, then fit catalogue-relative stellar extinction."""
     solution = Path(solution)
     scientific = load_recorded_image(image_path, solution)
+    mask_path = solution/'dots/sky_footprint.npz'
+    if mask_path.is_file():
+        with np.load(mask_path) as saved:
+            combined_mask = np.asarray(saved['valid_mask'], dtype=bool)
+            static_mask = (np.asarray(saved['static_mask'], dtype=bool)
+                           if 'static_mask' in saved else np.ones_like(combined_mask))
+            dynamic_mask = (np.asarray(saved['dynamic_mask'], dtype=bool)
+                            if 'dynamic_mask' in saved else combined_mask.copy())
+            saved_finite_mask = (np.asarray(saved['finite_mask'], dtype=bool)
+                                 if 'finite_mask' in saved else scientific.valid_mask)
+        if any(mask.shape != scientific.shape for mask in (
+                combined_mask, static_mask, dynamic_mask, saved_finite_mask)):
+            raise ValueError('Saved photometry mask layer shape differs from image')
+    else:
+        static_mask = np.ones(scientific.shape, dtype=bool)
+        dynamic_mask = np.ones(scientific.shape, dtype=bool)
+        saved_finite_mask = scientific.valid_mask
     colour = classify_image_colour(image_path, solution)
     if scientific.rgb is None:
         channels_data = {name: scientific.luminance for name in 'RGB'}
@@ -206,7 +224,8 @@ def measure_photometry(image_path, solution, result, refraction):
         'saturated_pixels_in_aperture', 'wing_fit_status',
         'wing_fit_total_counts_adu', 'wing_fit_count_rate_adu_per_s',
         'wing_fit_x_px', 'wing_fit_y_px', 'wing_fit_rms_adu',
-        'wing_fit_unsaturated_pixels']
+        'wing_fit_unsaturated_pixels', 'photometry_usable',
+        'photometry_exclusion_reason']
     source_fields = [
         'detection_id', 'x_px', 'y_px', 'star_id', 'identified_as_star',
         'source_class', 'saturated', 'saturation_known', 'saturated_channels',
@@ -232,9 +251,11 @@ def measure_photometry(image_path, solution, result, refraction):
             exposure_source=exposure.get('source') or '')
         for channel in measured_channels:
             measured = measure_channel(
-                channels_data[channel], scientific.valid_mask, channel_masks[channel],
+                channels_data[channel], saved_finite_mask, channel_masks[channel],
                 x=x, y=y, aperture_radius=aperture_radius,
-                exposure_seconds=exposure_seconds)
+                exposure_seconds=exposure_seconds,
+                static_visible_mask=static_mask,
+                dynamic_valid_mask=dynamic_mask)
             record[f'{channel}_flux'] = measured['aperture_counts_adu']
             for suffix in measurement_suffixes:
                 record[f'{channel}_{suffix}'] = measured.get(suffix, float('nan'))

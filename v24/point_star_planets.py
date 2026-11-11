@@ -25,6 +25,26 @@ def _load_sky_footprint(solution):
     return mask
 
 
+def _load_sky_mask_layers(solution):
+    """Load the exact saved detection-domain layers with legacy fallbacks."""
+    path = Path(solution)/'dots/sky_footprint.npz'
+    if not path.is_file():
+        return None
+    with np.load(path) as saved:
+        if 'valid_mask' not in saved:
+            raise ValueError('Saved sky-footprint file has no valid_mask')
+        combined = np.asarray(saved['valid_mask'], dtype=bool)
+        static = np.asarray(saved['static_mask'], dtype=bool) if 'static_mask' in saved else np.ones_like(combined)
+        dynamic = np.asarray(saved['dynamic_mask'], dtype=bool) if 'dynamic_mask' in saved else combined.copy()
+        finite = np.asarray(saved['finite_mask'], dtype=bool) if 'finite_mask' in saved else np.ones_like(combined)
+    if any(layer.shape != combined.shape or layer.ndim != 2
+           for layer in (static, dynamic, finite)):
+        raise ValueError('Saved sky-mask layers have inconsistent shapes')
+    if not np.array_equal(combined, static & dynamic & finite):
+        raise ValueError('Saved combined sky mask differs from its component layers')
+    return dict(combined=combined, static=static, dynamic=dynamic, finite=finite)
+
+
 def _date_text(jd):
     from astropy.time import Time
     return Time(jd, format='jd', scale='tdb').isot + ' TDB'
@@ -804,7 +824,10 @@ def predict_other_planets(camera, answer, vector_function):
 def associate_planets_at_metadata_time(camera, detections, planet_names,
                                        vector_function, metadata, *, gate_arcmin=30.,
                                        positional_sigma_arcmin=3.,
-                                       zenith_unit_vector=None):
+                                       zenith_unit_vector=None,
+                                       static_visible_mask=None,
+                                       dynamic_valid_mask=None,
+                                       finite_mask=None):
     """Associate measured sources at the supplied time without inferring an epoch."""
     empty = dict(status='metadata_time_unavailable', matches=[],
                  predicted_without_source=[])
@@ -819,6 +842,15 @@ def associate_planets_at_metadata_time(camera, detections, planet_names,
     zenith /= np.linalg.norm(zenith)
     jd_tdb = float(metadata['jd_tdb'])
     height, width = camera.shape
+    layer_masks = []
+    for name, value in (('static', static_visible_mask),
+                        ('dynamic', dynamic_valid_mask),
+                        ('finite', finite_mask)):
+        layer = np.ones(camera.shape, dtype=bool) if value is None else np.asarray(value, bool)
+        if layer.shape != tuple(camera.shape):
+            raise ValueError(f'Metadata-time {name} mask shape differs from image')
+        layer_masks.append(layer)
+    static_mask, dynamic_mask, finite_pixel_mask = layer_masks
     projected = []
     for name in planet_names:
         vectors = np.asarray(vector_function(name, [jd_tdb]), dtype=float)
@@ -826,12 +858,18 @@ def associate_planets_at_metadata_time(camera, detections, planet_names,
         altitude = float(_altitudes(vectors, zenith)[0])
         if (np.isfinite(point).all() and altitude >= -1e-7
                 and 0 <= point[0] <= width-1 and 0 <= point[1] <= height-1):
+            x, y = int(round(point[0])), int(round(point[1]))
+            status = ('outside_dynamic_sky_footprint' if not dynamic_mask[y, x]
+                      else 'nonfinite_detector_region' if not finite_pixel_mask[y, x]
+                      else 'masked_obstruction' if not static_mask[y, x]
+                      else None)
             projected.append(dict(planet=str(name).title(), _name=str(name),
                                   _ray=vectors[0],
                                   predicted_x_px=float(point[0]),
                                   predicted_y_px=float(point[1]),
                                   predicted_altitude_deg=max(0., altitude),
-                                  jd_tdb=jd_tdb, epoch_tdb=_date_text(jd_tdb)))
+                                  jd_tdb=jd_tdb, epoch_tdb=_date_text(jd_tdb),
+                                  _mask_status=status))
     if not projected:
         return dict(status='metadata_time_no_visible_planets', matches=[],
                     predicted_without_source=[], epoch_tdb=_date_text(jd_tdb),
@@ -843,26 +881,29 @@ def associate_planets_at_metadata_time(camera, detections, planet_names,
     source_gate2 = np.minimum(gate_arcmin**2,
                               star_residual**2-9*positional_sigma_arcmin**2)
     source_gate2[source_gate2 <= 0] = -1.
-    planet_xy = np.array([[row['predicted_x_px'], row['predicted_y_px']]
-                          for row in projected])
-    if len(detections):
+    usable_indices = [index for index, row in enumerate(projected)
+                      if row['_mask_status'] is None]
+    planet_xy = np.array([[projected[index]['predicted_x_px'],
+                           projected[index]['predicted_y_px']]
+                          for index in usable_indices], dtype=float).reshape((-1, 2))
+    if len(detections) and usable_indices:
         measured_rays = camera.to_sky(xy)
         measured_altitudes = _altitudes(measured_rays, zenith)
         measured_visible = measured_altitudes >= -1e-7
-        planet_rays = np.asarray([row['_ray'] for row in projected])
+        planet_rays = np.asarray([projected[index]['_ray'] for index in usable_indices])
         distance_arcmin = _angular_separation_matrix_arcmin(planet_rays, measured_rays)
         distance2 = distance_arcmin**2
         distance2[:, ~measured_visible] = np.inf
-        costs = np.full((len(projected), len(detections)+len(projected)), 1.)
+        costs = np.full((len(usable_indices), len(detections)+len(usable_indices)), 1.)
         costs[:, :len(detections)] = np.where(
             distance2 <= source_gate2[None, :],
             distance2/((len(projected)+1)*gate_arcmin**2), 1e6)
         planet_indices, source_indices = linear_sum_assignment(costs)
-        assignments = [(int(p), int(s)) for p, s in zip(planet_indices, source_indices)
+        assignments = [(usable_indices[int(p)], int(s)) for p, s in zip(planet_indices, source_indices)
                        if s < len(detections)
                        and distance2[p, s] <= source_gate2[s]*(1+1e-8)]
     else:
-        distance2 = np.empty((len(projected), 0))
+        distance2 = np.empty((len(usable_indices), 0))
         assignments = []
     brightness = sorted(range(len(detections)),
                         key=lambda i: float(detections[i].get('flux_above_background', 0)),
@@ -880,8 +921,9 @@ def associate_planets_at_metadata_time(camera, detections, planet_names,
             predicted_x_px=prediction['predicted_x_px'],
             predicted_y_px=prediction['predicted_y_px'],
             separation_px=float(np.linalg.norm(
-                planet_xy[planet_index]-xy[source_index])),
-            separation_arcmin=float(np.sqrt(distance2[planet_index, source_index])),
+                np.array([prediction['predicted_x_px'], prediction['predicted_y_px']])-xy[source_index])),
+            separation_arcmin=float(_paired_angular_separations_arcmin(
+                np.asarray([prediction['_ray']]), camera.to_sky(xy[source_index:source_index+1]))[0]),
             saturated=str(source.get('saturated', False)).lower() == 'true',
             source_class=source.get('source_class', 'unknown'),
             predicted_altitude_deg=prediction['predicted_altitude_deg'],
@@ -899,7 +941,7 @@ def associate_planets_at_metadata_time(camera, detections, planet_names,
             epoch_tdb=prediction['epoch_tdb'], epoch_source=metadata.get('source')))
     matched_planets = {planet_index for planet_index, _ in assignments}
     predictions = [dict((key, value) for key, value in row.items() if not key.startswith('_'))
-                   | {'association_status': 'predicted_no_detected_source',
+                   | {'association_status': (row['_mask_status'] or 'predicted_no_detected_source'),
                       'epoch_source': metadata.get('source')}
                    for index, row in enumerate(projected) if index not in matched_planets]
     return dict(status=('metadata_time_associated' if matches
@@ -971,6 +1013,10 @@ def recover_predicted_planet_sources(
         scientific, camera, predictions, detections, rejected_candidates,
         valid_mask, *, gate_arcmin=30.):
     """Recover strong multichannel peaks rejected only by stellar morphology."""
+    predictions = [row for row in predictions
+                   if row.get('association_status') not in (
+                       'masked_obstruction', 'outside_dynamic_sky_footprint',
+                       'nonfinite_detector_region')]
     if not predictions or not rejected_candidates:
         return []
     valid_mask = np.asarray(valid_mask, dtype=bool)
@@ -1024,12 +1070,15 @@ def recover_predicted_planet_sources(
 def associate_metadata_planets_with_recovery(
         scientific, camera, detections, rejected_candidates, valid_mask,
         planet_names, vector_function, metadata, *,
-        gate_arcmin=30., positional_sigma_arcmin=3., zenith_unit_vector=None):
+        gate_arcmin=30., positional_sigma_arcmin=3., zenith_unit_vector=None,
+        static_visible_mask=None, dynamic_valid_mask=None, finite_mask=None):
     """Associate ordinary detections, then reconsider only predicted rejected peaks."""
     association = associate_planets_at_metadata_time(
         camera, detections, planet_names, vector_function, metadata,
         gate_arcmin=gate_arcmin, positional_sigma_arcmin=positional_sigma_arcmin,
-        zenith_unit_vector=zenith_unit_vector)
+        zenith_unit_vector=zenith_unit_vector,
+        static_visible_mask=static_visible_mask,
+        dynamic_valid_mask=dynamic_valid_mask, finite_mask=finite_mask)
     recovered = recover_predicted_planet_sources(
         scientific, camera, association.get('predicted_without_source', []), detections,
         rejected_candidates, valid_mask,
@@ -1038,7 +1087,9 @@ def associate_metadata_planets_with_recovery(
         association = associate_planets_at_metadata_time(
             camera, [*detections, *recovered], planet_names, vector_function, metadata,
             gate_arcmin=gate_arcmin, positional_sigma_arcmin=positional_sigma_arcmin,
-            zenith_unit_vector=zenith_unit_vector)
+            zenith_unit_vector=zenith_unit_vector,
+            static_visible_mask=static_visible_mask,
+            dynamic_valid_mask=dynamic_valid_mask, finite_mask=finite_mask)
     association['targeted_recovered_sources'] = len(recovered)
     return association, recovered
 
@@ -1078,6 +1129,13 @@ def append_recovered_source_photometry(output, scientific, recovered):
     exposure = scientific.provenance().get('exposure') or {}
     exposure_seconds = exposure.get('seconds') if exposure.get('status') == 'available' else None
     from point_star_photometry import measure_channel
+    layers = _load_sky_mask_layers(output)
+    static_mask = (layers['static'] if layers is not None
+                   else np.ones(scientific.shape, dtype=bool))
+    dynamic_mask = (layers['dynamic'] if layers is not None
+                    else np.ones(scientific.shape, dtype=bool))
+    finite_mask = (layers['finite'] if layers is not None
+                   else scientific.valid_mask)
     added = []
     for source in recovered:
         if str(source['detection_id']) in existing_ids:
@@ -1101,9 +1159,11 @@ def append_recovered_source_photometry(output, scientific, recovered):
             if f'{channel}_flux' not in fields:
                 continue
             measured = measure_channel(
-                pixels, scientific.valid_mask, channel_masks[channel],
+                pixels, finite_mask, channel_masks[channel],
                 x=float(source['x_px']), y=float(source['y_px']),
-                aperture_radius=aperture_radius, exposure_seconds=exposure_seconds)
+                aperture_radius=aperture_radius, exposure_seconds=exposure_seconds,
+                static_visible_mask=static_mask,
+                dynamic_valid_mask=dynamic_mask)
             row[f'{channel}_flux'] = measured['aperture_counts_adu']
             prefix = f'{channel}_'
             for field in fields:
@@ -1296,13 +1356,18 @@ def fit_blind_planet_epoch(image_path, solution, result, *, epoch_limits=(1850.,
     solar = SolarConstraint(classify_night(result, len(used)), envelope, zenith_unit_vector=zenith)
     from point_star_science import load_recorded_image
     scientific = load_recorded_image(image_path, output)
-    lunar_mask = scientific.valid_mask.copy()
-    saved_footprint = _load_sky_footprint(output)
-    if saved_footprint is not None:
-        lunar_mask &= saved_footprint
+    mask_layers = _load_sky_mask_layers(output)
+    if mask_layers is None:
+        mask_layers = dict(
+            static=np.ones(scientific.shape, dtype=bool),
+            dynamic=np.ones(scientific.shape, dtype=bool),
+            finite=scientific.valid_mask.copy(),
+            combined=scientific.valid_mask.copy())
+    lunar_mask = mask_layers['combined'] & scientific.valid_mask
     from point_star_lunar import identify_moon_candidates, predict_topocentric_moon
     moon_sources = identify_moon_candidates(
-        camera, detections, list(used.values()), zenith, valid_mask=lunar_mask)
+        camera, detections, list(used.values()), zenith, valid_mask=lunar_mask,
+        static_visible_mask=mask_layers['static'])
     from point_star_celestial_gate import CelestialHorizonGate
     celestial_gate = CelestialHorizonGate(
         solar_constraint=solar,
@@ -1363,11 +1428,17 @@ def fit_blind_planet_epoch(image_path, solution, result, *, epoch_limits=(1850.,
     lunar_started = time.perf_counter()
     answer = annotate_lunar_evidence(
         answer, camera, scientific.luminance, detections, list(used.values()),
-        valid_mask=lunar_mask)
+        valid_mask=lunar_mask,
+        static_visible_mask=mask_layers['static'],
+        dynamic_valid_mask=mask_layers['dynamic'],
+        finite_mask=mask_layers['finite'])
     lunar_seconds = time.perf_counter()-lunar_started
     answer = check_candidate_absences(image_path, answer, _camera_from_result(result),
                                      detections, list(used.values()), counted_planet_vectors,
-                                     valid_mask=_load_sky_footprint(output), solution=output)
+                                     valid_mask=lunar_mask, solution=output,
+                                     static_visible_mask=mask_layers['static'],
+                                     dynamic_valid_mask=mask_layers['dynamic'],
+                                     finite_mask=mask_layers['finite'])
     answer = annotate_metadata_accuracy(answer)
     evidence_seconds = time.perf_counter()-evidence_started-solar_seconds-lunar_seconds
     write_evidence(output, answer)
@@ -1379,7 +1450,7 @@ def fit_blind_planet_epoch(image_path, solution, result, *, epoch_limits=(1850.,
             rejected_candidates = list(csv.DictReader(handle))
     else:
         rejected_candidates = []
-    recovery_valid_mask = _load_sky_footprint(output)
+    recovery_valid_mask = mask_layers['combined']
     metadata_association, recovered = associate_metadata_planets_with_recovery(
         scientific, _camera_from_result(result), detections,
         rejected_candidates, recovery_valid_mask,
@@ -1387,7 +1458,10 @@ def fit_blind_planet_epoch(image_path, solution, result, *, epoch_limits=(1850.,
         answer.get('observation_time_metadata') or {},
         gate_arcmin=gate_arcmin,
         positional_sigma_arcmin=max(float(result['fit'].get('rms_arcmin', 3.)), 3.),
-        zenith_unit_vector=(answer.get('visibility') or {}).get('zenith_unit_vector'))
+        zenith_unit_vector=(answer.get('visibility') or {}).get('zenith_unit_vector'),
+        static_visible_mask=mask_layers['static'],
+        dynamic_valid_mask=mask_layers['dynamic'],
+        finite_mask=mask_layers['finite'])
     if recovered:
         append_recovered_source_photometry(output, scientific, recovered)
         detections.extend(recovered)

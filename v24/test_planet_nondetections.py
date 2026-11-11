@@ -102,6 +102,14 @@ class NonDetectionTests(unittest.TestCase):
             row = self.checker(valid_mask=loaded).assess('jupiter', [160,120], -2.)
         self.assertEqual(row['status'], 'inconclusive_mask_or_edge')
 
+    def test_static_obstruction_is_explicit_neutral_evidence(self):
+        static = np.ones(self.pixels.shape, dtype=bool)
+        static[110:131, 150:171] = False
+        row = self.checker(static_visible_mask=static).assess(
+            'jupiter', [160, 120], -2.)
+        self.assertEqual(row['status'], 'masked_obstruction')
+        self.assertEqual(row['absence_penalty'], 0)
+
     def test_candidate_absence_reads_signal_above_255_in_native_fits(self):
         import tempfile
         from pathlib import Path

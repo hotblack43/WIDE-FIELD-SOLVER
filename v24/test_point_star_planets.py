@@ -313,6 +313,35 @@ class PlanetSearchTests(unittest.TestCase):
         self.assertEqual(duplicate, [])
         self.assertEqual(outside, [])
 
+    def test_static_mask_prediction_is_obstruction_and_cannot_trigger_recovery(self):
+        from point_star_image import load_scientific_image
+        from point_star_planets import (
+            associate_planets_at_metadata_time, recover_predicted_planet_sources)
+        point = np.array([80., 60.])
+        ray = self.camera.to_sky([point])[0]
+        static = np.ones(self.camera.shape, bool)
+        static[55:66, 75:86] = False
+        association = associate_planets_at_metadata_time(
+            self.camera, [], ['venus'],
+            lambda name, dates: np.tile(ray, (len(dates), 1)),
+            {'status': 'selected', 'jd_tdb': self.origin, 'source': 'test'},
+            zenith_unit_vector=[0., 0., 1.],
+            static_visible_mask=static,
+            dynamic_valid_mask=np.ones(self.camera.shape, bool),
+            finite_mask=np.ones(self.camera.shape, bool))
+        self.assertEqual(
+            association['predicted_without_source'][0]['association_status'],
+            'masked_obstruction')
+        with tempfile.TemporaryDirectory() as folder:
+            image_path = Path(folder)/'masked.fits'
+            fits.PrimaryHDU(np.full((3, *self.camera.shape), 100., np.float32)).writeto(image_path)
+            scientific = load_scientific_image(image_path)
+            recovered = recover_predicted_planet_sources(
+                scientific, self.camera, association['predicted_without_source'], [],
+                [dict(x_px='80', y_px='60', reason='too_sharp')],
+                np.ones(self.camera.shape, bool))
+        self.assertEqual(recovered, [])
+
     def test_metadata_time_association_requires_selected_metadata(self):
         import point_star_planets
         self.assertTrue(hasattr(point_star_planets, 'associate_planets_at_metadata_time'))

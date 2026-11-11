@@ -182,13 +182,17 @@ def _minor_angular_diameter(camera, detection):
 
 
 def identify_moon_candidates(camera, detections, stars, zenith_unit_vector, *,
-                             valid_mask=None):
+                             valid_mask=None, static_visible_mask=None):
     """Return resolved image objects physically large enough to be the Moon."""
     zenith = _unit(zenith_unit_vector, "Moon-candidate zenith")
     identified_ids = {str(row.get("detection_id")) for row in stars}
     mask = None if valid_mask is None else np.asarray(valid_mask, dtype=bool)
+    static_mask = (None if static_visible_mask is None
+                   else np.asarray(static_visible_mask, dtype=bool))
     if mask is not None and mask.shape != tuple(camera.shape):
         raise ValueError("Moon-candidate mask shape differs from the image")
+    if static_mask is not None and static_mask.shape != tuple(camera.shape):
+        raise ValueError("Moon-candidate static mask shape differs from the image")
     rows = []
     for source in detections:
         if str(source.get("detection_id")) in identified_ids:
@@ -201,9 +205,12 @@ def identify_moon_candidates(camera, detections, stars, zenith_unit_vector, *,
                 not np.isfinite(peak_snr) or peak_snr < MINIMUM_LUMINOUS_PEAK_SNR):
             continue
         point = np.array([float(source["x_px"]), float(source["y_px"])])
+        radius_px = float(np.sqrt(max(float(source.get("area_px", 0.0)), 1.0) / np.pi))
         x, y = int(round(point[0])), int(round(point[1]))
         if (x < 0 or y < 0 or x >= camera.shape[1] or y >= camera.shape[0]
-                or (mask is not None and not mask[y, x])):
+                or (mask is not None and not _mask_covers_region(mask, point, radius_px))
+                or (static_mask is not None
+                    and not _mask_covers_region(static_mask, point, radius_px))):
             continue
         vector = _unit(camera.to_sky(point[None, :])[0], "Observed Moon candidate")
         altitude = float(np.rad2deg(np.arcsin(np.clip(
@@ -273,6 +280,9 @@ def annotate_lunar_evidence(
     stars,
     *,
     valid_mask=None,
+    static_visible_mask=None,
+    dynamic_valid_mask=None,
+    finite_mask=None,
     prediction_function=predict_topocentric_moon,
 ):
     """Attach lunar evidence to every retained date without selecting a new date."""
@@ -288,6 +298,15 @@ def annotate_lunar_evidence(
     )
     if mask.shape != pixels.shape:
         raise ValueError("Lunar evidence mask shape differs from the image")
+    static_mask = (np.ones(pixels.shape, dtype=bool) if static_visible_mask is None
+                   else np.asarray(static_visible_mask, dtype=bool))
+    dynamic_mask = (np.ones(pixels.shape, dtype=bool) if dynamic_valid_mask is None
+                    else np.asarray(dynamic_valid_mask, dtype=bool))
+    finite_pixel_mask = (np.isfinite(pixels) if finite_mask is None
+                         else np.asarray(finite_mask, dtype=bool) & np.isfinite(pixels))
+    if any(layer.shape != pixels.shape
+           for layer in (static_mask, dynamic_mask, finite_pixel_mask)):
+        raise ValueError("Lunar evidence mask layer shape differs from the image")
     visibility = out.get("visibility") or {}
     zenith_value = visibility.get("zenith_unit_vector")
     if zenith_value is None:
@@ -305,17 +324,37 @@ def annotate_lunar_evidence(
         return out
     zenith = _unit(zenith_value, "Lunar evidence zenith")
     moon_sources = identify_moon_candidates(
-        camera, list(detections), list(stars), zenith, valid_mask=mask
+        camera, list(detections), list(stars), zenith, valid_mask=mask,
+        static_visible_mask=static_mask
     )
     records = []
     for candidate in candidates:
         prediction = prediction_function(float(candidate["jd_tdb"]), zenith.copy())
         record = _base_record(prediction, zenith)
         altitude = record["predicted_altitude_deg"]
+        vector = np.asarray(record["unit_vector"], dtype=float)
+        point = _project(camera, vector) if altitude > MINIMUM_ALTITUDE_DEG else None
+        radius_px = (_projected_guard_radius(
+            camera, vector, point, record["angular_diameter_deg"]/2.)
+            if point is not None else None)
         if -MINIMUM_ALTITUDE_DEG <= altitude <= MINIMUM_ALTITUDE_DEG:
             row = _finish(
                 record, "inconclusive_near_horizon", "neutral",
                 "The predicted Moon lies inside the five-degree horizon guard",
+            )
+        elif altitude > MINIMUM_ALTITUDE_DEG and (
+                point is None or radius_px is None
+                or not _mask_covers_region(dynamic_mask, point, radius_px)
+                or not _mask_covers_region(finite_pixel_mask, point, radius_px)):
+            row = _finish(
+                record, "inconclusive_mask_or_edge", "neutral",
+                "The predicted lunar disc intersects a dynamic, nonfinite, or detector-edge exclusion",
+            )
+        elif altitude > MINIMUM_ALTITUDE_DEG and not _mask_covers_region(
+                static_mask, point, radius_px):
+            row = _finish(
+                record, "masked_obstruction", "neutral",
+                "The predicted lunar disc intersects the fixed camera-installation foreground mask",
             )
         elif moon_sources and altitude > MINIMUM_ALTITUDE_DEG:
             source = moon_sources[0]
