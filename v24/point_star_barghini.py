@@ -702,12 +702,28 @@ def _association_iteration_state(fitted_i, fitted_j, next_i, next_j, *, iteratio
     return next_i, next_j, False, False
 
 
+def _assert_candidates_within_usable_sky(xy, mask_path):
+    """Fail closed before association if detection emitted an excluded source."""
+    xy = np.asarray(xy, dtype=float)
+    with np.load(mask_path) as saved:
+        usable = np.asarray(saved['valid_mask'], dtype=bool)
+    rounded = np.rint(xy).astype(int)
+    inside = ((rounded[:, 0] >= 0) & (rounded[:, 0] < usable.shape[1])
+              & (rounded[:, 1] >= 0) & (rounded[:, 1] < usable.shape[0]))
+    accepted = np.zeros(len(rounded), dtype=bool)
+    accepted[inside] = usable[rounded[inside, 1], rounded[inside, 0]]
+    if not accepted.all():
+        raise RuntimeError(
+            f'{int((~accepted).sum())} detected source(s) lie outside the saved usable-sky mask')
+
+
 def run(image_path, output, catalog_path, *, label_count=40, names_cache=None, offline=False,
         overwrite=False, observation_time=None, latitude=None, longitude=None,
         elevation_m=0., pressure_hpa=None, temperature_c=10., relative_humidity=.5,
         extinction_mag_per_airmass=None, epoch_mode='fit', epoch_year=None,
         epoch_limits=(1850., 2036.), fits_hdu=None, channel_order=None,
-        saturation_level=None):
+        saturation_level=None, visible_sky_mask_manifest=None,
+        camera_installation_id=None):
     if epoch_mode not in ('fit', 'fixed', 'catalog'):
         raise ValueError('Unknown epoch mode')
     if (epoch_mode == 'fixed') != (epoch_year is not None):
@@ -724,8 +740,14 @@ def run(image_path, output, catalog_path, *, label_count=40, names_cache=None, o
     started = time.monotonic()
     image_path = Path(image_path).expanduser().resolve()
     destination = Path(output).expanduser().resolve()
+    if ((visible_sky_mask_manifest is None) != (camera_installation_id is None)):
+        raise ValueError(
+            'Visible-sky mask manifest and camera installation ID are required together')
+    mask_manifest = (Path(visible_sky_mask_manifest).expanduser().resolve()
+                     if visible_sky_mask_manifest is not None else None)
     for source in (image_path, Path(catalog_path).expanduser().resolve(),
-                   Path(names_cache).expanduser().resolve() if names_cache else None):
+                   Path(names_cache).expanduser().resolve() if names_cache else None,
+                   mask_manifest):
         if source is not None and (source == destination or destination in source.parents):
             raise ValueError(f'Output would remove an input file: {source}')
     # Validate the scientific layout before creating or replacing any result directory.
@@ -735,11 +757,14 @@ def run(image_path, output, catalog_path, *, label_count=40, names_cache=None, o
     output = prepare_output(output, overwrite=overwrite)
     image_options = {key:value for key,value in {
         'fits_hdu':fits_hdu, 'channel_order':channel_order,
-        'saturation_level':saturation_level}.items() if value is not None}
+        'saturation_level':saturation_level,
+        'visible_sky_mask_manifest':mask_manifest,
+        'camera_installation_id':camera_installation_id}.items() if value is not None}
     detection = write_products(image_path, output/'dots', **image_options)
     with (output/'dots/star_candidates.csv').open() as handle:
         rows = list(csv.DictReader(handle))
     xy = np.array([[float(r['x_px']), float(r['y_px'])] for r in rows])
+    _assert_candidates_within_usable_sky(xy, output/'dots/sky_footprint.npz')
     if len(xy) < 12:
         raise RuntimeError('Too few point sources for catalogue matching')
     # First feasibility experiment: every dot is available for association and fitting.

@@ -13,6 +13,8 @@ usage() {
     echo "  --fits-hdu NAME_OR_INDEX"
     echo "  --channel-order RGB|RGGB|RG1G2B"
     echo "  --saturation-level VALUE_OR_CHANNEL_MAP"
+    echo "  --visible-sky-mask-manifest PATH"
+    echo "  --camera-installation-id ID"
     echo "  --blind-planets  ignore EXIF/FITS/filename time and run the full blind planet search"
     echo "Runs solver $expected_version with Gaia; each analysis appends to the selected stars.sqlite."
 }
@@ -31,7 +33,7 @@ while [[ $# -gt 0 ]]; do
             exit 0
             ;;
         --version)
-            echo "Wide-field go21 $expected_version (requires solver $expected_version)"
+            echo "Wide-field go24 $expected_version (requires solver $expected_version)"
             exit 0
             ;;
         --results-dir)
@@ -46,7 +48,7 @@ while [[ $# -gt 0 ]]; do
             solver_args+=("$1")
             shift
             ;;
-        --fits-hdu|--channel-order|--saturation-level)
+        --fits-hdu|--channel-order|--saturation-level|--visible-sky-mask-manifest|--camera-installation-id)
             if [[ $# -lt 2 || -z "${2:-}" ]]; then
                 echo "Missing value for $1" >&2
                 exit 2
@@ -60,7 +62,7 @@ while [[ $# -gt 0 ]]; do
             break
             ;;
         -*)
-            echo "Unsupported go21 option: $1" >&2
+            echo "Unsupported go24 option: $1" >&2
             usage >&2
             exit 2
             ;;

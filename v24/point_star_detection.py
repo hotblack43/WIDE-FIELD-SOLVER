@@ -9,16 +9,19 @@ import csv
 import hashlib
 import json
 from pathlib import Path
+from dataclasses import replace
 
 import numpy as np
-from scipy.ndimage import gaussian_filter, label, maximum_filter
+from scipy.ndimage import binary_dilation, gaussian_filter, label, maximum_filter
 
 from point_star_footprint import infer_sky_footprint
 from point_star_image import load_scientific_image
 from point_star_plotting import save_png
+from point_star_visible_sky import VisibleSkyMask
 
 
 def detect_stars(image, detection_sigma=6., background_sigma=10., *, valid_mask=None,
+                 static_visible_mask=None,
                  saturated_mask=None, saturation_known=True,
                  detection_blur_sigma=0.):
     pixels = np.asarray(image, dtype=float)
@@ -30,23 +33,39 @@ def detect_stars(image, detection_sigma=6., background_sigma=10., *, valid_mask=
         raise ValueError('A greyscale or RGB image at least 15 pixels wide is required')
     finite = np.isfinite(pixels)
     if valid_mask is None:
-        supplied = finite
+        finite_mask = finite
     else:
-        supplied = np.asarray(valid_mask, dtype=bool)
-        if supplied.shape != pixels.shape:
+        finite_mask = np.asarray(valid_mask, dtype=bool)
+        if finite_mask.shape != pixels.shape:
             raise ValueError('Validity mask shape differs from image')
-        supplied &= finite
-    if not supplied.any():
+        finite_mask &= finite
+    if not finite_mask.any():
         raise ValueError('Image contains no finite valid scientific pixels')
-    footprint_pixels = np.where(supplied, pixels, np.median(pixels[supplied]))
+    if static_visible_mask is None:
+        static_mask = np.ones(pixels.shape, dtype=bool)
+    else:
+        static_mask = np.asarray(static_visible_mask, dtype=bool)
+        if static_mask.shape != pixels.shape:
+            raise ValueError('Static visible-sky mask shape differs from image')
+    footprint_pixels = np.where(
+        finite_mask, pixels, np.median(pixels[finite_mask]))
     footprint_mask, footprint = infer_sky_footprint(footprint_pixels)
-    valid_mask = footprint_mask & supplied
-    invalid_count = int((~supplied).sum())
+    dynamic_mask = footprint_mask
+    valid_mask = static_mask & dynamic_mask & finite_mask
+    if not valid_mask.any():
+        raise ValueError('Visible-sky mask leaves no usable scientific pixels')
+    invalid_count = int((~finite_mask).sum())
     if invalid_count:
         footprint['method'] += '_with_invalid_pixel_mask'
         footprint['invalid_pixel_count'] = invalid_count
         footprint['valid_pixel_fraction'] = float(valid_mask.mean())
-    pixels = footprint_pixels
+    fill_value = float(np.median(pixels[valid_mask]))
+    # Static foreground must never affect detection statistics or source
+    # measurements.  Keep finite pixels outside the image-derived footprint,
+    # however, so the established audit can still detect and then classify
+    # point-like graphics in that surrounding frame.
+    candidate_mask = static_mask & finite_mask
+    pixels = np.where(candidate_mask, pixels, fill_value)
     if detection_sigma <= 0 or background_sigma <= 0 or detection_blur_sigma < 0:
         raise ValueError('Detection and background scales must be positive')
     measurement_background = gaussian_filter(pixels, background_sigma)
@@ -61,11 +80,14 @@ def detect_stars(image, detection_sigma=6., background_sigma=10., *, valid_mask=
             raise ValueError('Saturation mask shape differs from image')
     background = gaussian_filter(detection_pixels, background_sigma)
     signal = detection_pixels-background
-    global_noise = max(float(1.4826*np.median(abs(signal-np.median(signal)))), .05)
+    valid_signal = signal[valid_mask]
+    global_noise = max(float(1.4826*np.median(
+        abs(valid_signal-np.median(valid_signal)))), .05)
     noise = np.maximum(global_noise, 1.2533*gaussian_filter(
         np.minimum(abs(signal), 3*global_noise), background_sigma))
     smooth = gaussian_filter(signal, .6)
-    peaks = (smooth == maximum_filter(smooth, size=7)) & (smooth > detection_sigma*noise)
+    peaks = ((smooth == maximum_filter(smooth, size=7))
+             & (smooth > detection_sigma*noise) & candidate_mask)
     yy, xx = np.nonzero(peaks)
     stars, rejected = [], []
     for y, x in zip(yy, xx):
@@ -91,6 +113,11 @@ def detect_stars(image, detection_sigma=6., background_sigma=10., *, valid_mask=
                     # A small window samples the flat top of a broad source as sky.
                     # Try a wider annulus before deciding there is no source.
                     continue
+                break
+            support = binary_dilation(mask, iterations=1)
+            static_cut = static_mask[y-half:y+half+1, x-half:x+half+1]
+            if np.any(support & ~static_cut):
+                reason = 'source_support_intersects_visible_sky_mask'
                 break
             if np.any(mask[annulus]) or (half == 4 and area > 55):
                 reason = 'extended_or_blended'
@@ -149,25 +176,45 @@ def detect_stars(image, detection_sigma=6., background_sigma=10., *, valid_mask=
             unique.append(candidate)
     stars = []
     outside = []
+    static_outside = []
     for candidate in unique:
         x = int(np.clip(round(candidate['x_px']), 0, valid_mask.shape[1]-1))
         y = int(np.clip(round(candidate['y_px']), 0, valid_mask.shape[0]-1))
         if valid_mask[y, x]:
             stars.append(candidate)
+        elif not static_mask[y, x]:
+            static_outside.append(dict(
+                x_px=candidate['x_px'], y_px=candidate['y_px'],
+                reason='outside_visible_sky_mask'))
         else:
             outside.append(dict(x_px=candidate['x_px'], y_px=candidate['y_px'],
                                 reason='outside_sky_footprint'))
     rejected.extend(outside)
+    rejected.extend(static_outside)
     for i, star in enumerate(stars, 1):
         star['detection_id'] = i
     return stars, dict(background=background, signal=signal, noise=noise,
                       global_noise=global_noise, rejected=rejected,
                       local_maxima_count=len(xx), valid_mask=valid_mask,
-                      footprint=footprint, frame_sources_rejected=len(outside))
+                      static_mask=static_mask, dynamic_mask=dynamic_mask,
+                      finite_mask=finite_mask,
+                      footprint=footprint, frame_sources_rejected=len(outside),
+                      visible_sky_sources_rejected=(len(static_outside) + sum(
+                          row['reason'] == 'source_support_intersects_visible_sky_mask'
+                          for row in rejected)),
+                      mask_pixel_counts={
+                          'total': int(valid_mask.size),
+                          'static_visible': int(static_mask.sum()),
+                          'dynamic': int(dynamic_mask.sum()),
+                          'finite': int(finite_mask.sum()),
+                          'combined': int(valid_mask.sum()),
+                      })
 
 
 def write_products(image_path, output, detection_sigma=6., background_sigma=10., *,
-                   fits_hdu=None, channel_order=None, saturation_level=None):
+                   fits_hdu=None, channel_order=None, saturation_level=None,
+                   visible_sky_mask_manifest=None, camera_installation_id=None,
+                   camera_orientation='detector_native_top_left_xy_right_y_down'):
     import matplotlib
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
@@ -178,11 +225,27 @@ def write_products(image_path, output, detection_sigma=6., background_sigma=10.,
     scientific = load_scientific_image(
         image_path, fits_hdu=fits_hdu, channel_order=channel_order,
         saturation_level=saturation_level)
+    if (visible_sky_mask_manifest is None) != (camera_installation_id is None):
+        raise ValueError('Visible-sky mask manifest and camera installation ID are required together')
+    if visible_sky_mask_manifest is None:
+        calibration = VisibleSkyMask.not_configured(scientific.shape)
+    else:
+        provenance = scientific.provenance()
+        calibration = VisibleSkyMask.load(
+            visible_sky_mask_manifest,
+            installation_id=camera_installation_id,
+            instrument=provenance.get('instrument'),
+            detector_shape=scientific.shape,
+            plane_layout=provenance['channel_layout'],
+            orientation=camera_orientation,
+        )
+    scientific = replace(scientific, visible_sky_mask=calibration.visible_mask)
     rgb = scientific.display_rgb
     valid_mask = None if scientific.valid_mask.all() else scientific.valid_mask
     stars, audit = detect_stars(
         scientific.luminance, detection_sigma, background_sigma,
         valid_mask=valid_mask, saturated_mask=scientific.saturated_mask,
+        static_visible_mask=scientific.visible_sky_mask,
         saturation_known=scientific.provenance()['saturation_known'])
     initial_stars, initial_audit = stars, audit
     undersampled_rejections = sum(
@@ -193,6 +256,7 @@ def write_products(image_path, output, detection_sigma=6., background_sigma=10.,
         fallback_stars, fallback_audit = detect_stars(
             scientific.luminance, detection_sigma, background_sigma,
             valid_mask=valid_mask, saturated_mask=scientific.saturated_mask,
+            static_visible_mask=scientific.visible_sky_mask,
             saturation_known=scientific.provenance()['saturation_known'],
             detection_blur_sigma=.8)
         if len(fallback_stars) >= max(12, 2*len(stars)):
@@ -207,6 +271,14 @@ def write_products(image_path, output, detection_sigma=6., background_sigma=10.,
         star['saturated_channels'] = ','.join(channels)
     output.mkdir(parents=True)
     provenance = scientific.provenance()
+    provenance['visible_sky_mask'] = {
+        'status': calibration.status,
+        'mask_id': calibration.mask_id,
+        'installation_id': calibration.installation_id,
+        'mask_sha256': calibration.mask_sha256,
+        'manifest': (str(calibration.manifest_path)
+                     if calibration.manifest_path is not None else None),
+    }
     (output/'input_image.json').write_text(json.dumps(provenance, indent=2)+'\n')
     fields = ['detection_id', 'x_px', 'y_px', 'flux_above_background',
               'peak_above_background', 'peak_snr', 'area_px', 'major_sigma_px',
@@ -240,6 +312,12 @@ def write_products(image_path, output, detection_sigma=6., background_sigma=10.,
         sky_footprint=audit['footprint'],
         valid_sky_pixel_fraction=audit['footprint']['valid_pixel_fraction'],
         frame_sources_rejected=audit['frame_sources_rejected'],
+        visible_sky_sources_rejected=audit['visible_sky_sources_rejected'],
+        visible_sky_mask_status=calibration.status,
+        visible_sky_mask_id=calibration.mask_id,
+        camera_installation_id=calibration.installation_id,
+        visible_sky_mask_sha256=calibration.mask_sha256,
+        mask_pixel_counts=audit['mask_pixel_counts'],
         footprint_reason=audit['footprint']['reason'],
         ocr_used=False,
         metadata_used=False, coordinate_convention='integer pixel centres; x right, y down',
@@ -273,7 +351,13 @@ def write_products(image_path, output, detection_sigma=6., background_sigma=10.,
     fig.tight_layout()
     save_png(fig, output/'dots_overlay.png', dpi=180)
     plt.close(fig)
-    np.savez_compressed(output/'sky_footprint.npz', valid_mask=valid_mask.astype(bool))
+    np.savez_compressed(
+        output/'sky_footprint.npz',
+        valid_mask=valid_mask.astype(bool),
+        static_mask=audit['static_mask'].astype(bool),
+        dynamic_mask=audit['dynamic_mask'].astype(bool),
+        finite_mask=audit['finite_mask'].astype(bool),
+    )
     fig, ax = plt.subplots(figsize=(12, 11))
     ax.imshow(rgb)
     if not valid_mask.all():

@@ -32,10 +32,15 @@ class ScientificImage:
     plane_saturated_masks: Mapping[str, np.ndarray]
     display_rgb: np.ndarray
     metadata: Mapping[str, object]
+    visible_sky_mask: np.ndarray | None = None
 
     @property
     def shape(self):
         return self.luminance.shape
+
+    @property
+    def finite_mask(self):
+        return self.valid_mask
 
     def provenance(self):
         return dict(self.metadata)
@@ -291,7 +296,8 @@ def _read_fits(path, *, fits_hdu=None, channel_order=None):
                        colour_space=primary.get('COLSPACE'),
                        transfer=primary.get('TRANSFER'),
                        photometric_linear=primary.get('PHOTLINE'),
-                       display_pedestal=primary.get('PEDESTAL'))
+                       display_pedestal=primary.get('PEDESTAL'),
+                       instrument=primary.get('INSTRUME'))
         return planes, layout, details, levels, black_levels
 
 

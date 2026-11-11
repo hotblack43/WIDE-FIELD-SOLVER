@@ -44,6 +44,10 @@ def parser():
                    help='Explicit order for an unlabelled three/four-plane stack')
     p.add_argument('--saturation-level',
                    help='One threshold for all planes or channel mapping such as R=4095,G1=4095,G2=4095,B=4095')
+    p.add_argument('--visible-sky-mask-manifest', type=Path,
+                   help='Approved installation-specific visible-sky mask manifest')
+    p.add_argument('--camera-installation-id',
+                   help='Camera installation identity required by the visible-sky mask')
     p.add_argument('--blind-planets', action='store_true',
                    help='Ignore time metadata and force the full blind planetary epoch search')
     p.add_argument('--compare-metadata', action='store_true',
@@ -63,6 +67,9 @@ def main():
         p.error('--epoch-year is required exactly when --epoch-mode fixed is used')
     if (args.latitude is None) != (args.longitude is None):
         p.error('--latitude and --longitude must be supplied together')
+    if ((args.visible_sky_mask_manifest is None)
+            != (args.camera_installation_id is None)):
+        p.error('--visible-sky-mask-manifest and --camera-installation-id must be supplied together')
     if args.database and (args.database.resolve() == args.output.resolve()
                          or args.output.resolve() in args.database.resolve().parents):
         p.error('--database must be outside --output')
@@ -99,7 +106,9 @@ def analyse(args):
                  overwrite=args.overwrite, epoch_mode=args.epoch_mode,
                  epoch_year=args.epoch_year, epoch_limits=args.epoch_limits,
                  fits_hdu=args.fits_hdu, channel_order=args.channel_order,
-                 saturation_level=args.saturation_level)
+                 saturation_level=args.saturation_level,
+                 visible_sky_mask_manifest=args.visible_sky_mask_manifest,
+                 camera_installation_id=args.camera_installation_id)
     science = analyse_existing(args.image.resolve(), args.output, result, args.catalog,
                                force_blind_planets=args.blind_planets)
     from point_star_joint_epoch import refine_joint_epoch
