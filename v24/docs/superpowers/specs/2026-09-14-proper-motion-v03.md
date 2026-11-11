@@ -1,0 +1,11 @@
+# Proper-motion astrometry, version 0.3.0
+
+User-approved design: integrate the existing Tycho/Hipparcos proper motions into association, epoch fitting, and the saved Barghini solution before considering Gaia. Work only in the isolated feature/proper-motion-v0.3 worktree. Preserve the original checkout, v0.1.0 tag, frozen catalogue, example input and historical reference products.
+
+The new solver defaults to a star-derived epoch search. A supplied Julian year is a separate fixed-epoch mode; observation timestamps never seed the stellar search. An explicit catalogue mode replays the baseline for demo regression. New output directories are required by default.
+
+A shared catalogue object retains native positions, per-row epochs, and missing-motion flags, and propagates tangent proper motions to unit vectors. Missing motion remains an explicitly flagged stationary approximation. Epoch profiles refit all associations at every trial with the same robust Barghini objective. No withheld sources. Reassociation occurs between complete profiles, never within their objective. Repeat to stable associations, or fail explicitly.
+
+Report an approximate conditional profile interval based on residual scatter; open, flat, boundary or multiple-minimum profiles remain unresolved. This interval assumes the catalogue motions and camera model and is not evidence against systematic bias. Retain the numerical best-fit camera and applied epoch even when the stellar date is unresolved, explicitly marking them provisional. Use J2000.0 only for zero-motion or numerically flat profiles. This implements the approved requirement to save the winning fit without claiming an unsupported date. Save the final camera, propagated and original catalogue coordinates, measured sky coordinates, epoch provenance, and exact detector predictions/residuals together. Reports and subsequent science use this solution without a second conflicting epoch fit.
+
+Validation includes independent Astropy propagation, mixed epochs and missing motions, synthetic epoch/camera recovery, no-motion and weak-motion identifiability, fixed epochs, output reload consistency, protected output directories, the full test suite, and the historical demo with unchanged thresholds.

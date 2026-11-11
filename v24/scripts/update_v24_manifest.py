@@ -1,0 +1,82 @@
+#!/usr/bin/env python3
+"""Deterministically refresh only the independent v24 source manifest."""
+from __future__ import annotations
+
+import hashlib
+import json
+from pathlib import Path, PurePosixPath
+import subprocess
+
+
+ROOT = Path(__file__).resolve().parents[2]
+PACKAGE = ROOT / "v24"
+MANIFEST = PACKAGE / "SOURCE_MANIFEST.json"
+
+CHANGES = [
+    "Fork the complete frozen v23 runtime into an independent v24 development package.",
+    "Add an installation-specific visible-sky mask without changing the generic unmasked numerical path.",
+    "Add native-FITS aperture-radius and sky-annulus sweeps on held-out nights.",
+    "Retain the v22 aperture unless one global RGB geometry passes validation and final-test gates.",
+    "Batch post-fit coordinate validation, use TDB for fitted Julian epochs, and replace individual transmission-map paths in stage and final terminal output with one count-and-directory summary.",
+    "Prioritize remote MMTO nights before cached backlog and mark distance-only recent planet measurements explicitly when nightly extinction is unavailable.",
+    "Gate MMTO acquisition on fresh public summit humidity below 80 percent, fail open when telemetry is unavailable, and retain per-image audit decisions.",
+    "Rebuild every differential-photometry figure from the fresh cumulative database population instead of a fixed legacy run list.",
+    "Plot every accumulated planet identity and every finite injected-signal recovery row without display truncation, reporting total recovery counts.",
+    "Report each v24 MMTO invocation's downloaded and reused images by observing night before optional photometry stages, and list latest plots with labelled older fallbacks.",
+    "Replace chronological variable-star time-series plotting with phase-folded curves using each star's earliest plotted UTC as phase zero.",
+    "Run bounded MMTO image solves concurrently and bypass batch-only display-name network waits without changing numerical fitting.",
+    "Generate RGB planet photometry in one process so each source FITS is verified and decoded once while preserving separate channel products.",
+]
+
+
+def repository_v24_files() -> list[tuple[str, Path]]:
+    output = subprocess.run(
+        ["git", "ls-files", "--cached", "--others", "--exclude-standard", "v24"],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+    files: list[tuple[str, Path]] = []
+    for name in output:
+        posix = PurePosixPath(name)
+        if len(posix.parts) < 2 or posix.parts[0] != "v24" or ".." in posix.parts:
+            raise ValueError(f"repository path is outside v24: {name}")
+        relative = PurePosixPath(*posix.parts[1:]).as_posix()
+        if relative == "SOURCE_MANIFEST.json":
+            continue
+        source = PACKAGE / relative
+        if not source.is_file():
+            raise FileNotFoundError(f"v24 source is missing: {name}")
+        if PACKAGE not in source.resolve().parents:
+            raise ValueError(f"repository path resolves outside v24: {name}")
+        files.append((relative, source))
+    return sorted(files)
+
+
+def build_manifest() -> dict[str, object]:
+    boundary = json.loads((ROOT / "docs/v23-runtime.json").read_text())
+    return {
+        "version": "0.24.0",
+        "based_on_version": "0.23.0",
+        "based_on_snapshot_kind": boundary["snapshot_kind"],
+        "parent_snapshot": "../docs/v23-runtime.json",
+        "release_status": "development",
+        "changes": CHANGES,
+        "sha256": {
+            relative: hashlib.sha256(source.read_bytes()).hexdigest()
+            for relative, source in repository_v24_files()
+        },
+    }
+
+
+def main() -> int:
+    MANIFEST.write_text(
+        json.dumps(build_manifest(), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

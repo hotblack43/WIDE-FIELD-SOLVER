@@ -183,6 +183,13 @@ only in `v23/` and its `go23.sh`, `go_v0.23.0.sh`, and
 measurement population read-only; only v23 receipts count as completed v23
 solver work.
 
+`go23.sh`, `go_v0.23.0.sh`, `go_mmto_photometry_v23.sh`, and the complete
+`v23/` aperture-photometry runtime are frozen at the v24 boundary; their hashes
+are in `docs/v23-runtime.json`. Develop camera-installation visible-sky masking
+only in `v24/` and its `go24.sh`, `go_v0.24.0.sh`, and
+`go_mmto_photometry_v24.sh` launchers. V24 is based directly on frozen v23;
+only v24 receipts count as completed masked MMTO solver work.
+
 Develop later upgrades in a new version directory with its own launchers,
 catalogue, lockfile, ephemeris data and source manifest. Never overwrite v11 or
 another preserved runtime. All versions must work without `.worktrees`; update

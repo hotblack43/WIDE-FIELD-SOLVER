@@ -1,0 +1,62 @@
+import json
+from pathlib import Path
+import tempfile
+import unittest
+from unittest.mock import patch
+
+from point_star_names import choose_display_name, resolve_names
+
+
+class StarNameTests(unittest.TestCase):
+    def test_offline_names_use_cache_and_fallback_without_network(self):
+        with tempfile.TemporaryDirectory() as directory:
+            cache = Path(directory)/'names.json'
+            cache.write_text(json.dumps({'HIP 27989': {
+                'display_name': 'α Ori', 'name_source': 'SIMBAD'}}))
+            with patch.dict('sys.modules', {'astroquery.simbad': None}):
+                names = resolve_names(['HIP 27989', 'TYC 1-2-1'],
+                                      cache_path=cache, offline=True)
+            self.assertEqual(names['HIP 27989']['display_name'], 'α Ori')
+            self.assertEqual(names['TYC 1-2-1']['display_name'], 'TYC 1-2-1')
+
+    def test_offline_without_cache_retains_identifiers(self):
+        with patch.dict('sys.modules', {'astroquery.simbad': None}):
+            names = resolve_names(['TYC 1-2-1'], offline=True)
+        self.assertEqual(names['TYC 1-2-1']['name_source'], 'catalogue_identifier_fallback')
+
+    def test_cached_simbad_alias_resolves_gaia_identifier_offline(self):
+        with tempfile.TemporaryDirectory() as directory:
+            cache = Path(directory)/'names.json'
+            cache.write_text(json.dumps({'TYC 1-2-1': {
+                'display_name': 'α Ori', 'name_source': 'SIMBAD',
+                'aliases': 'HD 39801|Gaia DR3 9007199254740993'}}))
+            with patch.dict('sys.modules', {'astroquery.simbad': None}):
+                names = resolve_names(['Gaia DR3 9007199254740993'],
+                                      cache_path=cache, offline=True)
+            self.assertEqual(names['Gaia DR3 9007199254740993']['display_name'], 'α Ori')
+
+    def test_plot_labels_omit_unresolved_gaia_identifiers(self):
+        from point_star_names import plot_label
+        raw = 'Gaia DR3 9007199254740993'
+        self.assertIsNone(plot_label(dict(star_id=raw, display_name=raw)))
+        self.assertIsNone(plot_label(dict(star_id=raw)))
+        self.assertEqual(plot_label(dict(star_id=raw, display_name='α Ori')), 'α Ori')
+
+    def test_prefers_bayer_designation(self):
+        self.assertEqual(choose_display_name('HD 39801|NAME Betelgeuse|* alf Ori', 'HIP 27989'), 'α Ori')
+
+    def test_preserves_numbered_bayer_component(self):
+        self.assertEqual(choose_display_name('* alf02 Cap|* 6 Cap', 'HD 192947'), 'α² Cap')
+
+    def test_prefers_hr_then_hd_over_tycho(self):
+        self.assertEqual(
+            choose_display_name('TYC 1234-567-1|HD 39801|HR 2061', 'TYC 1234-567-1'),
+            'HR 2061')
+        self.assertEqual(
+            choose_display_name('TYC 1234-567-1|HD 39801', 'TYC 1234-567-1'),
+            'HD 39801')
+
+    def test_flamsteed_and_catalogue_fallback(self):
+        self.assertEqual(choose_display_name('HD 217014|* 51 Peg', 'TYC 1717-2193-1'), '51 Peg')
+        self.assertEqual(choose_display_name('Gaia DR3 123|HD 12345', 'TYC 1-2-1'), 'HD 12345')
+        self.assertEqual(choose_display_name('', 'TYC 1-2-1'), 'TYC 1-2-1')
