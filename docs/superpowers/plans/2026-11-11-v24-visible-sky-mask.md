@@ -287,11 +287,12 @@ Commit: `feat: propagate foreground mask through photometry evidence`
 - Append-only installation records identify active hardware and mask manifest.
 - Append-only `source_sha256 -> installation_id` assignments control solve-time selection.
 - The MMTO launcher refuses unassigned input or any mask identity/shape/checksum/orientation mismatch.
-- Only successful v24 receipts count as completed v24 analyses.
+- V23 and v24 receipts both count as completed acquisition progress; only a
+  successful v24 receipt represents a completed masked v24 analysis.
 
 - [ ] **Step 1: Write failing assignment and planner tests**
 
-Test immutable assignment, conflicting reassignment rejection, audited historical migration, future active-installation assignment, moved-camera reset, unassigned-input refusal, and v23-receipt reprocessing.
+Test immutable assignment, conflicting reassignment rejection, audited historical migration, future active-installation assignment, moved-camera reset, unassigned-input refusal, and explicit historical reprocessing without altering routine queue progress.
 
 - [ ] **Step 2: Run the focused tests and verify they fail**
 

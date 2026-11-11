@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import hashlib
 import json
 from pathlib import Path
+import re
 from types import MappingProxyType
 from typing import Mapping
 
@@ -20,6 +21,23 @@ def _immutable_bool(values: np.ndarray) -> np.ndarray:
     answer = np.asarray(values, dtype=bool).copy()
     answer.flags.writeable = False
     return answer
+
+
+def _compatible_instrument(recorded: object, observed: object) -> bool:
+    pattern = re.compile(r"^(?P<model>.+?)(?: \((?P<serial>[0-9]+)\))?$")
+    recorded_match = pattern.fullmatch(str(recorded).strip())
+    observed_match = pattern.fullmatch(str(observed).strip())
+    if recorded_match is None or observed_match is None:
+        return False
+    if recorded_match.group("model") != observed_match.group("model"):
+        return False
+    recorded_serial = recorded_match.group("serial")
+    observed_serial = observed_match.group("serial")
+    return (
+        recorded_serial is None
+        or observed_serial is None
+        or recorded_serial == observed_serial
+    )
 
 
 @dataclass(frozen=True)
@@ -61,9 +79,13 @@ class VisibleSkyMask:
             raise VisibleSkyMaskError("visible-sky manifest schema is unsupported")
         if manifest.get("status") != "approved":
             raise VisibleSkyMaskError("visible-sky mask is not approved for production")
+        if not _compatible_instrument(manifest.get("instrument"), instrument):
+            raise VisibleSkyMaskError(
+                "visible-sky instrument mismatch: "
+                f"manifest={manifest.get('instrument')!r}, runtime={instrument!r}"
+            )
         checks = (
             ("installation", manifest.get("installation_id"), installation_id),
-            ("instrument", manifest.get("instrument"), instrument),
             ("shape", tuple(manifest.get("detector_shape", ())), tuple(detector_shape)),
             ("plane layout", manifest.get("plane_layout"), plane_layout),
             ("orientation", manifest.get("orientation"), orientation),

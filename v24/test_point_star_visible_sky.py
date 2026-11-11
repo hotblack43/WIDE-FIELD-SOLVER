@@ -69,6 +69,26 @@ class VisibleSkyMaskTests(unittest.TestCase):
             self.assertFalse(calibration.visible_mask.flags.writeable)
             self.assertEqual(calibration.mask_id, "mmto-visible-sky-2026a-v1")
 
+    def test_same_camera_model_without_serial_uses_installation_mask(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            manifest_path, _manifest = self._calibration(Path(temporary))
+
+            calibration = self._load(
+                manifest_path, instrument="ZWO ASI294MC Pro"
+            )
+
+            self.assertEqual(calibration.status, "approved")
+
+    def test_explicitly_different_camera_serial_is_rejected(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            manifest_path, _manifest = self._calibration(Path(temporary))
+
+            with self.assertRaisesRegex(VisibleSkyMaskError, "instrument"):
+                self._load(
+                    manifest_path,
+                    instrument="ZWO ASI294MC Pro (99999999)",
+                )
+
     def test_nonbinary_mask_is_rejected(self):
         with tempfile.TemporaryDirectory() as temporary:
             manifest_path, _manifest = self._calibration(

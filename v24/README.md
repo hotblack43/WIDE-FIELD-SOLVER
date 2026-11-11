@@ -83,12 +83,13 @@ Run the incremental MMTO queue from the repository root with:
 
 V24 first requests the current MMTO observing-night directory and then any
 intervening recent nights not completed since the previous invocation. New
-images therefore cannot be hidden by a full local backlog or by a skipped daily
-run. It then fills the remaining capacity with verified local images lacking a
-v24 solver receipt before continuing a durable newest-to-oldest historical
-cursor. An incomplete recent night remains ahead of historical work for the
-next invocation. Selection stops as soon as the default total 40-image cap is
-full. Change the cap with:
+images therefore cannot be hidden by a skipped daily run. It inherits the
+durable v23 backward cursor on its first invocation, then maintains its own v24
+state. V23 and v24 receipts both suppress duplicate acquisition work, so a
+version upgrade does not replay the completed November-to-September queue.
+After the recent-night check, selection continues from the inherited historical
+cursor. Selection stops as soon as the default total 40-image cap is full.
+Change the cap with:
 
 ```sh
 ./go_mmto_photometry_v24.sh --max-images 12
@@ -100,15 +101,17 @@ worker uses one BLAS/OpenMP thread, a unique run directory, and the existing
 atomic SQLite append. Routine batch solves use the bundled display-name cache
 offline, so unavailable SIMBAD service cannot delay numerical processing.
 
-Any v24 solver receipt for an image SHA-256 counts as completed v24 work,
-including a recorded scientific failure. Earlier-version receipts remain
-preserved but do not suppress v24 reprocessing. Downloads without v24 receipts
-remain eligible. The historical cursor, latest current-night marker and pending
-recent-night queue are stored beside `stars.sqlite`; they advance only after the
-selected batch has receipts. They remain unchanged after a dry run, transfer
-failure, or solver failure without a receipt. A later derived-product failure
-does not undo completed image work. The default oldest night is 2026-06-30;
-moving earlier requires an explicit `--oldest-night YYYY-MM-DD`.
+A v23 or v24 solver receipt for an image SHA-256 counts as completed acquisition
+work, including a recorded scientific failure. A v24 receipt remains the only
+record of a masked v24 solve; historical masked reprocessing is a separate,
+explicit operation. The historical cursor, latest current-night marker and
+pending recent-night queue are stored beside `stars.sqlite`; before the first
+v24 state is written, these values are inherited from
+`mmto-v23-backfill-state.json`. They advance only after the selected batch has
+receipts and remain unchanged after a dry run, transfer failure, or solver
+failure without a receipt. A later derived-product failure does not undo
+completed image work. The default oldest night is 2026-06-30; moving earlier
+requires an explicit `--oldest-night YYYY-MM-DD`.
 
 V24 runs planet photometry through `v24/plot_ALL_planets_v24.sh`. The wrapper
 retries only transient JPL Horizons connection, read, and retryable HTTP

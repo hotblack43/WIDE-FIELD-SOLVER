@@ -26,6 +26,8 @@ CHANGES = [
     "Replace chronological variable-star time-series plotting with phase-folded curves using each star's earliest plotted UTC as phase zero.",
     "Run bounded MMTO image solves concurrently and bypass batch-only display-name network waits without changing numerical fitting.",
     "Generate RGB planet photometry in one process so each source FITS is verified and decoded once while preserving separate channel products.",
+    "Continue the v24 MMTO backlog from the durable v23 cursor and treat v23 receipts as completed predecessor work.",
+    "Apply the approved MMTO installation mask in production, accepting the same camera model when a known FITS header generation omits its serial while rejecting a different explicit serial.",
 ]
 
 

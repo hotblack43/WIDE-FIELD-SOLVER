@@ -44,12 +44,19 @@ from scripts.run_mmto_photometry_pipeline_v19 import (
     _write_summary,
 )
 from scripts.mmto_weather import HISTORY_ENDPOINT, MmtoWeatherHistory, WeatherDecision
+from scripts.mmto_camera_installations import assign_source
 from v24.mmto_observations import record_observation
 from v24.mmto_time import read_mmto_observation
 
 
 SOLVER_VERSION = "0.24.0"
+PREDECESSOR_SOLVER_VERSION = "0.23.0"
 SOLVER_ENTRYPOINT = Path("v24/analyse_image.py")
+MMTO_VISIBLE_SKY_MASK_MANIFEST = Path(
+    "v24/data/sky_masks/mmto_installation_2026a.json"
+)
+MMTO_CAMERA_INSTALLATION_ID = "mmto-skycam-2026a"
+MMTO_VISIBLE_SKY_MASK_ID = "mmto-visible-sky-2026a-v1"
 DEFAULT_MAX_IMAGES = 40
 DEFAULT_SOLVER_WORKERS = 4
 DEFAULT_MAX_HUMIDITY_PERCENT = 80.0
@@ -285,9 +292,45 @@ def _processed_source_digests(results_database: Path) -> set[str]:
                           THEN json_extract(source_manifest_json, '$.version')=?
                           ELSE 0
                       END
+                      OR (
+                          exit_code=0
+                          AND (
+                              solver_version=?
+                              OR CASE
+                                  WHEN json_valid(source_manifest_json)
+                                  THEN json_extract(source_manifest_json, '$.version')=?
+                                  ELSE 0
+                              END
+                          )
+                          AND CASE
+                              WHEN json_valid(result_json)
+                              THEN (
+                                  json_extract(
+                                      result_json,
+                                      '$.input_image.visible_sky_mask.status'
+                                  )='approved'
+                                  AND json_extract(
+                                      result_json,
+                                      '$.input_image.visible_sky_mask.mask_id'
+                                  )=?
+                                  AND json_extract(
+                                      result_json,
+                                      '$.input_image.visible_sky_mask.installation_id'
+                                  )=?
+                              )
+                              ELSE 0
+                          END
+                      )
                   )
                 """,
-                (SOLVER_VERSION, SOLVER_VERSION),
+                (
+                    PREDECESSOR_SOLVER_VERSION,
+                    PREDECESSOR_SOLVER_VERSION,
+                    SOLVER_VERSION,
+                    SOLVER_VERSION,
+                    MMTO_VISIBLE_SKY_MASK_ID,
+                    MMTO_CAMERA_INSTALLATION_ID,
+                ),
             )
         }
 
@@ -343,8 +386,26 @@ def load_backfill_state(
 ) -> BackfillState:
     archive = Path(archive).resolve()
     state_path = Path(state_path)
+    if os.path.lexists(state_path) and not state_path.is_file():
+        raise ValueError(f"backfill state is not a regular file: {state_path}")
     if not state_path.is_file():
-        return BackfillState(archive, default_night, default_night)
+        predecessor_state_path = state_path.with_name(
+            "mmto-v23-backfill-state.json"
+        )
+        if (
+            os.path.lexists(predecessor_state_path)
+            and not predecessor_state_path.is_file()
+        ):
+            raise ValueError(
+                "backfill state is not a regular file: "
+                f"{predecessor_state_path}"
+            )
+        if (
+            state_path.name != "mmto-v24-backfill-state.json"
+            or not predecessor_state_path.is_file()
+        ):
+            return BackfillState(archive, default_night, default_night)
+        state_path = predecessor_state_path
     payload = json.loads(state_path.read_text(encoding="utf-8"))
     schema_version = payload.get("schema_version")
     if schema_version not in (1, 2):
@@ -1037,10 +1098,68 @@ def _latest_v24_receipt(database_path: Path, source_sha256: str) -> int | None:
     return None if row is None else int(row[0])
 
 
+def _latest_completed_masked_v24_receipt(
+    database_path: Path, source_sha256: str
+) -> int | None:
+    if not Path(database_path).is_file():
+        return None
+    with closing(_read_only_database(database_path)) as database:
+        row = database.execute(
+            """
+            SELECT exit_code FROM runs
+            WHERE source_sha256=?
+              AND exit_code=0
+              AND (
+                  solver_version=?
+                  OR CASE
+                      WHEN json_valid(source_manifest_json)
+                      THEN json_extract(source_manifest_json, '$.version')=?
+                      ELSE 0
+                  END
+              )
+              AND CASE
+                  WHEN json_valid(result_json)
+                  THEN (
+                      json_extract(
+                          result_json,
+                          '$.input_image.visible_sky_mask.status'
+                      )='approved'
+                      AND json_extract(
+                          result_json,
+                          '$.input_image.visible_sky_mask.mask_id'
+                      )=?
+                      AND json_extract(
+                          result_json,
+                          '$.input_image.visible_sky_mask.installation_id'
+                      )=?
+                  )
+                  ELSE 0
+              END
+            ORDER BY rowid DESC LIMIT 1
+            """,
+            (
+                source_sha256,
+                SOLVER_VERSION,
+                SOLVER_VERSION,
+                MMTO_VISIBLE_SKY_MASK_ID,
+                MMTO_CAMERA_INSTALLATION_ID,
+            ),
+        ).fetchone()
+    return None if row is None else int(row[0])
+
+
 def _prepare_solver_run(
-    repo_root: Path, source: Path, results: Path
+    repo_root: Path, source: Path, results: Path,
+    assignment: dict[str, object] | None = None,
 ) -> tuple[Path, list[str]]:
     """Create one private run directory and bypass shell/uv startup overhead."""
+
+    if assignment is None:
+        raise ValueError("MMTO v24 refuses an unassigned camera installation")
+    expected_manifest = (Path(repo_root) / MMTO_VISIBLE_SKY_MASK_MANIFEST).resolve()
+    if (assignment.get("installation_id") != MMTO_CAMERA_INSTALLATION_ID
+            or Path(str(assignment.get("manifest_path", ""))).resolve() != expected_manifest):
+        raise ValueError("MMTO v24 camera assignment does not select the approved installation mask")
 
     source = Path(source)
     results = Path(results)
@@ -1074,6 +1193,10 @@ def _prepare_solver_run(
         str(results / "stars.sqlite"),
         "--blind-planets",
         "--offline",
+        "--visible-sky-mask-manifest",
+        str(expected_manifest),
+        "--camera-installation-id",
+        MMTO_CAMERA_INSTALLATION_ID,
     ]
     return run_dir, command
 
@@ -1348,7 +1471,7 @@ def main(
                 assert isinstance(processing, dict)
                 processed_images = summary["processed_images"]
                 assert isinstance(processed_images, list)
-                pending_solves: list[tuple[int, ReadyImage, Path, dict[str, str]]] = []
+                pending_solves: list[tuple[int, ReadyImage, Path, dict[str, str], dict[str, object]]] = []
                 processed_rows: dict[int, dict[str, str]] = {}
                 for number, image in enumerate(ready, 1):
                     report_row = {
@@ -1360,7 +1483,9 @@ def main(
                         "source": str(image.path),
                         "acquisition": image.acquisition,
                     }
-                    if _latest_v24_receipt(database, image.source_sha256) is not None:
+                    if _latest_completed_masked_v24_receipt(
+                        database, image.source_sha256
+                    ) is not None:
                         processing["receipt_skipped"] += 1
                         processed_rows[number] = {
                             **report_row,
@@ -1378,7 +1503,18 @@ def main(
                         image.observed_bytes,
                         image.source_sha256,
                     )
-                    pending_solves.append((number, image, source, report_row))
+                    assignment = assign_source(
+                        results / "mmto-camera-installation-assignments.jsonl",
+                        source,
+                        image.source_sha256,
+                        repo_root / MMTO_VISIBLE_SKY_MASK_MANIFEST,
+                        MMTO_CAMERA_INSTALLATION_ID,
+                    )
+                    report_row.update(
+                        camera_installation_id=str(assignment["installation_id"]),
+                        visible_sky_mask_id=str(assignment["mask_id"]),
+                    )
+                    pending_solves.append((number, image, source, report_row, assignment))
 
                 processing["attempted"] += len(pending_solves)
                 processed_images[:] = [
@@ -1388,9 +1524,9 @@ def main(
                 solver_errors: list[Exception] = []
 
                 def solve_image(
-                    job: tuple[int, ReadyImage, Path, dict[str, str]],
+                    job: tuple[int, ReadyImage, Path, dict[str, str], dict[str, object]],
                 ) -> tuple[int, dict[str, str], int | None, str, Exception | None]:
-                    number, image, source, report_row = job
+                    number, image, source, report_row, assignment = job
                     transcript = StringIO()
                     run_log_path: Path | None = None
                     _message(
@@ -1398,7 +1534,7 @@ def main(
                     )
                     try:
                         run_dir, command = _prepare_solver_run(
-                            repo_root, source, results
+                            repo_root, source, results, assignment
                         )
                         run_log_path = run_dir / "run.log"
                         _message(f"Run folder: {run_dir}", transcript)

@@ -28,9 +28,11 @@ cannot validate it.
 
 V24 preserves the v23 acquisition order, one-night-at-a-time remote access,
 weather gate, solver-worker bound, and per-invocation image cap. It may reuse
-the append-only archive, download manifest, and results database, but only a
-successful v24 receipt counts as completed masked analysis. Existing images are
-therefore eligible for v24 reprocessing under their assigned installation mask.
+the append-only archive, download manifest, results database, and durable v23
+backward cursor. V23 and v24 receipts both count as completed acquisition work,
+so changing solver versions never restarts the historical queue. Only a v24
+receipt represents masked analysis; any historical masked reprocessing must be
+requested explicitly rather than being folded into routine queue progress.
 
 ## Selected approach
 

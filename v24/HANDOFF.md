@@ -1,9 +1,9 @@
 # V24 MMTO header-time reprocessing handoff
 
-Use `./go23.sh IMAGE` or `./go_v0.24.0.sh IMAGE` for the independent v24
+Use `./go24.sh IMAGE` or `./go_v0.24.0.sh IMAGE` for the independent v24
 runtime. Use `./go_mmto_photometry_v24.sh` to select at most 40 MMTO images
-without a v24 receipt by default, reuse local files, download only selected
-gaps, analyse them, and regenerate inherited and v24 post-fit products.
+without a v23 or v24 receipt by default, reuse local files, download only
+selected gaps, analyse them, and regenerate inherited and v24 post-fit products.
 The original `go_mmto_photometry.sh` remains pinned to v11.
 
 Image analysis uses four concurrent worker processes by default. Use
@@ -14,14 +14,15 @@ atomic SQLite transaction. The batch runner invokes the pinned v24 interpreter
 directly with `--offline`; this removes repeated shell/uv startup and
 display-only SIMBAD network waits while retaining the bundled name cache.
 
-The v24 queue never requests a multi-night historical listing. It drains
-downloaded images without v24 receipts first, checks the current night, and then
-continues from `RESULTS_DIR/mmto-v24-backfill-state.json`, one night per remote
-request. A v24 receipt counts as done, including a recorded scientific failure;
-earlier receipts do not. Dry runs, transfer failures, and solver failures without
-receipts do not advance the cursor; a later product-stage failure does not undo
-completed image work. Use `--max-images N` to change the 40-image cap and
-`--oldest-night` to move the default 2026-06-30 floor deliberately.
+The v24 queue never requests a multi-night historical listing. It checks the
+current night and then continues from `RESULTS_DIR/mmto-v24-backfill-state.json`,
+one night per remote request. If that file does not yet exist, it inherits
+`RESULTS_DIR/mmto-v23-backfill-state.json`. A v23 or v24 receipt counts as done
+acquisition work, including a recorded scientific failure; only a v24 receipt
+represents masked v24 analysis. Dry runs, transfer failures, and solver failures
+without receipts do not advance the cursor; a later product-stage failure does
+not undo completed image work. Use `--max-images N` to change the 40-image cap
+and `--oldest-night` to move the default 2026-06-30 floor deliberately.
 
 The two existing databases are reused. V24 appends versioned runs to
 `results/stars.sqlite` and adds `mmto_v24_observations` to
