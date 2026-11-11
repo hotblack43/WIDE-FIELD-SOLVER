@@ -1833,5 +1833,17 @@
     1411,
     1422
   ],
-  "status": "draft_not_approved"
+  "status": "draft_approved_for_finalization",
+  "approval": {
+    "approved_by": "Peter",
+    "approved_date": "2026-11-11",
+    "approval_statement": "Image 1 is excellent. Image 2 also. all good.",
+    "reviewed_draft_sha256": "00ad433ae2f7e3f19d3d966b2a1047b6d2570e2bb472af8760131505d9141dc9"
+  },
+  "final_artifact": {
+    "manifest": "../../../data/sky_masks/mmto_installation_2026a.json",
+    "mask": "../../../data/sky_masks/mmto_installation_2026a.png",
+    "mask_sha256": "996e27f13cb726c8b759fca641c05b7937325ebd81e297db2f06de17f48cd144",
+    "safety_margin_pixels": 5
+  }
 }

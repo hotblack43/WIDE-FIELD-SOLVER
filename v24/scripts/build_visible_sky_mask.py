@@ -285,6 +285,40 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def finalize_approved_mask(
+    draft_path: Path,
+    output_path: Path,
+    *,
+    safety_margin_pixels: int = 5,
+) -> dict[str, object]:
+    """Freeze an approved draft after expanding excluded foreground inward."""
+    draft_path = Path(draft_path).expanduser().resolve(strict=True)
+    output_path = Path(output_path).expanduser().resolve()
+    if output_path.exists():
+        raise FileExistsError(output_path)
+    if safety_margin_pixels < 0:
+        raise ValueError("safety margin must be non-negative")
+    with Image.open(draft_path) as image:
+        pixels = np.asarray(image.convert("L"), dtype=np.uint8)
+    values = set(np.unique(pixels).tolist())
+    if not values.issubset({0, 255}):
+        raise ValueError(f"draft mask must be binary 0/255, found {sorted(values)}")
+    visible = pixels == 255
+    approved = binary_erosion(visible, iterations=safety_margin_pixels)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    Image.fromarray(np.where(approved, 255, 0).astype(np.uint8), mode="L").save(output_path)
+    return {
+        "draft_path": str(draft_path),
+        "draft_sha256": _sha256(draft_path),
+        "approved_path": str(output_path),
+        "approved_sha256": _sha256(output_path),
+        "safety_margin_pixels": int(safety_margin_pixels),
+        "draft_visible_pixels": int(visible.sum()),
+        "approved_visible_pixels": int(approved.sum()),
+        "excluded_pixels_added": int(visible.sum() - approved.sum()),
+    }
+
+
 def write_proposal(
     output: Path,
     *,

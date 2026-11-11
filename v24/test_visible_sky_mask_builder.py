@@ -14,6 +14,7 @@ from PIL import Image
 
 from scripts.build_visible_sky_mask import (
     accumulate_temporal_evidence,
+    finalize_approved_mask,
     load_native_luminance,
     propose_visible_sky,
     robust_normalize,
@@ -23,6 +24,23 @@ from scripts.build_visible_sky_mask import (
 
 
 class VisibleSkyMaskBuilderTests(unittest.TestCase):
+    def test_finalizer_applies_five_pixel_inward_safety_margin(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            draft = root / "draft.png"
+            output = root / "approved.png"
+            pixels = np.zeros((31, 31), dtype=np.uint8)
+            pixels[5:26, 5:26] = 255
+            Image.fromarray(pixels, mode="L").save(draft)
+
+            record = finalize_approved_mask(draft, output, safety_margin_pixels=5)
+
+            approved = np.asarray(Image.open(output))
+            self.assertEqual(int((approved == 255).sum()), 11 * 11)
+            self.assertEqual(record["safety_margin_pixels"], 5)
+            self.assertEqual(record["draft_visible_pixels"], 21 * 21)
+            self.assertEqual(record["approved_visible_pixels"], 11 * 11)
+
     def test_direct_entrypoint_can_load_the_v24_runtime(self):
         script = Path(__file__).parent / "scripts" / "build_visible_sky_mask.py"
         completed = subprocess.run(

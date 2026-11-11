@@ -1,0 +1,1135 @@
+{
+  "schema": "wide-field-solver-visible-sky-mask-v1",
+  "status": "approved",
+  "mask_id": "mmto-visible-sky-2026a-v1",
+  "installation_id": "mmto-skycam-2026a",
+  "instrument": "ZWO ASI294MC Pro (21599760)",
+  "detector_shape": [
+    1411,
+    1422
+  ],
+  "plane_layout": "plane_first",
+  "plane_names": [
+    "R",
+    "G",
+    "B"
+  ],
+  "orientation": "detector_native_top_left_xy_right_y_down",
+  "coordinate_convention": "array[y, x]; origin top-left",
+  "mask_file": "mmto_installation_2026a.png",
+  "mask_sha256": "996e27f13cb726c8b759fca641c05b7937325ebd81e297db2f06de17f48cd144",
+  "mask_values": {
+    "0": "excluded",
+    "255": "visible_sky"
+  },
+  "safety_margin_pixels": 5,
+  "draft_visible_pixels": 1277547,
+  "approved_visible_pixels": 1249049,
+  "excluded_pixels_added_by_safety_margin": 28498,
+  "approved_visible_fraction": 0.6225193651249326,
+  "review": {
+    "selection_file": "../../examples/mmto/visible_sky_mask_review/selection.json",
+    "selection_sha256": "f1fd182868f1c3d3f7bda2a73eb2b3b72104895f1c1cbc83c25f79646f42372b",
+    "reviewed_draft_file": "../../examples/mmto/visible_sky_mask_review/mmto_installation_2026a.draft.png",
+    "reviewed_draft_sha256": "00ad433ae2f7e3f19d3d966b2a1047b6d2570e2bb472af8760131505d9141dc9"
+  },
+  "approval": {
+    "approved_by": "Peter",
+    "approved_date": "2026-11-11",
+    "approval_statement": "Image 1 is excellent. Image 2 also. all good.",
+    "reviewed_draft_sha256": "00ad433ae2f7e3f19d3d966b2a1047b6d2570e2bb472af8760131505d9141dc9"
+  },
+  "generation": {
+    "proposal_code_sha256": "46f0f50005a35a4f372dc223399e2a979ecdca45cfb798a610a671973aff7b30",
+    "finalization_code_sha256": "42afb717ad4ab0d52fb9b77acc7afdb86bb204a5d8fb99a414f3fde3fb5f22f5",
+    "method": {
+      "connected_components": 1,
+      "excluded_pixels": 728895,
+      "frame_count": 66,
+      "local_dark_structure_ratio_maximum": 0.72,
+      "local_dark_structure_scale_pixels": 23.516666666666666,
+      "method": "temporal_intensity_source_variability_connected_sky",
+      "minimum_structure_radius_pixels": 282.2,
+      "optical_consensus_minimum": 0.8,
+      "radial_skyline_bins": 2216,
+      "safety_margin_pixels": 0,
+      "safety_margin_status": "deferred_until_approval",
+      "score_weights": {
+        "illuminated_temporal_variability": 0.1,
+        "source_density": 0.3,
+        "temporal_median": 0.6
+      },
+      "sky_score_minimum": 0.1,
+      "visible_fraction": 0.6367226164524068,
+      "visible_pixels": 1277547
+    }
+  },
+  "source_selection": {
+    "method": "one frame per date cycling early/middle/late sorted night phase",
+    "observation_date_coverage": {
+      "dates": [
+        "2026-09-01",
+        "2026-09-02",
+        "2026-09-03",
+        "2026-09-04",
+        "2026-09-05",
+        "2026-09-06",
+        "2026-09-07",
+        "2026-09-08",
+        "2026-09-09",
+        "2026-09-10",
+        "2026-09-11",
+        "2026-09-12",
+        "2026-09-13",
+        "2026-09-14",
+        "2026-09-15",
+        "2026-09-16",
+        "2026-09-17",
+        "2026-09-18",
+        "2026-09-19",
+        "2026-09-20",
+        "2026-09-21",
+        "2026-09-22",
+        "2026-09-23",
+        "2026-09-24",
+        "2026-09-25",
+        "2026-09-26",
+        "2026-09-27",
+        "2026-09-29",
+        "2026-09-30",
+        "2026-10-01",
+        "2026-10-02",
+        "2026-10-03",
+        "2026-10-04",
+        "2026-10-05",
+        "2026-10-06",
+        "2026-10-07",
+        "2026-10-08",
+        "2026-10-09",
+        "2026-10-10",
+        "2026-10-11",
+        "2026-10-12",
+        "2026-10-13",
+        "2026-10-14",
+        "2026-10-15",
+        "2026-10-16",
+        "2026-10-17",
+        "2026-10-18",
+        "2026-10-19",
+        "2026-10-20",
+        "2026-10-21",
+        "2026-10-22",
+        "2026-10-23",
+        "2026-10-24",
+        "2026-10-25",
+        "2026-10-26",
+        "2026-10-27",
+        "2026-10-28",
+        "2026-10-29",
+        "2026-11-02",
+        "2026-11-03",
+        "2026-11-04",
+        "2026-11-05",
+        "2026-11-06",
+        "2026-11-07",
+        "2026-11-08",
+        "2026-11-09"
+      ],
+      "first": "2026-09-01",
+      "last": "2026-11-09"
+    },
+    "source_count": 66,
+    "sources": [
+      {
+        "path": "/media/pth/Sandisk8TB/pth13-offload/WIDE-FIELD-SOLVER/raw_allsky_samples/mmto/mmto-skycam/2026-09-01/2026_09_01__22_00_03.fits.bz2",
+        "source_sha256": "ae1fad0375f25e8143633efcb309de5a7914f80c58a0c524abfa755f0c556969",
+        "observation_date": "2026-09-01",
+        "spatial_shape": [
+          1411,
+          1422
+        ],
+        "channel_layout": "plane_first",
+        "plane_names": [
+          "R",
+          "G",
+          "B"
+        ]
+      },
+      {
+        "path": "/media/pth/Sandisk8TB/pth13-offload/WIDE-FIELD-SOLVER/raw_allsky_samples/mmto/mmto-skycam/2026-09-02/2026_09_03__00_20_09.fits.bz2",
+        "source_sha256": "8e44b38a6a90c4340a2df831da14922c085422d47dc6abef8f7081861fc3701e",
+        "observation_date": "2026-09-02",
+        "spatial_shape": [
+          1411,
+          1422
+        ],
+        "channel_layout": "plane_first",
+        "plane_names": [
+          "R",
+          "G",
+          "B"
+        ]
+      },
+      {
+        "path": "/media/pth/Sandisk8TB/pth13-offload/WIDE-FIELD-SOLVER/raw_allsky_samples/mmto/mmto-skycam/2026-09-03/2026_09_04__02_40_12.fits.bz2",
+        "source_sha256": "e093731c1bef1ec4b5670fb6db9c20e9cd21e5e9c86bb785837f27b479db3ebd",
+        "observation_date": "2026-09-03",
+        "spatial_shape": [
+          1411,
+          1422
+        ],
+        "channel_layout": "plane_first",
+        "plane_names": [
+          "R",
+          "G",
+          "B"
+        ]
+      },
+      {
+        "path": "/media/pth/Sandisk8TB/pth13-offload/WIDE-FIELD-SOLVER/raw_allsky_samples/mmto/mmto-skycam/2026-09-04/2026_09_04__21_40_10.fits.bz2",
+        "source_sha256": "95782db990f21618dd0c6016c7d896ac3906bb1f79b78be209541fe0858360e1",
+        "observation_date": "2026-09-04",
+        "spatial_shape": [
+          1411,
+          1422
+        ],
+        "channel_layout": "plane_first",
+        "plane_names": [
+          "R",
+          "G",
+          "B"
+        ]
+      },
+      {
+        "path": "/media/pth/Sandisk8TB/pth13-offload/WIDE-FIELD-SOLVER/raw_allsky_samples/mmto/mmto-skycam/2026-09-05/2026_09_06__00_00_00.fits.bz2",
+        "source_sha256": "286e7b935d91739ef3fdaec19a50d0db9621caf3db91818a7e97d36ae3a4ebfa",
+        "observation_date": "2026-09-05",
+        "spatial_shape": [
+          1411,
+          1422
+        ],
+        "channel_layout": "plane_first",
+        "plane_names": [
+          "R",
+          "G",
+          "B"
+        ]
+      },
+      {
+        "path": "/media/pth/Sandisk8TB/pth13-offload/WIDE-FIELD-SOLVER/raw_allsky_samples/mmto/mmto-skycam/2026-09-06/2026_09_07__02_40_07.fits.bz2",
+        "source_sha256": "b90d42205b498e2af4c74175906d7ab5dcf87430fd703b478a6bc14e2eb65826",
+        "observation_date": "2026-09-06",
+        "spatial_shape": [
+          1411,
+          1422
+        ],
+        "channel_layout": "plane_first",
+        "plane_names": [
+          "R",
+          "G",
+          "B"
+        ]
+      },
+      {
+        "path": "/media/pth/Sandisk8TB/pth13-offload/WIDE-FIELD-SOLVER/raw_allsky_samples/mmto/mmto-skycam/2026-09-07/2026_09_07__21_40_21.fits.bz2",
+        "source_sha256": "d31eb150887bcd9378e879c2c39b6e4454c4b02486578afceda7c0f8f3d0f0d4",
+        "observation_date": "2026-09-07",
+        "spatial_shape": [
+          1411,
+          1422
+        ],
+        "channel_layout": "plane_first",
+        "plane_names": [
+          "R",
+          "G",
+          "B"
+        ]
+      },
+      {
+        "path": "/media/pth/Sandisk8TB/pth13-offload/WIDE-FIELD-SOLVER/raw_allsky_samples/mmto/mmto-skycam/2026-09-08/2026_09_09__00_00_21.fits.bz2",
+        "source_sha256": "6b155e28b04b2c0f4f4bb801a898f1286cd3badc02ca629b494a22032618f523",
+        "observation_date": "2026-09-08",
+        "spatial_shape": [
+          1411,
+          1422
+        ],
+        "channel_layout": "plane_first",
+        "plane_names": [
+          "R",
+          "G",
+          "B"
+        ]
+      },
+      {
+        "path": "/media/pth/Sandisk8TB/pth13-offload/WIDE-FIELD-SOLVER/raw_allsky_samples/mmto/mmto-skycam/2026-09-09/2026_09_10__02_40_02.fits.bz2",
+        "source_sha256": "5716d35f460e55791f9b22c7efe81fd46b0c8ea960de8afaf3b1e2bfabe81946",
+        "observation_date": "2026-09-09",
+        "spatial_shape": [
+          1411,
+          1422
+        ],
+        "channel_layout": "plane_first",
+        "plane_names": [
+          "R",
+          "G",
+          "B"
+        ]
+      },
+      {
+        "path": "/media/pth/Sandisk8TB/pth13-offload/WIDE-FIELD-SOLVER/raw_allsky_samples/mmto/mmto-skycam/2026-09-10/2026_09_10__21_40_00.fits.bz2",
+        "source_sha256": "c75a8a31a648b8a0d0aaa3199e5c1be353609853692e7450c734fa22803714f4",
+        "observation_date": "2026-09-10",
+        "spatial_shape": [
+          1411,
+          1422
+        ],
+        "channel_layout": "plane_first",
+        "plane_names": [
+          "R",
+          "G",
+          "B"
+        ]
+      },
+      {
+        "path": "/media/pth/Sandisk8TB/pth13-offload/WIDE-FIELD-SOLVER/raw_allsky_samples/mmto/mmto-skycam/2026-09-11/2026_09_12__00_00_14.fits.bz2",
+        "source_sha256": "6a7b85b139526c362da5cbde192b5edff48c4a77ecb1bd9bda7c8f5f1f78fe6c",
+        "observation_date": "2026-09-11",
+        "spatial_shape": [
+          1411,
+          1422
+        ],
+        "channel_layout": "plane_first",
+        "plane_names": [
+          "R",
+          "G",
+          "B"
+        ]
+      },
+      {
+        "path": "/media/pth/Sandisk8TB/pth13-offload/WIDE-FIELD-SOLVER/raw_allsky_samples/mmto/mmto-skycam/2026-09-12/2026_09_13__02_20_23.fits.bz2",
+        "source_sha256": "459365a525558bd7156d33476c3a33a93678a6378b2519a2d8e74ac0c337d0aa",
+        "observation_date": "2026-09-12",
+        "spatial_shape": [
+          1411,
+          1422
+        ],
+        "channel_layout": "plane_first",
+        "plane_names": [
+          "R",
+          "G",
+          "B"
+        ]
+      },
+      {
+        "path": "/media/pth/Sandisk8TB/pth13-offload/WIDE-FIELD-SOLVER/raw_allsky_samples/mmto/mmto-skycam/2026-09-13/2026_09_13__21_20_14.fits.bz2",
+        "source_sha256": "becf02e8b7c6a5bffb54b73cd577e336d6ae2b2d80b18fc16c2db25ce83debc3",
+        "observation_date": "2026-09-13",
+        "spatial_shape": [
+          1411,
+          1422
+        ],
+        "channel_layout": "plane_first",
+        "plane_names": [
+          "R",
+          "G",
+          "B"
+        ]
+      },
+      {
+        "path": "/media/pth/Sandisk8TB/pth13-offload/WIDE-FIELD-SOLVER/raw_allsky_samples/mmto/mmto-skycam/2026-09-14/2026_09_15__00_40_24.fits.bz2",
+        "source_sha256": "8aef82b31b65dcbe93ab61b53973f8be2530cabd7d201d8f4b4afb8e5922a8b8",
+        "observation_date": "2026-09-14",
+        "spatial_shape": [
+          1411,
+          1422
+        ],
+        "channel_layout": "plane_first",
+        "plane_names": [
+          "R",
+          "G",
+          "B"
+        ]
+      },
+      {
+        "path": "/media/pth/Sandisk8TB/pth13-offload/WIDE-FIELD-SOLVER/raw_allsky_samples/mmto/mmto-skycam/2026-09-15/2026_09_16__02_40_19.fits.bz2",
+        "source_sha256": "7c140ccc6cd8be966c635e625f3e5017085ec7e80b61ec4c20959fa36da0084c",
+        "observation_date": "2026-09-15",
+        "spatial_shape": [
+          1411,
+          1422
+        ],
+        "channel_layout": "plane_first",
+        "plane_names": [
+          "R",
+          "G",
+          "B"
+        ]
+      },
+      {
+        "path": "/media/pth/Sandisk8TB/pth13-offload/WIDE-FIELD-SOLVER/raw_allsky_samples/mmto/mmto-skycam/2026-09-16/2026_09_16__21_40_05.fits.bz2",
+        "source_sha256": "291877e25e68e9b320c8fd5a6d0ae8c07eb3eac4c43dd4e6e2dc6b93048d40b6",
+        "observation_date": "2026-09-16",
+        "spatial_shape": [
+          1411,
+          1422
+        ],
+        "channel_layout": "plane_first",
+        "plane_names": [
+          "R",
+          "G",
+          "B"
+        ]
+      },
+      {
+        "path": "/media/pth/Sandisk8TB/pth13-offload/WIDE-FIELD-SOLVER/raw_allsky_samples/mmto/mmto-skycam/2026-09-17/2026_09_18__00_00_13.fits.bz2",
+        "source_sha256": "d102dbc8d9062bea57c32b4971e94d96b2b40e78990eadbbffe8a6f925217d90",
+        "observation_date": "2026-09-17",
+        "spatial_shape": [
+          1411,
+          1422
+        ],
+        "channel_layout": "plane_first",
+        "plane_names": [
+          "R",
+          "G",
+          "B"
+        ]
+      },
+      {
+        "path": "/media/pth/Sandisk8TB/pth13-offload/WIDE-FIELD-SOLVER/raw_allsky_samples/mmto/mmto-skycam/2026-09-18/2026_09_19__03_00_19.fits.bz2",
+        "source_sha256": "fd8dd2b82a4c6230ca492f4a52625e2cdd9aea95ca7f907d11595d3b4ca3cc3f",
+        "observation_date": "2026-09-18",
+        "spatial_shape": [
+          1411,
+          1422
+        ],
+        "channel_layout": "plane_first",
+        "plane_names": [
+          "R",
+          "G",
+          "B"
+        ]
+      },
+      {
+        "path": "/media/pth/Sandisk8TB/pth13-offload/WIDE-FIELD-SOLVER/raw_allsky_samples/mmto/mmto-skycam/2026-09-19/2026_09_19__21_40_21.fits.bz2",
+        "source_sha256": "bb39c396911668fedc7279b58637713fe77d22e750bb2d5addff9587b61cae3f",
+        "observation_date": "2026-09-19",
+        "spatial_shape": [
+          1411,
+          1422
+        ],
+        "channel_layout": "plane_first",
+        "plane_names": [
+          "R",
+          "G",
+          "B"
+        ]
+      },
+      {
+        "path": "/media/pth/Sandisk8TB/pth13-offload/WIDE-FIELD-SOLVER/raw_allsky_samples/mmto/mmto-skycam/2026-09-20/2026_09_21__00_00_12.fits.bz2",
+        "source_sha256": "9b301d74370e98385b1d0e319e91c95f4aa99fae8bfbfa001f8055fc38dc7090",
+        "observation_date": "2026-09-20",
+        "spatial_shape": [
+          1411,
+          1422
+        ],
+        "channel_layout": "plane_first",
+        "plane_names": [
+          "R",
+          "G",
+          "B"
+        ]
+      },
+      {
+        "path": "/media/pth/Sandisk8TB/pth13-offload/WIDE-FIELD-SOLVER/raw_allsky_samples/mmto/mmto-skycam/2026-09-21/2026_09_22__02_20_11.fits.bz2",
+        "source_sha256": "b918b18f64e8f9bed6b53db1ea89812e860b5f8b3eb4b46630ed484660a2f1c0",
+        "observation_date": "2026-09-21",
+        "spatial_shape": [
+          1411,
+          1422
+        ],
+        "channel_layout": "plane_first",
+        "plane_names": [
+          "R",
+          "G",
+          "B"
+        ]
+      },
+      {
+        "path": "/media/pth/Sandisk8TB/pth13-offload/WIDE-FIELD-SOLVER/raw_allsky_samples/mmto/mmto-skycam/2026-09-22/2026_09_22__21_40_13.fits.bz2",
+        "source_sha256": "2d2cbc85e2b37dfa90988e5a68463a34d00f315c003f8c7ae94b6286cc03ad35",
+        "observation_date": "2026-09-22",
+        "spatial_shape": [
+          1411,
+          1422
+        ],
+        "channel_layout": "plane_first",
+        "plane_names": [
+          "R",
+          "G",
+          "B"
+        ]
+      },
+      {
+        "path": "/media/pth/Sandisk8TB/pth13-offload/WIDE-FIELD-SOLVER/raw_allsky_samples/mmto/mmto-skycam/2026-09-23/2026_09_24__00_20_04.fits.bz2",
+        "source_sha256": "b200a94627d16d59f6b6d5c66fefbd2d8edc45d949aad8a15b16ef56019efcd5",
+        "observation_date": "2026-09-23",
+        "spatial_shape": [
+          1411,
+          1422
+        ],
+        "channel_layout": "plane_first",
+        "plane_names": [
+          "R",
+          "G",
+          "B"
+        ]
+      },
+      {
+        "path": "/media/pth/Sandisk8TB/pth13-offload/WIDE-FIELD-SOLVER/raw_allsky_samples/mmto/mmto-skycam/2026-09-24/2026_09_25__02_40_00.fits.bz2",
+        "source_sha256": "da5ed559135949ce84edb69c7e6b4cff25989cdaf11ac3742b1a6dddc0c295a6",
+        "observation_date": "2026-09-24",
+        "spatial_shape": [
+          1411,
+          1422
+        ],
+        "channel_layout": "plane_first",
+        "plane_names": [
+          "R",
+          "G",
+          "B"
+        ]
+      },
+      {
+        "path": "/media/pth/Sandisk8TB/pth13-offload/WIDE-FIELD-SOLVER/raw_allsky_samples/mmto/mmto-skycam/2026-09-25/2026_09_25__21_40_05.fits.bz2",
+        "source_sha256": "87db1ecaaf90c8465f2b95125d72730d763696e10ec31b39f30bc3a5ee858447",
+        "observation_date": "2026-09-25",
+        "spatial_shape": [
+          1411,
+          1422
+        ],
+        "channel_layout": "plane_first",
+        "plane_names": [
+          "R",
+          "G",
+          "B"
+        ]
+      },
+      {
+        "path": "/media/pth/Sandisk8TB/pth13-offload/WIDE-FIELD-SOLVER/raw_allsky_samples/mmto/mmto-skycam/2026-09-26/2026_09_27__00_20_04.fits.bz2",
+        "source_sha256": "ba65fa7e3d1b8d944c750284a0ea00dbea7095f360fe9d9cc522fc392b8a9e03",
+        "observation_date": "2026-09-26",
+        "spatial_shape": [
+          1411,
+          1422
+        ],
+        "channel_layout": "plane_first",
+        "plane_names": [
+          "R",
+          "G",
+          "B"
+        ]
+      },
+      {
+        "path": "/media/pth/Sandisk8TB/pth13-offload/WIDE-FIELD-SOLVER/raw_allsky_samples/mmto/mmto-skycam/2026-09-27/2026_09_28__02_40_06.fits.bz2",
+        "source_sha256": "5c68a2ab559bfa2b7e45eb39d5b1fc4fcdbec38ee934e620ca269fdba4630936",
+        "observation_date": "2026-09-27",
+        "spatial_shape": [
+          1411,
+          1422
+        ],
+        "channel_layout": "plane_first",
+        "plane_names": [
+          "R",
+          "G",
+          "B"
+        ]
+      },
+      {
+        "path": "/media/pth/Sandisk8TB/pth13-offload/WIDE-FIELD-SOLVER/raw_allsky_samples/mmto/mmto-skycam/2026-09-29/2026_09_29__21_40_20.fits.bz2",
+        "source_sha256": "8bd4fe19562f84d2e94cf98d7a0ec8e369cb5b8e67c52a8e3864e6868c5a3d72",
+        "observation_date": "2026-09-29",
+        "spatial_shape": [
+          1411,
+          1422
+        ],
+        "channel_layout": "plane_first",
+        "plane_names": [
+          "R",
+          "G",
+          "B"
+        ]
+      },
+      {
+        "path": "/media/pth/Sandisk8TB/pth13-offload/WIDE-FIELD-SOLVER/raw_allsky_samples/mmto/mmto-skycam/2026-09-30/2026_10_01__00_20_17.fits.bz2",
+        "source_sha256": "7fe7759982505ecec05b58c4f0900ce3b385020cb32f66904ba5f3b1949076a4",
+        "observation_date": "2026-09-30",
+        "spatial_shape": [
+          1411,
+          1422
+        ],
+        "channel_layout": "plane_first",
+        "plane_names": [
+          "R",
+          "G",
+          "B"
+        ]
+      },
+      {
+        "path": "/media/pth/Sandisk8TB/pth13-offload/WIDE-FIELD-SOLVER/raw_allsky_samples/mmto/mmto-skycam/2026-10-01/2026_10_02__02_40_10.fits.bz2",
+        "source_sha256": "288d5d0349b94badae45c45ed55fba432cbf2c28207ffb0d253e1dfd2b4a0dc5",
+        "observation_date": "2026-10-01",
+        "spatial_shape": [
+          1411,
+          1422
+        ],
+        "channel_layout": "plane_first",
+        "plane_names": [
+          "R",
+          "G",
+          "B"
+        ]
+      },
+      {
+        "path": "/media/pth/Sandisk8TB/pth13-offload/WIDE-FIELD-SOLVER/raw_allsky_samples/mmto/mmto-skycam/2026-10-02/2026_10_02__21_20_07.fits.bz2",
+        "source_sha256": "134acf689a9eabeb1a6aec785a3522fc51ef86f4aa71a4a8901754b5b921339f",
+        "observation_date": "2026-10-02",
+        "spatial_shape": [
+          1411,
+          1422
+        ],
+        "channel_layout": "plane_first",
+        "plane_names": [
+          "R",
+          "G",
+          "B"
+        ]
+      },
+      {
+        "path": "/media/pth/Sandisk8TB/pth13-offload/WIDE-FIELD-SOLVER/raw_allsky_samples/mmto/mmto-skycam/2026-10-03/2026_10_04__00_00_20.fits.bz2",
+        "source_sha256": "0fdf07311b4c7d772410fd3b374ec2acbe3924bc21761655e598b926c8b2e823",
+        "observation_date": "2026-10-03",
+        "spatial_shape": [
+          1411,
+          1422
+        ],
+        "channel_layout": "plane_first",
+        "plane_names": [
+          "R",
+          "G",
+          "B"
+        ]
+      },
+      {
+        "path": "/media/pth/Sandisk8TB/pth13-offload/WIDE-FIELD-SOLVER/raw_allsky_samples/mmto/mmto-skycam/2026-10-04/2026_10_05__02_40_21.fits.bz2",
+        "source_sha256": "50c88e13fcfb139db22506662693d547102a1fb504e844422b7315e9dc397611",
+        "observation_date": "2026-10-04",
+        "spatial_shape": [
+          1411,
+          1422
+        ],
+        "channel_layout": "plane_first",
+        "plane_names": [
+          "R",
+          "G",
+          "B"
+        ]
+      },
+      {
+        "path": "/media/pth/Sandisk8TB/pth13-offload/WIDE-FIELD-SOLVER/raw_allsky_samples/mmto/mmto-skycam/2026-10-05/2026_10_05__21_20_19.fits.bz2",
+        "source_sha256": "a1b0ea7e5633e8907d50396193e26c54eddc3ff1386fd1ec4a9b41dc3480ccff",
+        "observation_date": "2026-10-05",
+        "spatial_shape": [
+          1411,
+          1422
+        ],
+        "channel_layout": "plane_first",
+        "plane_names": [
+          "R",
+          "G",
+          "B"
+        ]
+      },
+      {
+        "path": "/media/pth/Sandisk8TB/pth13-offload/WIDE-FIELD-SOLVER/raw_allsky_samples/mmto/mmto-skycam/2026-10-06/2026_10_07__00_00_02.fits.bz2",
+        "source_sha256": "208e04bcb35baf4d710a47575975498d522f2146c077231b0888e14f41024559",
+        "observation_date": "2026-10-06",
+        "spatial_shape": [
+          1411,
+          1422
+        ],
+        "channel_layout": "plane_first",
+        "plane_names": [
+          "R",
+          "G",
+          "B"
+        ]
+      },
+      {
+        "path": "/media/pth/Sandisk8TB/pth13-offload/WIDE-FIELD-SOLVER/raw_allsky_samples/mmto/mmto-skycam/2026-10-07/2026_10_08__02_40_02.fits.bz2",
+        "source_sha256": "d951662858c4b236527effe245d976fe62cf848ec368b0f7a394ed3214e21a17",
+        "observation_date": "2026-10-07",
+        "spatial_shape": [
+          1411,
+          1422
+        ],
+        "channel_layout": "plane_first",
+        "plane_names": [
+          "R",
+          "G",
+          "B"
+        ]
+      },
+      {
+        "path": "/media/pth/Sandisk8TB/pth13-offload/WIDE-FIELD-SOLVER/raw_allsky_samples/mmto/mmto-skycam/2026-10-08/2026_10_08__21_20_09.fits.bz2",
+        "source_sha256": "dcd03efc454024b9d522b77ec05f89b04ba3be521f857b83769ca70b4168c9b0",
+        "observation_date": "2026-10-08",
+        "spatial_shape": [
+          1411,
+          1422
+        ],
+        "channel_layout": "plane_first",
+        "plane_names": [
+          "R",
+          "G",
+          "B"
+        ]
+      },
+      {
+        "path": "/media/pth/Sandisk8TB/pth13-offload/WIDE-FIELD-SOLVER/raw_allsky_samples/mmto/mmto-skycam/2026-10-09/2026_10_10__00_00_08.fits.bz2",
+        "source_sha256": "9434aab53f849969c84b7723205221e7ed33edc3f8942976cf65c4e12decc4c6",
+        "observation_date": "2026-10-09",
+        "spatial_shape": [
+          1411,
+          1422
+        ],
+        "channel_layout": "plane_first",
+        "plane_names": [
+          "R",
+          "G",
+          "B"
+        ]
+      },
+      {
+        "path": "/media/pth/Sandisk8TB/pth13-offload/WIDE-FIELD-SOLVER/raw_allsky_samples/mmto/mmto-skycam/2026-10-10/2026_10_11__02_40_02.fits.bz2",
+        "source_sha256": "c629948da6efe583df8c24ae14a4f8bad39e8a7ffe93d35b53e7c44032a5bf5c",
+        "observation_date": "2026-10-10",
+        "spatial_shape": [
+          1411,
+          1422
+        ],
+        "channel_layout": "plane_first",
+        "plane_names": [
+          "R",
+          "G",
+          "B"
+        ]
+      },
+      {
+        "path": "/media/pth/Sandisk8TB/pth13-offload/WIDE-FIELD-SOLVER/raw_allsky_samples/mmto/mmto-skycam/2026-10-11/2026_10_11__21_20_17.fits.bz2",
+        "source_sha256": "d690ec16c8e11d8f3bac1314fe39335d9a342035beadad098c746c62781e822c",
+        "observation_date": "2026-10-11",
+        "spatial_shape": [
+          1411,
+          1422
+        ],
+        "channel_layout": "plane_first",
+        "plane_names": [
+          "R",
+          "G",
+          "B"
+        ]
+      },
+      {
+        "path": "/media/pth/Sandisk8TB/pth13-offload/WIDE-FIELD-SOLVER/raw_allsky_samples/mmto/mmto-skycam/2026-10-12/2026_10_13__00_00_07.fits.bz2",
+        "source_sha256": "62c96da028c066ae0e15e4ed175fa4830d27d4561b4287c463998211782a5c64",
+        "observation_date": "2026-10-12",
+        "spatial_shape": [
+          1411,
+          1422
+        ],
+        "channel_layout": "plane_first",
+        "plane_names": [
+          "R",
+          "G",
+          "B"
+        ]
+      },
+      {
+        "path": "/media/pth/Sandisk8TB/pth13-offload/WIDE-FIELD-SOLVER/raw_allsky_samples/mmto/mmto-skycam/2026-10-13/2026_10_14__02_40_32.fits.bz2",
+        "source_sha256": "028189cbf29c9a8dedf9f96b5af5a649ebe72c22d72b5560d01be107b2d54c87",
+        "observation_date": "2026-10-13",
+        "spatial_shape": [
+          1411,
+          1422
+        ],
+        "channel_layout": "plane_first",
+        "plane_names": [
+          "R",
+          "G",
+          "B"
+        ]
+      },
+      {
+        "path": "/media/pth/Sandisk8TB/pth13-offload/WIDE-FIELD-SOLVER/raw_allsky_samples/mmto/mmto-skycam/2026-10-14/2026_10_14__21_20_39.fits.bz2",
+        "source_sha256": "f046d383fbbed732350ff1ad2f31bf618f9f8c4c476ba4df47b9a63d40b06e12",
+        "observation_date": "2026-10-14",
+        "spatial_shape": [
+          1411,
+          1422
+        ],
+        "channel_layout": "plane_first",
+        "plane_names": [
+          "R",
+          "G",
+          "B"
+        ]
+      },
+      {
+        "path": "/media/pth/Sandisk8TB/pth13-offload/WIDE-FIELD-SOLVER/raw_allsky_samples/mmto/mmto-skycam/2026-10-15/2026_10_16__00_00_15.fits.bz2",
+        "source_sha256": "e974ea4bdbaafd53e4896b0ca8f05e6304305b68cc402e0c62dfab41f08283e2",
+        "observation_date": "2026-10-15",
+        "spatial_shape": [
+          1411,
+          1422
+        ],
+        "channel_layout": "plane_first",
+        "plane_names": [
+          "R",
+          "G",
+          "B"
+        ]
+      },
+      {
+        "path": "/media/pth/Sandisk8TB/pth13-offload/WIDE-FIELD-SOLVER/raw_allsky_samples/mmto/mmto-skycam/2026-10-16/2026_10_17__02_40_11.fits.bz2",
+        "source_sha256": "b1acd504cc1d708b2c37aad8fa767ff5ec50737ae2a80efdc51a1c4d5d510e1f",
+        "observation_date": "2026-10-16",
+        "spatial_shape": [
+          1411,
+          1422
+        ],
+        "channel_layout": "plane_first",
+        "plane_names": [
+          "R",
+          "G",
+          "B"
+        ]
+      },
+      {
+        "path": "/media/pth/Sandisk8TB/pth13-offload/WIDE-FIELD-SOLVER/raw_allsky_samples/mmto/mmto-skycam/2026-10-17/2026_10_17__22_00_30.fits.bz2",
+        "source_sha256": "3d5b35a12f44953837c5882d3870991798a9e6a51148152f2e6fbde1b790d4ba",
+        "observation_date": "2026-10-17",
+        "spatial_shape": [
+          1411,
+          1422
+        ],
+        "channel_layout": "plane_first",
+        "plane_names": [
+          "R",
+          "G",
+          "B"
+        ]
+      },
+      {
+        "path": "/media/pth/Sandisk8TB/pth13-offload/WIDE-FIELD-SOLVER/raw_allsky_samples/mmto/mmto-skycam/2026-10-18/2026_10_19__00_00_18.fits.bz2",
+        "source_sha256": "b04b23ef7afc09fe0c921f1175dbd62e4cf8b525fc9abf25c445dc55f16be38d",
+        "observation_date": "2026-10-18",
+        "spatial_shape": [
+          1411,
+          1422
+        ],
+        "channel_layout": "plane_first",
+        "plane_names": [
+          "R",
+          "G",
+          "B"
+        ]
+      },
+      {
+        "path": "/media/pth/Sandisk8TB/pth13-offload/WIDE-FIELD-SOLVER/raw_allsky_samples/mmto/mmto-skycam/2026-10-19/2026_10_20__02_40_02.fits.bz2",
+        "source_sha256": "b40fa20fa4663db1030ea84ec8fae3b7a62b352829d9767d712fa00c29b80feb",
+        "observation_date": "2026-10-19",
+        "spatial_shape": [
+          1411,
+          1422
+        ],
+        "channel_layout": "plane_first",
+        "plane_names": [
+          "R",
+          "G",
+          "B"
+        ]
+      },
+      {
+        "path": "/media/pth/Sandisk8TB/pth13-offload/WIDE-FIELD-SOLVER/raw_allsky_samples/mmto/mmto-skycam/2026-10-20/2026_10_20__21_20_29.fits.bz2",
+        "source_sha256": "769a0614b9c8a93833b1627ea7943d258fef7ba29faf36c83635b63be4f12d11",
+        "observation_date": "2026-10-20",
+        "spatial_shape": [
+          1411,
+          1422
+        ],
+        "channel_layout": "plane_first",
+        "plane_names": [
+          "R",
+          "G",
+          "B"
+        ]
+      },
+      {
+        "path": "/media/pth/Sandisk8TB/pth13-offload/WIDE-FIELD-SOLVER/raw_allsky_samples/mmto/mmto-skycam/2026-10-21/2026_10_21__23_40_32.fits.bz2",
+        "source_sha256": "f7b5a42fc3b4ebc2784813b4a9a619a1c1c608c4d25a629a3da3e50d64431d13",
+        "observation_date": "2026-10-21",
+        "spatial_shape": [
+          1411,
+          1422
+        ],
+        "channel_layout": "plane_first",
+        "plane_names": [
+          "R",
+          "G",
+          "B"
+        ]
+      },
+      {
+        "path": "/media/pth/Sandisk8TB/pth13-offload/WIDE-FIELD-SOLVER/raw_allsky_samples/mmto/mmto-skycam/2026-10-22/2026_10_23__02_40_08.fits.bz2",
+        "source_sha256": "d27b77b381040764ac241598261681cb06eb0a5bb9e2931f681009bebe261321",
+        "observation_date": "2026-10-22",
+        "spatial_shape": [
+          1411,
+          1422
+        ],
+        "channel_layout": "plane_first",
+        "plane_names": [
+          "R",
+          "G",
+          "B"
+        ]
+      },
+      {
+        "path": "/media/pth/Sandisk8TB/pth13-offload/WIDE-FIELD-SOLVER/raw_allsky_samples/mmto/mmto-skycam/2026-10-23/2026_10_23__20_20_21.fits.bz2",
+        "source_sha256": "cf8126b99b69f91e60a5054d8d86c6267a3eea788d8d44f64f7f39d73e2607e8",
+        "observation_date": "2026-10-23",
+        "spatial_shape": [
+          1411,
+          1422
+        ],
+        "channel_layout": "plane_first",
+        "plane_names": [
+          "R",
+          "G",
+          "B"
+        ]
+      },
+      {
+        "path": "/media/pth/Sandisk8TB/pth13-offload/WIDE-FIELD-SOLVER/raw_allsky_samples/mmto/mmto-skycam/2026-10-24/2026_10_24__19_40_04.fits.bz2",
+        "source_sha256": "e3d80379f8e416f4adabcb62c89f503b2c331acefdb653122368f24f818b5684",
+        "observation_date": "2026-10-24",
+        "spatial_shape": [
+          1411,
+          1422
+        ],
+        "channel_layout": "plane_first",
+        "plane_names": [
+          "R",
+          "G",
+          "B"
+        ]
+      },
+      {
+        "path": "/media/pth/Sandisk8TB/pth13-offload/WIDE-FIELD-SOLVER/raw_allsky_samples/mmto/mmto-skycam/2026-10-25/2026_10_26__03_00_12.fits.bz2",
+        "source_sha256": "261b0ccfaa20916e0e8cae41e0453f096cf594c15eb8a9f79a63f14733386c4e",
+        "observation_date": "2026-10-25",
+        "spatial_shape": [
+          1411,
+          1422
+        ],
+        "channel_layout": "plane_first",
+        "plane_names": [
+          "R",
+          "G",
+          "B"
+        ]
+      },
+      {
+        "path": "/media/pth/Sandisk8TB/pth13-offload/WIDE-FIELD-SOLVER/raw_allsky_samples/mmto/mmto-skycam/2026-10-26/2026_10_26__21_00_00.fits.bz2",
+        "source_sha256": "bbd87d7260a045975dfe943e08998578994c80a5d6091a7820171dfd34e96d56",
+        "observation_date": "2026-10-26",
+        "spatial_shape": [
+          1411,
+          1422
+        ],
+        "channel_layout": "plane_first",
+        "plane_names": [
+          "R",
+          "G",
+          "B"
+        ]
+      },
+      {
+        "path": "/media/pth/Sandisk8TB/pth13-offload/WIDE-FIELD-SOLVER/raw_allsky_samples/mmto/mmto-skycam/2026-10-27/2026_10_28__00_00_07.fits.bz2",
+        "source_sha256": "b9af760340e4e47877f15395e77c71aff5dba5eb96b688365dbf210e27363594",
+        "observation_date": "2026-10-27",
+        "spatial_shape": [
+          1411,
+          1422
+        ],
+        "channel_layout": "plane_first",
+        "plane_names": [
+          "R",
+          "G",
+          "B"
+        ]
+      },
+      {
+        "path": "/media/pth/Sandisk8TB/pth13-offload/WIDE-FIELD-SOLVER/raw_allsky_samples/mmto/mmto-skycam/2026-10-28/2026_10_29__03_00_34.fits.bz2",
+        "source_sha256": "d344241887bbc0a9910f8b9461ad82a89cf637c06479a5f4dc24b67b058d61b2",
+        "observation_date": "2026-10-28",
+        "spatial_shape": [
+          1411,
+          1422
+        ],
+        "channel_layout": "plane_first",
+        "plane_names": [
+          "R",
+          "G",
+          "B"
+        ]
+      },
+      {
+        "path": "/media/pth/Sandisk8TB/pth13-offload/WIDE-FIELD-SOLVER/raw_allsky_samples/mmto/mmto-skycam/2026-10-29/2026_10_29__19_00_34.fits.bz2",
+        "source_sha256": "f7b2b4875950e41cb621c1ae9473a4a757aa464b8491382abd4595b24406768d",
+        "observation_date": "2026-10-29",
+        "spatial_shape": [
+          1411,
+          1422
+        ],
+        "channel_layout": "plane_first",
+        "plane_names": [
+          "R",
+          "G",
+          "B"
+        ]
+      },
+      {
+        "path": "/media/pth/Sandisk8TB/pth13-offload/WIDE-FIELD-SOLVER/raw_allsky_samples/mmto/mmto-skycam/2026-11-02/2026_11_03__00_00_06.fits.bz2",
+        "source_sha256": "ea2f3b7d639cc5ac34f9fdb9f70295af55a8c547269952ee455213fe1b2c0d5d",
+        "observation_date": "2026-11-02",
+        "spatial_shape": [
+          1411,
+          1422
+        ],
+        "channel_layout": "plane_first",
+        "plane_names": [
+          "R",
+          "G",
+          "B"
+        ]
+      },
+      {
+        "path": "/media/pth/Sandisk8TB/pth13-offload/WIDE-FIELD-SOLVER/raw_allsky_samples/mmto/mmto-skycam/2026-11-03/2026_11_04__03_00_16.fits.bz2",
+        "source_sha256": "7a14950dcddf85c9ffe546faeed87ea060ea4f734ba35357550586e9042e2ebc",
+        "observation_date": "2026-11-03",
+        "spatial_shape": [
+          1411,
+          1422
+        ],
+        "channel_layout": "plane_first",
+        "plane_names": [
+          "R",
+          "G",
+          "B"
+        ]
+      },
+      {
+        "path": "/media/pth/Sandisk8TB/pth13-offload/WIDE-FIELD-SOLVER/raw_allsky_samples/mmto/mmto-skycam/2026-11-04/2026_11_04__21_20_20.fits.bz2",
+        "source_sha256": "327bdfb3241fc4f0a32cc3b2e379ea167d0499e40c7ddc7a4e773859b6ccf1a1",
+        "observation_date": "2026-11-04",
+        "spatial_shape": [
+          1411,
+          1422
+        ],
+        "channel_layout": "plane_first",
+        "plane_names": [
+          "R",
+          "G",
+          "B"
+        ]
+      },
+      {
+        "path": "/media/pth/Sandisk8TB/pth13-offload/WIDE-FIELD-SOLVER/raw_allsky_samples/mmto/mmto-skycam/2026-11-05/2026_11_05__19_00_12.fits.bz2",
+        "source_sha256": "11dec7637a07a97ecc092bf761599b8a9d771fb93da10e86de653be25432c421",
+        "observation_date": "2026-11-05",
+        "spatial_shape": [
+          1411,
+          1422
+        ],
+        "channel_layout": "plane_first",
+        "plane_names": [
+          "R",
+          "G",
+          "B"
+        ]
+      },
+      {
+        "path": "/media/pth/Sandisk8TB/pth13-offload/WIDE-FIELD-SOLVER/raw_allsky_samples/mmto/mmto-skycam/2026-11-06/2026_11_06__19_40_27.fits.bz2",
+        "source_sha256": "56a04f2d1add9e9edc46378ac608a164b67627a2d8fa5b36a0b251d5413b9eea",
+        "observation_date": "2026-11-06",
+        "spatial_shape": [
+          1411,
+          1422
+        ],
+        "channel_layout": "plane_first",
+        "plane_names": [
+          "R",
+          "G",
+          "B"
+        ]
+      },
+      {
+        "path": "/media/pth/Sandisk8TB/pth13-offload/WIDE-FIELD-SOLVER/raw_allsky_samples/mmto/mmto-skycam/2026-11-07/2026_11_07__21_40_32.fits.bz2",
+        "source_sha256": "2dc1b9062500d834aa9d20a133db2e9af265552562eae1cd808cbfe476621746",
+        "observation_date": "2026-11-07",
+        "spatial_shape": [
+          1411,
+          1422
+        ],
+        "channel_layout": "plane_first",
+        "plane_names": [
+          "R",
+          "G",
+          "B"
+        ]
+      },
+      {
+        "path": "/media/pth/Sandisk8TB/pth13-offload/WIDE-FIELD-SOLVER/raw_allsky_samples/mmto/mmto-skycam/2026-11-08/2026_11_09__00_20_23.fits.bz2",
+        "source_sha256": "43884a19f9e03308aea6d3f021bfc812994d70319cf66fd7c9d1699a56183beb",
+        "observation_date": "2026-11-08",
+        "spatial_shape": [
+          1411,
+          1422
+        ],
+        "channel_layout": "plane_first",
+        "plane_names": [
+          "R",
+          "G",
+          "B"
+        ]
+      },
+      {
+        "path": "/media/pth/Sandisk8TB/pth13-offload/WIDE-FIELD-SOLVER/raw_allsky_samples/mmto/mmto-skycam/2026-11-09/2026_11_10__03_40_21.fits.bz2",
+        "source_sha256": "26309550e22c7a2204b2046e2f6a1bbaa6177afd42d72321695ef54f9e91f2dc",
+        "observation_date": "2026-11-09",
+        "spatial_shape": [
+          1411,
+          1422
+        ],
+        "channel_layout": "plane_first",
+        "plane_names": [
+          "R",
+          "G",
+          "B"
+        ]
+      }
+    ]
+  }
+}
