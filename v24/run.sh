@@ -15,6 +15,10 @@ usage() {
     echo "  --saturation-level VALUE_OR_CHANNEL_MAP"
     echo "  --visible-sky-mask-manifest PATH"
     echo "  --camera-installation-id ID"
+    echo "  --calibration-registry PATH"
+    echo "  --bundled-calibration-registry PATH  repeatable read-only registry layer"
+    echo "  --installation-assignments PATH"
+    echo "  --allow-unconfigured-visible-sky  permit only a missing assignment to run unmasked"
     echo "  --blind-planets  ignore EXIF/FITS/filename time and run the full blind planet search"
     echo "Runs solver $expected_version with Gaia; each analysis appends to the selected stars.sqlite."
 }
@@ -44,11 +48,11 @@ while [[ $# -gt 0 ]]; do
             results_override="$2"
             shift 2
             ;;
-        --blind-planets)
+        --blind-planets|--allow-unconfigured-visible-sky)
             solver_args+=("$1")
             shift
             ;;
-        --fits-hdu|--channel-order|--saturation-level|--visible-sky-mask-manifest|--camera-installation-id)
+        --fits-hdu|--channel-order|--saturation-level|--visible-sky-mask-manifest|--camera-installation-id|--calibration-registry|--bundled-calibration-registry|--installation-assignments)
             if [[ $# -lt 2 || -z "${2:-}" ]]; then
                 echo "Missing value for $1" >&2
                 exit 2

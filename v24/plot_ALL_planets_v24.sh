@@ -8,6 +8,13 @@ RETRY_DELAY=${V24_HORIZONS_RETRY_DELAY_SECONDS:-1}
 OUTPUT=""
 arguments=("$@")
 
+for argument in "${arguments[@]}"; do
+    if [[ $argument == --help || $argument == -h ]]; then
+        exec "$ROOT_DIR/v24/plot_ALL_planets_impl_v24.sh" \
+            --include-uncalibrated "${arguments[@]}"
+    fi
+done
+
 if [[ ! $RETRY_DELAY =~ ^[0-9]+$ ]]; then
     printf '%s\n' "ERROR: V24_HORIZONS_RETRY_DELAY_SECONDS must be a nonnegative integer" >&2
     exit 2

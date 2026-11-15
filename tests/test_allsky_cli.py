@@ -6,9 +6,18 @@ from pathlib import Path
 import tempfile
 import threading
 import unittest
+from unittest import mock
 
-from allsky_download.cli import build_parser, run
-from allsky_download.http import TransferError
+import sqlite3
+
+from v24.allsky_download_v24.cli import (
+    build_assign_existing_parser,
+    build_parser,
+    run,
+    run_assign_existing,
+)
+from allsky_download.http import DownloadedFile, TransferError
+from v24.allsky_download_v24.manifest import Manifest
 from allsky_download.model import Candidate, Site
 
 
@@ -118,6 +127,210 @@ class CliTests(unittest.TestCase):
         self.assertEqual(args.max_files, 20)
         self.assertFalse(args.latest)
         self.assertFalse(args.moon_down)
+        self.assertIsNone(args.calibration_registry)
+
+    def test_calibration_options_are_all_or_nothing(self):
+        option_sets = (
+            ("--calibration-registry", "registry.jsonl"),
+            ("--installation-assignments", "assignments.jsonl"),
+            ("--camera-orientation", "native"),
+            (
+                "--calibration-registry", "registry.jsonl",
+                "--installation-assignments", "assignments.jsonl",
+            ),
+        )
+        for options in option_sets:
+            with self.subTest(options=options), self.assertRaises(SystemExit):
+                self.parse("--dry-run", *options)
+
+    def test_configured_download_assigns_before_reporting_success(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "samples"
+            assignments = Path(tmp) / "assignments.jsonl"
+            args = self.parse(
+                "--max-files", "1", "--output", str(output),
+                "--calibration-registry", str(Path(tmp) / "registry.jsonl"),
+                "--installation-assignments", str(assignments),
+                "--camera-orientation", "native",
+            )
+            active = {"installation_id": "installation-a"}
+            assigned = {"installation_id": "installation-a"}
+            stream = io.StringIO()
+            with mock.patch(
+                "v24.visible_sky_registry.active_installation", return_value=active
+            ), mock.patch(
+                "v24.visible_sky_registry.assign_source", return_value=assigned
+            ) as assign, redirect_stdout(stream):
+                self.assertEqual(run(args, registry=self.registry), 0)
+            self.assertIn("DOWNLOAD\t", stream.getvalue())
+            assign.assert_called_once()
+            with sqlite3.connect(output / "manifest.sqlite") as connection:
+                row = connection.execute(
+                    """
+                    SELECT download_status, validation_status,
+                           installation_assignment_status, installation_id
+                    FROM downloads
+                    """
+                ).fetchone()
+            self.assertEqual(
+                row, ("downloaded", "verified", "assigned", "installation-a")
+            )
+
+    def test_assignment_failure_preserves_verified_file_and_reports_unassigned(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "samples"
+            args = self.parse(
+                "--max-files", "1", "--output", str(output),
+                "--calibration-registry", str(Path(tmp) / "registry.jsonl"),
+                "--installation-assignments", str(Path(tmp) / "assignments.jsonl"),
+                "--camera-orientation", "native",
+            )
+            stream = io.StringIO()
+            with mock.patch(
+                "v24.visible_sky_registry.active_installation",
+                return_value={"installation_id": "installation-a"},
+            ), mock.patch(
+                "v24.visible_sky_registry.assign_source",
+                side_effect=ValueError("detector mismatch"),
+            ), self.assertLogs("allsky_download.cli", level="ERROR"), redirect_stdout(stream):
+                self.assertEqual(run(args, registry=self.registry), 2)
+            self.assertIn("UNASSIGNED\t", stream.getvalue())
+            downloaded = (
+                output / "fixture" / "camera-a" / "2025-12-31" / "first.raw"
+            )
+            self.assertEqual(downloaded.read_bytes(), b"raw1")
+            with sqlite3.connect(output / "manifest.sqlite") as connection:
+                row = connection.execute(
+                    """
+                    SELECT download_status, validation_status,
+                           installation_assignment_status,
+                           installation_assignment_error
+                    FROM downloads
+                    """
+                ).fetchone()
+                jobs = connection.execute("SELECT COUNT(*) FROM processing_jobs").fetchone()[0]
+            self.assertEqual(row[:3], ("downloaded", "verified", "unassigned"))
+            self.assertIn("detector mismatch", row[3])
+            self.assertEqual(jobs, 0)
+
+    def test_interrupted_assignment_leaves_verified_download_explicitly_unassigned(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "samples"
+            args = self.parse(
+                "--max-files", "1", "--output", str(output),
+                "--calibration-registry", str(Path(tmp) / "registry.jsonl"),
+                "--installation-assignments", str(Path(tmp) / "assignments.jsonl"),
+                "--camera-orientation", "native",
+            )
+            with mock.patch(
+                "v24.visible_sky_registry.active_installation",
+                return_value={"installation_id": "installation-a"},
+            ), mock.patch(
+                "v24.visible_sky_registry.assign_source",
+                side_effect=KeyboardInterrupt,
+            ):
+                self.assertEqual(run(args, registry=self.registry), 130)
+            with sqlite3.connect(output / "manifest.sqlite") as connection:
+                row = connection.execute(
+                    """
+                    SELECT download_status, validation_status,
+                           installation_assignment_status,
+                           installation_assignment_error
+                    FROM downloads
+                    """
+                ).fetchone()
+            self.assertEqual(row, (
+                "downloaded", "verified", "unassigned", "assignment_pending"
+            ))
+
+    def test_assign_existing_is_bounded_and_preview_only_without_apply(self):
+        parser = build_assign_existing_parser()
+        required = [
+            "--manifest", "/tmp/manifest.sqlite",
+            "--archive-root", "/tmp/archive",
+            "--source", "fixture",
+            "--camera", "camera-a",
+            "--limit", "1",
+            "--calibration-registry", "/tmp/registry.jsonl",
+            "--installation-assignments", "/tmp/assignments.jsonl",
+            "--camera-orientation", "native",
+        ]
+        args = parser.parse_args(required)
+        self.assertEqual(args.limit, 1)
+        self.assertFalse(args.apply)
+        for omitted in ("--source", "--camera", "--limit"):
+            reduced = required[:]
+            index = reduced.index(omitted)
+            del reduced[index:index + 2]
+            with self.subTest(omitted=omitted), self.assertRaises(SystemExit):
+                parser.parse_args(reduced)
+
+    def test_assign_existing_previews_then_applies_only_selected_rows(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "archive"
+            root.mkdir()
+            manifest_path = root / "manifest.sqlite"
+            candidates = []
+            with Manifest(manifest_path) as manifest:
+                for index in range(2):
+                    candidate = Candidate(
+                        "fixture", "camera-a",
+                        datetime(2026, 1, 1, 0, index, tzinfo=UTC),
+                        f"2026-01-01T00:0{index}:00Z",
+                        f"https://example.test/{index}.fits", f"{index}.fits",
+                        4, {},
+                    )
+                    path = root / f"{index}.fits"
+                    path.write_bytes(f"raw{index}".encode())
+                    import hashlib
+                    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+                    manifest.record_attempt(candidate)
+                    manifest.record_success(
+                        candidate, DownloadedFile(path, 4, digest), root
+                    )
+                    candidates.append((candidate, digest))
+            argv = [
+                "--manifest", str(manifest_path),
+                "--archive-root", str(root.resolve()),
+                "--source", "fixture", "--camera", "camera-a",
+                "--limit", "1",
+                "--calibration-registry", str(Path(tmp) / "registry.jsonl"),
+                "--installation-assignments", str(Path(tmp) / "assignments.jsonl"),
+                "--camera-orientation", "native",
+            ]
+            preview = io.StringIO()
+            with mock.patch(
+                "v24.visible_sky_registry.active_installation",
+                return_value={"installation_id": "installation-a"},
+            ), mock.patch("v24.visible_sky_registry.assign_source") as assign, redirect_stdout(preview):
+                status = run_assign_existing(
+                    build_assign_existing_parser().parse_args(argv)
+                )
+            self.assertEqual(status, 0)
+            self.assertIn(candidates[0][1], preview.getvalue())
+            self.assertNotIn(candidates[1][1], preview.getvalue())
+            assign.assert_not_called()
+
+            with mock.patch(
+                "v24.visible_sky_registry.active_installation",
+                return_value={"installation_id": "installation-a"},
+            ), mock.patch(
+                "v24.visible_sky_registry.assign_source",
+                return_value={"installation_id": "installation-a"},
+            ) as assign, redirect_stdout(io.StringIO()):
+                status = run_assign_existing(
+                    build_assign_existing_parser().parse_args([*argv, "--apply"])
+                )
+            self.assertEqual(status, 0)
+            assign.assert_called_once()
+            with sqlite3.connect(manifest_path) as connection:
+                statuses = connection.execute(
+                    """
+                    SELECT installation_assignment_status FROM downloads
+                    ORDER BY observed_utc
+                    """
+                ).fetchall()
+            self.assertEqual(statuses, [("assigned",), (None,)])
 
     def test_date_and_range_are_mutually_exclusive(self):
         with self.assertRaises(SystemExit):

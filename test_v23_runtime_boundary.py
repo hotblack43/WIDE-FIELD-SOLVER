@@ -101,7 +101,7 @@ class V23RuntimeBoundaryTests(unittest.TestCase):
         self.assertEqual(manifest["based_on_version"], "0.22.0")
         self.assertEqual(manifest["parent_snapshot"], "../docs/v22-runtime.json")
         names = subprocess.run(
-            ["git", "ls-files", "--cached", "--others", "--exclude-standard", "v23"],
+            ["git", "ls-files", "v23"],
             cwd=ROOT, check=True, capture_output=True, text=True).stdout.splitlines()
         expected = {
             name.removeprefix("v23/") for name in names

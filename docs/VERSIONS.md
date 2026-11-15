@@ -25,22 +25,25 @@ tests; they are not aliases for the newest code.
 | `go18.sh` | Frozen experiment | v0.18.0 two-night-at-a-time full-range backlog inventory |
 | `go19.sh` | Frozen | v0.19.0 variable-star time series on the v16 scientific model |
 | `go20.sh` | **Recommended MMTO runtime** | v0.20.0 bounded 40-image acquisition with one-night requests and a durable backward cursor |
+| `go21.sh` | Frozen | v0.21.0 FITS-header-timed MMTO reprocessing and post-fit validation |
+| `go22.sh` | Frozen experiment | v0.22.0 differential-photometry model benchmark |
+| `go23.sh` | Frozen | v0.23.0 aperture and sky-annulus validation |
+| `go24.sh` | Active development | v0.24.0 immutable camera-installation visible-sky calibration and masked MMTO processing |
 
-For bounded MMTO archive work from a repository checkout, use
-`go_mmto_photometry_v20.sh`. Use `go17.sh` only for its independent KNALDGAS
-line, and use earlier launchers when reproducing older results.
+For current installation-masked MMTO development from a repository checkout,
+use `go_mmto_photometry_v24.sh`. Use `go17.sh` only for its independent
+KNALDGAS line, and use earlier launchers when reproducing older results.
 
 ## Releases versus the development line
 
-The latest packaged GitHub release is v0.11.0. Download the named `.tar.gz` or
+The **Latest packaged release** is v0.11.0. Download the named `.tar.gz` or
 `.zip` asset and `SHA256SUMS` from that release; GitHub's automatic source-code
-archives are not the curated runnable package. The recommended MMTO v0.20.0
-runtime is currently used from a repository checkout. It retains v19's
-variable-star and inherited v16 products while replacing v18's complete-range
-inventory with one-night requests. Each invocation selects at most 40 images
-by default, skips any image with an existing solver receipt, and advances a
-durable cursor only after the selected batch has receipts. Every earlier
-launcher remains separate.
+archives are not the curated runnable package. The active v0.24.0 development
+runtime is used from a repository checkout. It preserves the bounded
+acquisition line and adds an approved installation mask, generic calibration
+registry, immutable checksum assignments, and cold-start MMTO evidence. Every
+earlier launcher remains separate; v24 is not represented as a published
+release.
 
 The complete launcher syntax and output-directory behaviour remain in the
 repository's `REFERENCE.md`.

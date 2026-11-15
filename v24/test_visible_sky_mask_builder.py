@@ -16,6 +16,7 @@ from scripts.build_visible_sky_mask import (
     accumulate_temporal_evidence,
     finalize_approved_mask,
     load_native_luminance,
+    propose_command,
     propose_visible_sky,
     robust_normalize,
     select_representative_sources,
@@ -24,6 +25,40 @@ from scripts.build_visible_sky_mask import (
 
 
 class VisibleSkyMaskBuilderTests(unittest.TestCase):
+    def test_proposal_rejects_an_unselected_mixed_signature_before_output(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            paths = []
+            for day in range(1, 4):
+                night = root / f"2026-09-{day:02d}"
+                night.mkdir()
+                for ordinal, hour in enumerate((1, 3, 5, 7, 9)):
+                    shape = (25, 32) if day == 1 and ordinal == 4 else (24, 32)
+                    yy, xx = np.indices(shape)
+                    path = night / f"2026_09_{day:02d}__{hour:02d}_00_00.fits"
+                    fits.PrimaryHDU((100 + xx + yy).astype(np.uint16)).writeto(path)
+                    paths.append(path)
+            source_json = root / "sources.json"
+            source_json.write_text(
+                json.dumps({"sources": [str(path) for path in paths]}),
+                encoding="utf-8",
+            )
+            output = root / "proposal"
+
+            with self.assertRaisesRegex(ValueError, "mixed detector signatures: spatial_shape"):
+                propose_command(
+                    source_json=source_json,
+                    download_manifest=None,
+                    archive_root=None,
+                    output=output,
+                    source_id="example-source",
+                    camera_id="example-camera",
+                    installation_id="example-installation-v1",
+                    orientation="detector-native",
+                )
+
+            self.assertFalse(output.exists())
+
     def test_finalizer_applies_five_pixel_inward_safety_margin(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -205,12 +240,26 @@ class VisibleSkyMaskBuilderTests(unittest.TestCase):
                     "observation_date": "2026-09-01",
                 }],
                 audit=audit,
+                source_id="example-source",
+                camera_id="example-camera",
+                installation_id="example-installation-v1",
+                orientation="detector-native",
+                detector_signature={
+                    "spatial_shape": [32, 40],
+                    "channel_layout": "two_dimensional",
+                    "plane_names": ["L"],
+                    "instrument": None,
+                    "orientation": "detector-native",
+                },
             )
 
-            draft = np.asarray(Image.open(output / "mmto_installation_2026a.draft.png"))
+            draft = np.asarray(Image.open(output / "example-installation-v1.draft.png"))
             self.assertEqual(set(np.unique(draft)), {0, 255})
             selection = json.loads((output / "selection.json").read_text())
             self.assertEqual(selection["status"], "draft_not_approved")
+            self.assertEqual(selection["source_id"], "example-source")
+            self.assertEqual(selection["camera_id"], "example-camera")
+            self.assertEqual(selection["installation_id"], "example-installation-v1")
             self.assertEqual(selection["coordinate_convention"], "array[y, x]; origin top-left")
             self.assertNotIn("approval", selection)
             self.assertTrue((output / "temporal_reference.png").is_file())
@@ -224,6 +273,17 @@ class VisibleSkyMaskBuilderTests(unittest.TestCase):
                     reference_rgb=reference,
                     source_records=[],
                     audit=audit,
+                    source_id="example-source",
+                    camera_id="example-camera",
+                    installation_id="example-installation-v1",
+                    orientation="detector-native",
+                    detector_signature={
+                        "spatial_shape": [32, 40],
+                        "channel_layout": "two_dimensional",
+                        "plane_names": ["L"],
+                        "instrument": None,
+                        "orientation": "detector-native",
+                    },
                 )
 
 

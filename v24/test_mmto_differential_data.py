@@ -352,6 +352,24 @@ def _sha256(path: Path) -> str:
 
 
 class DifferentialDataTests(unittest.TestCase):
+    def test_v23_observation_table_replays_v23_control_run(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            database, manifest = _fixture(
+                Path(temporary), observation_table="mmto_v23_observations"
+            )
+            with sqlite3.connect(database) as connection:
+                connection.execute(
+                    "UPDATE runs SET solver_version='0.23.0' WHERE run_id='new'"
+                )
+
+            replay = load_measurements(
+                database, manifest, run_ids=frozenset({"new"})
+            )
+
+        self.assertEqual([run.run_id for run in replay.runs], ["new"])
+        self.assertEqual(replay.runs[0].solver_version, "0.23.0")
+        self.assertEqual(replay.runs[0].observed_utc, "2026-01-01T01:00:10+00:00")
+
     def test_current_v24_observation_table_supplies_cumulative_population(self):
         with tempfile.TemporaryDirectory() as temporary:
             database, manifest = _fixture(

@@ -23,7 +23,7 @@ def _immutable_bool(values: np.ndarray) -> np.ndarray:
     return answer
 
 
-def _compatible_instrument(recorded: object, observed: object) -> bool:
+def compatible_instrument_identity(recorded: object, observed: object) -> bool:
     pattern = re.compile(r"^(?P<model>.+?)(?: \((?P<serial>[0-9]+)\))?$")
     recorded_match = pattern.fullmatch(str(recorded).strip())
     observed_match = pattern.fullmatch(str(observed).strip())
@@ -38,6 +38,9 @@ def _compatible_instrument(recorded: object, observed: object) -> bool:
         or observed_serial is None
         or recorded_serial == observed_serial
     )
+
+
+_compatible_instrument = compatible_instrument_identity
 
 
 @dataclass(frozen=True)

@@ -28,6 +28,11 @@ CHANGES = [
     "Generate RGB planet photometry in one process so each source FITS is verified and decoded once while preserving separate channel products.",
     "Continue the v24 MMTO backlog from the durable v23 cursor and treat v23 receipts as completed predecessor work.",
     "Apply the approved MMTO installation mask in production, accepting the same camera model when a known FITS header generation omits its serial while rejecting a different explicit serial.",
+    "Ship self-contained v24 launchers for every configured derived photometry stage and verify that their exact pipeline commands start.",
+    "Combine v21, v23, and v24 FITS-header observation sidecars read-only when replaying the cumulative differential-photometry control population.",
+    "Generalize visible-sky calibration into sealed proposals, immutable approval, layered registries, checksum assignments, and automatic launcher resolution for supported fixed cameras.",
+    "Integrate opt-in assignment with new and bounded historical downloads while preserving verified-but-unassigned originals on validation failure.",
+    "Reproduce the MMTO proposal from 3,194 freshly verified originals with whole-date holdout evidence before revealing the approved reference mask.",
 ]
 
 

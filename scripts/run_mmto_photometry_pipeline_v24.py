@@ -15,6 +15,7 @@ import math
 import os
 from pathlib import Path
 import sqlite3
+import subprocess
 import sys
 import tempfile
 from typing import Callable, cast, Sequence, TextIO, TypeVar
@@ -44,9 +45,9 @@ from scripts.run_mmto_photometry_pipeline_v19 import (
     _write_summary,
 )
 from scripts.mmto_weather import HISTORY_ENDPOINT, MmtoWeatherHistory, WeatherDecision
-from scripts.mmto_camera_installations import assign_source
 from v24.mmto_observations import record_observation
 from v24.mmto_time import read_mmto_observation
+from v24.visible_sky_registry import assign_source, resolve_source_calibration
 
 
 SOLVER_VERSION = "0.24.0"
@@ -55,8 +56,12 @@ SOLVER_ENTRYPOINT = Path("v24/analyse_image.py")
 MMTO_VISIBLE_SKY_MASK_MANIFEST = Path(
     "v24/data/sky_masks/mmto_installation_2026a.json"
 )
+MMTO_CALIBRATION_REGISTRY = Path("v24/data/sky_masks/registry.jsonl")
+MMTO_SOURCE_ID = "mmto"
+MMTO_CAMERA_ID = "mmto-skycam"
 MMTO_CAMERA_INSTALLATION_ID = "mmto-skycam-2026a"
 MMTO_VISIBLE_SKY_MASK_ID = "mmto-visible-sky-2026a-v1"
+MMTO_CAMERA_ORIENTATION = "detector_native_top_left_xy_right_y_down"
 DEFAULT_MAX_IMAGES = 40
 DEFAULT_SOLVER_WORKERS = 4
 DEFAULT_MAX_HUMIDITY_PERCENT = 80.0
@@ -67,6 +72,60 @@ CADENCE = timedelta(minutes=20)
 CADENCE_BOUNDARY_TOLERANCE = timedelta(minutes=2)
 T = TypeVar("T")
 R = TypeVar("R")
+V = TypeVar("V")
+V23_CORE_FIGURE_CONTRACT = frozenset(
+    {
+        Path("acquisition_timeline.pdf"),
+        Path("differential-photometry/model_comparison.pdf"),
+        Path("differential-photometry/planet_relative_lightcurves.pdf"),
+        Path("differential-photometry/residual_diagnostics.pdf"),
+        Path("differential-photometry/signal_recovery.pdf"),
+        Path("known-site-time-validation/mmto_planet_epoch_validation.png"),
+        Path("known-site-time-validation/mmto_site_time_validation.png"),
+        Path("nightly-extinction-v24/grey_transparency.png"),
+        Path("nightly-extinction/extinction_by_band_and_night.pdf"),
+        Path("nightly-extinction/extinction_diagnostics.pdf"),
+        Path("planet-photometry/planet_brightness_matched_stellar_extinction.pdf"),
+        Path("planet-photometry/planet_colour_colour.png"),
+        Path("stellar-lightcurves/lightcurves.pdf"),
+        Path("stellar-lightcurves/sd_vs_magnitude.pdf"),
+        Path("variable-stars/variable_star_phase_curves.pdf"),
+    }
+    | {
+        Path("planet-empirical-extinction") / channel / filename
+        for channel in "RGB"
+        for filename in (
+            "planet_only_airmass_before_after.pdf",
+            "planet_only_extinction_distance_corrected_magnitude_vs_hours_past_local_noon.pdf",
+        )
+    }
+    | {
+        Path("planet-photometry") / channel / filename
+        for channel in "RGB"
+        for filename in (
+            "planet_extinction_corrected_distance_magnitude_vs_airmass.pdf",
+            "planet_extinction_corrected_distance_magnitude_vs_hours_past_local_noon.pdf",
+            "planet_extinction_corrected_distance_magnitude_vs_time.pdf",
+            "planet_raw_vs_extinction_corrected_magnitude_vs_airmass.pdf",
+        )
+    }
+)
+
+
+def _require_v23_core_figures(output: Path) -> None:
+    """Refuse a complete v24 receipt when a fixed v23 figure is absent."""
+
+    missing = [
+        relative
+        for relative in sorted(V23_CORE_FIGURE_CONTRACT)
+        if not (Path(output) / relative).is_file()
+        or (Path(output) / relative).stat().st_size == 0
+    ]
+    if missing:
+        names = ", ".join(str(path) for path in missing)
+        raise OperationalFailure(
+            f"v24 output is missing or has an empty v23 core figure: {names}"
+        )
 
 
 def _list_v24_figures(output: Path, log: TextIO) -> None:
@@ -1158,6 +1217,7 @@ def _prepare_solver_run(
         raise ValueError("MMTO v24 refuses an unassigned camera installation")
     expected_manifest = (Path(repo_root) / MMTO_VISIBLE_SKY_MASK_MANIFEST).resolve()
     if (assignment.get("installation_id") != MMTO_CAMERA_INSTALLATION_ID
+            or assignment.get("mask_id") != MMTO_VISIBLE_SKY_MASK_ID
             or Path(str(assignment.get("manifest_path", ""))).resolve() != expected_manifest):
         raise ValueError("MMTO v24 camera assignment does not select the approved installation mask")
 
@@ -1201,6 +1261,29 @@ def _prepare_solver_run(
     return run_dir, command
 
 
+def _resolve_mmto_calibration(
+    repo_root: Path, assignments_path: Path, source_sha256: str
+) -> dict[str, object]:
+    """Resolve one immutable MMTO source assignment through the bundled registry."""
+    resolved = resolve_source_calibration(
+        (Path(repo_root) / MMTO_CALIBRATION_REGISTRY,),
+        Path(assignments_path),
+        source_sha256,
+    )
+    expected_manifest = (Path(repo_root) / MMTO_VISIBLE_SKY_MASK_MANIFEST).resolve()
+    if (
+        resolved.get("source_id") != MMTO_SOURCE_ID
+        or resolved.get("camera_id") != MMTO_CAMERA_ID
+        or resolved.get("installation_id") != MMTO_CAMERA_INSTALLATION_ID
+        or resolved.get("mask_id") != MMTO_VISIBLE_SKY_MASK_ID
+        or Path(str(resolved.get("manifest_path", ""))).resolve() != expected_manifest
+    ):
+        raise ValueError(
+            "MMTO v24 camera assignment does not select the approved installation mask"
+        )
+    return resolved
+
+
 def _run_solver_jobs(
     items: Sequence[T],
     workers: int,
@@ -1240,21 +1323,63 @@ def _run_solver_jobs(
     return cast(tuple[R, ...], tuple(results))
 
 
+def _run_solver_jobs_then_verify(
+    items: Sequence[T],
+    workers: int,
+    solve: Callable[[T], R],
+    verify: Callable[[T, R], V],
+    *,
+    completed: Callable[[T, R], None] | None = None,
+) -> tuple[V, ...]:
+    """Drain every solver writer before reading their database receipts."""
+
+    results = _run_solver_jobs(items, workers, solve, completed=completed)
+    return tuple(
+        verify(item, result) for item, result in zip(items, results, strict=True)
+    )
+
+
 def _run_logged_solver(
     command: list[str], run_dir: Path, *, cwd: Path, prefix: str
 ) -> tuple[int, str]:
-    """Run one solver while durably streaming its complete per-run log."""
+    """Run one solver while durably retaining its complete per-run log."""
 
     log_path = Path(run_dir) / "run.log"
     with log_path.open("w", encoding="utf-8", buffering=1) as run_log:
         run_log.write(prefix)
+        run_log.write("COMMAND\t" + "\t".join(command) + "\n")
         run_log.flush()
-        return_code = _run_command(command, run_log, cwd=Path(cwd))
+        with subprocess.Popen(
+            command,
+            cwd=Path(cwd),
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+        ) as process:
+            assert process.stdout is not None
+            for line in process.stdout:
+                run_log.write(line)
+                run_log.flush()
+            return_code = process.wait()
+    print(f"SOLVER EXIT {return_code}; details: {log_path}", flush=True)
     return return_code, log_path.read_text(encoding="utf-8")
 
 
 def _utc_now() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def _finalize_success(
+    output: Path, summary: dict[str, object], log: TextIO
+) -> None:
+    """Record completion only after the full fixed v23 figure set exists."""
+
+    _require_v23_core_figures(output)
+    summary["status"] = "complete"
+    summary["finished_utc"] = _utc_now()
+    _write_summary(output, summary)
+    _message(f"MMTO v24 pipeline complete: {output}", log)
+    _list_v24_figures(output, log)
 
 
 def _write_acquisition_report(output: Path, summary: dict[str, object]) -> None:
@@ -1503,12 +1628,21 @@ def main(
                         image.observed_bytes,
                         image.source_sha256,
                     )
-                    assignment = assign_source(
-                        results / "mmto-camera-installation-assignments.jsonl",
+                    assignments_path = (
+                        results / "mmto-camera-installation-assignments.jsonl"
+                    )
+                    assign_source(
+                        assignments_path,
                         source,
                         image.source_sha256,
-                        repo_root / MMTO_VISIBLE_SKY_MASK_MANIFEST,
-                        MMTO_CAMERA_INSTALLATION_ID,
+                        source_id=MMTO_SOURCE_ID,
+                        camera_id=MMTO_CAMERA_ID,
+                        registry_paths=(repo_root / MMTO_CALIBRATION_REGISTRY,),
+                        installation_id=MMTO_CAMERA_INSTALLATION_ID,
+                        orientation=MMTO_CAMERA_ORIENTATION,
+                    )
+                    assignment = _resolve_mmto_calibration(
+                        repo_root, assignments_path, image.source_sha256
                     )
                     report_row.update(
                         camera_installation_id=str(assignment["installation_id"]),
@@ -1544,17 +1678,6 @@ def main(
                             cwd=repo_root,
                             prefix=transcript.getvalue(),
                         )
-                        receipt = _latest_v24_receipt(database, image.source_sha256)
-                        if receipt is None:
-                            raise OperationalFailure(
-                                "v24 analysis produced no database receipt for "
-                                f"{image.source_sha256}"
-                            )
-                        if (return_code == 0) != (receipt == 0):
-                            raise OperationalFailure(
-                                "v24 analysis exit status disagrees with its database receipt for "
-                                f"{image.source_sha256}"
-                            )
                         if return_code == 0 and not (
                             run_dir / "analysis" / "report.pdf"
                         ).is_file():
@@ -1565,7 +1688,7 @@ def main(
                         return (
                             number,
                             report_row,
-                            receipt,
+                            return_code,
                             transcript_text,
                             None,
                         )
@@ -1584,10 +1707,18 @@ def main(
                                 )
                             except OSError:
                                 pass
-                        return number, report_row, None, transcript_text, exc
+                        return (
+                            number,
+                            report_row,
+                            None,
+                            transcript_text,
+                            exc,
+                        )
 
                 def publish_solve(
-                    _job: tuple[int, ReadyImage, Path, dict[str, str]],
+                    _job: tuple[
+                        int, ReadyImage, Path, dict[str, str], dict[str, object]
+                    ],
                     result: tuple[
                         int,
                         dict[str, str],
@@ -1596,12 +1727,55 @@ def main(
                         Exception | None,
                     ],
                 ) -> None:
-                    number, report_row, receipt, transcript, error = result
+                    _number, _report_row, _return_code, transcript, _error = result
                     log.write(transcript)
                     log.flush()
+
+                def verify_solve(
+                    job: tuple[
+                        int, ReadyImage, Path, dict[str, str], dict[str, object]
+                    ],
+                    result: tuple[
+                        int,
+                        dict[str, str],
+                        int | None,
+                        str,
+                        Exception | None,
+                    ],
+                ) -> tuple[int, dict[str, str], int | None, Exception | None]:
+                    number, report_row, return_code, _transcript, error = result
+                    if error is not None:
+                        return number, report_row, None, error
+                    assert return_code is not None
+                    image = job[1]
+                    try:
+                        receipt = _latest_v24_receipt(database, image.source_sha256)
+                        if receipt is None:
+                            raise OperationalFailure(
+                                "v24 analysis produced no database receipt for "
+                                f"{image.source_sha256}"
+                            )
+                        if (return_code == 0) != (receipt == 0):
+                            raise OperationalFailure(
+                                "v24 analysis exit status disagrees with its database receipt for "
+                                f"{image.source_sha256}"
+                            )
+                    except (OSError, RuntimeError, ValueError, sqlite3.Error,
+                            OperationalFailure) as exc:
+                        return number, report_row, None, exc
+                    return number, report_row, receipt, None
+
+                verified_results = _run_solver_jobs_then_verify(
+                    pending_solves,
+                    args.solver_workers,
+                    solve_image,
+                    verify_solve,
+                    completed=publish_solve,
+                )
+                for number, report_row, receipt, error in verified_results:
                     if error is not None:
                         solver_errors.append(error)
-                        return
+                        continue
                     assert receipt is not None
                     processing["succeeded" if receipt == 0 else "solver_failed"] += 1
                     processed_rows[number] = {
@@ -1612,13 +1786,6 @@ def main(
                         processed_rows[index] for index in sorted(processed_rows)
                     ]
                     _write_summary(output, summary)
-
-                _run_solver_jobs(
-                    pending_solves,
-                    args.solver_workers,
-                    solve_image,
-                    completed=publish_solve,
-                )
                 if solver_errors:
                     raise solver_errors[0]
 
@@ -1672,11 +1839,7 @@ def main(
                     if name == "differential_photometry":
                         _record_differential_benchmark(output, summary)
                         _write_summary(output, summary)
-                summary["status"] = "complete"
-                summary["finished_utc"] = _utc_now()
-                _write_summary(output, summary)
-                _message(f"MMTO v24 pipeline complete: {output}", log)
-                _list_v24_figures(output, log)
+                _finalize_success(output, summary, log)
         return 0
     except (OSError, RuntimeError, ValueError, sqlite3.Error, OperationalFailure) as exc:
         if output is not None and Path(output).is_dir() and summary is not None:

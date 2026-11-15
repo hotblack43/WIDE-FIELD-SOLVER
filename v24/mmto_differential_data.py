@@ -215,7 +215,11 @@ def _observations(
         )
     }
     observations: dict[str, tuple[str, float]] = {}
-    for table in ("mmto_v21_observations", "mmto_v24_observations"):
+    for table in (
+        "mmto_v21_observations",
+        "mmto_v23_observations",
+        "mmto_v24_observations",
+    ):
         if table not in available:
             continue
         for source_sha256, midpoint, exposure in connection.execute(

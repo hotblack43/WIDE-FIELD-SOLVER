@@ -13,6 +13,8 @@ def check_result(result: dict, baseline: dict) -> list[str]:
     camera = result["camera"]
     image = result["input_image"]
     exposure = image["exposure"]
+    visible_sky = image.get("visible_sky_mask", {})
+    expected_visible_sky = baseline["visible_sky_mask"]
     checks = {
         "approved MMTO input checksum":
             result["source_sha256"] == baseline["source_sha256"],
@@ -36,6 +38,10 @@ def check_result(result: dict, baseline: dict) -> list[str]:
             image["format"] == "fits" and image["plane_names"] == ["R", "G", "B"],
         "native depth preserved": image["native_depth_preserved"] is True,
         "compressed FITS input": image["source_compression"] == "bz2",
+        "approved visible-sky calibration": all(
+            visible_sky.get(key) == value
+            for key, value in expected_visible_sky.items()
+        ),
         "recorded exposure":
             exposure["status"] == "available"
             and exposure["seconds"] == limits["exposure_seconds"],

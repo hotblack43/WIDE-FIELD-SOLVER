@@ -12,7 +12,7 @@ def run_demo(output: Path) -> None:
     output = output.resolve()
     subprocess.run([
         sys.executable,
-        str(ROOT/"point_star_barghini.py"),
+        str(ROOT/"analyse_image.py"),
         str(ROOT/"examples/mmto/2026_09_19__02_20_01.fits.bz2"),
         "--output",
         str(output),
@@ -26,6 +26,10 @@ def run_demo(output: Path) -> None:
         "--overwrite",
         "--names-cache",
         str(ROOT/"data/display_names.json"),
+        "--visible-sky-mask-manifest",
+        str(ROOT/"data/sky_masks/mmto_installation_2026a.json"),
+        "--camera-installation-id",
+        "mmto-skycam-2026a",
     ], check=True)
     subprocess.run([
         sys.executable,

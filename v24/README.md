@@ -1,7 +1,8 @@
 # Wide-Field Solver v0.24.0
 
-V24 is based directly on frozen v23. It preserves that runtime and adds a
-read-only native-FITS benchmark for aperture and sky-annulus radii. The first
+V24 is based directly on frozen v23. It preserves that runtime, adds a
+read-only native-FITS benchmark for aperture and sky-annulus radii, and adds an
+installation-specific visible-sky calibration workflow. The first aperture
 benchmark retained the v22 production geometry; v24 does not silently change
 photometry from an exploratory result.
 
@@ -38,7 +39,12 @@ request.
 The demonstration analyses a native three-colour FITS observation from the MMT
 Observatory all-sky camera. Use a fresh output name for every run. A successful
 run prints its output location and verifies the result against conservative
-scientific thresholds recorded with the example.
+scientific thresholds recorded with the example. The v24 demo now runs through
+the public analysis entry point with the bundled approved MMTO visible-sky mask,
+and verifies that mask's installation ID, mask ID, and SHA-256. On the preserved
+example this intentionally changes the v23-era unmasked counts from 1,526
+detections and 1,409 associations to 1,362 and 1,280 respectively; the fit
+remains at 0.326 px RMS while obstruction-region sources are excluded.
 
 The image credit and its permission boundary are stated in [NOTICE.md](NOTICE.md).
 In short: MMTO all-sky-camera image courtesy of MMT Observatory, provided with
@@ -47,11 +53,11 @@ licence.
 
 ## Solve your own image
 
-Pass one or more input files to the v0.23 launcher:
+Pass one or more input files to the v0.24 launcher:
 
 ```sh
-./go23.sh /full/path/to/image.fits.bz2
-./go23.sh first.fits second.cr2 --results-dir /full/path/to/results
+./go24.sh /full/path/to/image.fits.bz2
+./go24.sh first.fits second.cr2 --results-dir /full/path/to/results
 ```
 
 By default, output goes to `results/` beside the release. Use `--results-dir`
@@ -64,8 +70,98 @@ attempted.
 Supported inputs include compressed and uncompressed FITS, Canon CR2, and
 native-depth PNG and TIFF images. Colour FITS may contain RGB or `R/G1/G2/B`
 planes in common plane-first, plane-last or named-extension layouts. Use
-`./go23.sh --help` for FITS HDU, channel-order, saturation and observation-time
+`./go24.sh --help` for FITS HDU, channel-order, saturation and visible-sky
 options.
+
+## Visible-sky calibration for a fixed camera
+
+An arbitrary local image still follows the unchanged unmasked path:
+
+```sh
+./go24.sh image.fits
+```
+
+For a fixed camera, first download native originals with the ordinary
+downloader. Calibration assignment is opt-in and does not change existing
+downloader commands. The three options below must be supplied together:
+
+```sh
+uv run --project v24 --frozen python v24/download_samples.py \
+  --site example --camera camera-a --date 2026-11-01 \
+  --calibration-registry camera-calibrations/registry.jsonl \
+  --installation-assignments camera-calibrations/assignments.jsonl \
+  --camera-orientation detector_native_top_left_xy_right_y_down
+```
+
+Create a review-only proposal from verified managed downloads:
+
+```sh
+uv run --project v24 --frozen python v24/scripts/build_visible_sky_mask.py \
+  propose --download-manifest raw_allsky_samples/manifest.sqlite \
+  --archive-root raw_allsky_samples --source example --camera camera-a \
+  --installation-id example-camera-2026a \
+  --orientation detector_native_top_left_xy_right_y_down \
+  --output calibration-review/example-camera-2026a
+```
+
+The proposal is `draft_not_approved` and cannot be used in production. An
+operator may use `revise` to create a new immutable child proposal; the parent
+is never overwritten. `approve` requires the reviewed draft SHA-256, writes a
+new immutable binary mask and manifest, validates them with the production
+loader, and registers them. Approval does not activate the installation:
+
+```sh
+uv run --project v24 --frozen python v24/scripts/build_visible_sky_mask.py \
+  activate --calibration-registry camera-calibrations/registry.jsonl \
+  --source example --camera camera-a --installation-id example-camera-2026a
+```
+
+Moving, rotating, cropping, or replacing a camera requires a new installation
+ID and a new reviewed mask. Existing source checksums are never reassigned by a
+later activation. Historical verified downloads can be previewed and assigned
+in an explicitly bounded `assign-existing` operation; mutation requires
+`--apply`:
+
+```sh
+uv run --project v24 --frozen python v24/download_samples.py assign-existing \
+  --manifest /absolute/archive/manifest.sqlite \
+  --archive-root /absolute/archive --source example --camera camera-a \
+  --limit 20 --calibration-registry camera-calibrations/registry.jsonl \
+  --installation-assignments camera-calibrations/assignments.jsonl \
+  --camera-orientation detector_native_top_left_xy_right_y_down
+```
+
+Solve an assigned image by checksum through the registry:
+
+```sh
+./go24.sh /absolute/archive/example.fits \
+  --calibration-registry camera-calibrations/registry.jsonl \
+  --installation-assignments camera-calibrations/assignments.jsonl
+```
+
+`--allow-unconfigured-visible-sky` is valid only with the complete automatic
+option set and permits fallback only when the source checksum has no assignment.
+Corrupt, conflicting, missing, or identity-mismatched calibration data remains
+fatal. The explicit `--visible-sky-mask-manifest` plus
+`--camera-installation-id` pair remains available for operator-declared local
+images and cannot be combined with automatic resolution.
+
+## Reproduce a cold-start calibration test
+
+`scripts/replay_visible_sky_cold_start.py propose` selects complete observing
+dates before calibration, seals the proposal without an approved reference,
+and reserves at least one fifth of dates. After sealing, `evaluate` processes
+the held-out frames and reveals an approved reference. The optional
+`audit-held-out` command runs production point-source detection on every
+held-out original and records each measured source coordinate, support box,
+and whether that support is visible, crosses the proposed boundary, or is
+excluded. Interrupted audits resume from their validated JSONL prefix.
+
+The native MMTO replay used 3,194 verified FITS originals across 116 dates. Its
+669 held-out frames contained 380,048 unmasked detections: 10,539 source
+supports intersected the proposed boundary and 3,410 were wholly excluded.
+These figures validate the generic machinery on MMTO only; they do not claim a
+successful calibration for another camera installation.
 
 ## Aperture-radius benchmark
 

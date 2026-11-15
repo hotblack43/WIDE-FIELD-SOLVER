@@ -27,3 +27,10 @@ results/
 /data/zenodo-3736793/all/
 /reports/planet_database_extract_*/
 /find_planet_openorb_v1/.vendor/
+
+# Host-local offload and inspection symlinks/files.
+/results
+/raw_allsky_samples
+/outputs/knaldgas-focus-20261029/node_modules
+/outputs/knaldgas-focus-20261029/*.inspect.ndjson
+/outputs/knaldgas-focus-20261029/*.xlsx

@@ -10,12 +10,37 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parent
+V12_RUNTIME_ROOT_FILES = {"go12.sh", "go_v0.12.0.sh"}
+
+
+def _tracked_v12_runtime() -> set[str]:
+    names = subprocess.run(
+        ["git", "ls-files", "v12"],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+    return V12_RUNTIME_ROOT_FILES | set(names)
 
 
 class V13BoundaryTests(unittest.TestCase):
+    def test_v12_snapshot_covers_only_the_tracked_runtime(self):
+        saved = json.loads((ROOT / "docs/v12-runtime.json").read_text())
+        recorded = set(saved["sha256"])
+        self.assertEqual(recorded, _tracked_v12_runtime())
+        self.assertFalse(
+            {
+                name
+                for name in recorded
+                if "__pycache__" in Path(name).parts or name.endswith(".pyc")
+            }
+        )
+
     def test_v12_snapshot_is_recorded_and_unchanged(self):
         saved = json.loads((ROOT / "docs/v12-runtime.json").read_text())
         self.assertEqual(saved["version"], "0.12.0")
+        self.assertEqual(set(saved["sha256"]), _tracked_v12_runtime())
         for name, digest in saved["sha256"].items():
             with self.subTest(path=name):
                 self.assertEqual(

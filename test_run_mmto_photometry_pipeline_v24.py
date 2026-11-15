@@ -1,16 +1,61 @@
 """V24 acquisition must continue the completed v23 queue."""
 from __future__ import annotations
 
+from contextlib import redirect_stdout
 from datetime import date
+from io import StringIO
 import json
 import os
 from pathlib import Path
 import sqlite3
+import subprocess
 import sys
 import tempfile
+import threading
+import time
 import unittest
+from unittest import mock
 
 from scripts import run_mmto_photometry_pipeline_v24 as PIPELINE
+
+V23_PRODUCTION_CORE_FIGURES = frozenset(
+    Path(name)
+    for name in """\
+acquisition_timeline.pdf
+differential-photometry/model_comparison.pdf
+differential-photometry/planet_relative_lightcurves.pdf
+differential-photometry/residual_diagnostics.pdf
+differential-photometry/signal_recovery.pdf
+known-site-time-validation/mmto_planet_epoch_validation.png
+known-site-time-validation/mmto_site_time_validation.png
+nightly-extinction-v24/grey_transparency.png
+nightly-extinction/extinction_by_band_and_night.pdf
+nightly-extinction/extinction_diagnostics.pdf
+planet-empirical-extinction/B/planet_only_airmass_before_after.pdf
+planet-empirical-extinction/B/planet_only_extinction_distance_corrected_magnitude_vs_hours_past_local_noon.pdf
+planet-empirical-extinction/G/planet_only_airmass_before_after.pdf
+planet-empirical-extinction/G/planet_only_extinction_distance_corrected_magnitude_vs_hours_past_local_noon.pdf
+planet-empirical-extinction/R/planet_only_airmass_before_after.pdf
+planet-empirical-extinction/R/planet_only_extinction_distance_corrected_magnitude_vs_hours_past_local_noon.pdf
+planet-photometry/B/planet_extinction_corrected_distance_magnitude_vs_airmass.pdf
+planet-photometry/B/planet_extinction_corrected_distance_magnitude_vs_hours_past_local_noon.pdf
+planet-photometry/B/planet_extinction_corrected_distance_magnitude_vs_time.pdf
+planet-photometry/B/planet_raw_vs_extinction_corrected_magnitude_vs_airmass.pdf
+planet-photometry/G/planet_extinction_corrected_distance_magnitude_vs_airmass.pdf
+planet-photometry/G/planet_extinction_corrected_distance_magnitude_vs_hours_past_local_noon.pdf
+planet-photometry/G/planet_extinction_corrected_distance_magnitude_vs_time.pdf
+planet-photometry/G/planet_raw_vs_extinction_corrected_magnitude_vs_airmass.pdf
+planet-photometry/R/planet_extinction_corrected_distance_magnitude_vs_airmass.pdf
+planet-photometry/R/planet_extinction_corrected_distance_magnitude_vs_hours_past_local_noon.pdf
+planet-photometry/R/planet_extinction_corrected_distance_magnitude_vs_time.pdf
+planet-photometry/R/planet_raw_vs_extinction_corrected_magnitude_vs_airmass.pdf
+planet-photometry/planet_brightness_matched_stellar_extinction.pdf
+planet-photometry/planet_colour_colour.png
+stellar-lightcurves/lightcurves.pdf
+stellar-lightcurves/sd_vs_magnitude.pdf
+variable-stars/variable_star_phase_curves.pdf
+""".splitlines()
+)
 
 
 def write_state(
@@ -37,6 +82,162 @@ def write_state(
 
 
 class V24ProgressInheritanceTests(unittest.TestCase):
+    def test_v23_figure_contract_matches_latest_complete_v23_output(self):
+        # Normalized fixed-figure inventory from v23-20261110T191148Z.
+        self.assertEqual(len(V23_PRODUCTION_CORE_FIGURES), 33)
+        self.assertEqual(
+            PIPELINE.V23_CORE_FIGURE_CONTRACT,
+            V23_PRODUCTION_CORE_FIGURES,
+        )
+
+    def test_v24_cannot_complete_with_a_missing_v23_core_figure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            for relative in PIPELINE.V23_CORE_FIGURE_CONTRACT:
+                path = output / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b"figure")
+            missing = (
+                output
+                / "planet-photometry"
+                / "R"
+                / "planet_extinction_corrected_distance_magnitude_vs_time.pdf"
+            )
+            missing.unlink()
+
+            with self.assertRaisesRegex(
+                PIPELINE.OperationalFailure,
+                "planet_extinction_corrected_distance_magnitude_vs_time.pdf",
+            ):
+                PIPELINE._require_v23_core_figures(output)
+
+            missing.write_bytes(b"figure")
+            PIPELINE._require_v23_core_figures(output)
+
+    def test_v24_rejects_an_empty_v23_core_figure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            for relative in V23_PRODUCTION_CORE_FIGURES:
+                path = output / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b"figure")
+            empty = output / "planet-photometry" / "planet_colour_colour.png"
+            empty.write_bytes(b"")
+
+            with self.assertRaisesRegex(
+                PIPELINE.OperationalFailure,
+                "planet_colour_colour.png",
+            ):
+                PIPELINE._require_v23_core_figures(output)
+
+    def test_success_is_recorded_only_after_v23_figure_parity_passes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            for relative in V23_PRODUCTION_CORE_FIGURES:
+                path = output / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b"figure")
+            missing = output / "planet-photometry" / "R" / (
+                "planet_extinction_corrected_distance_magnitude_vs_time.pdf"
+            )
+            missing.unlink()
+            summary: dict[str, object] = {"status": "running"}
+            log = StringIO()
+
+            with self.assertRaises(PIPELINE.OperationalFailure):
+                PIPELINE._finalize_success(output, summary, log)
+
+            self.assertEqual(summary, {"status": "running"})
+            self.assertFalse((output / "pipeline_summary.json").exists())
+
+            missing.write_bytes(b"figure")
+            PIPELINE._finalize_success(output, summary, log)
+
+            self.assertEqual(summary["status"], "complete")
+            saved = json.loads((output / "pipeline_summary.json").read_text())
+            self.assertEqual(saved["status"], "complete")
+
+    def test_every_configured_v24_derived_stage_program_can_start(self):
+        stages = PIPELINE._stage_commands(
+            PIPELINE.REPO_ROOT,
+            Path("/database.sqlite"),
+            Path("/manifest.sqlite"),
+            Path("/output"),
+        )
+
+        for name, command in stages:
+            completed = subprocess.run(
+                [*command, "--help"],
+                cwd=PIPELINE.REPO_ROOT,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                check=False,
+            )
+            self.assertEqual(completed.returncode, 0, f"{name}: {completed.stdout}")
+
+    def test_receipt_verification_waits_until_all_solver_workers_finish(self):
+        active = 0
+        lock = threading.Lock()
+        both_started = threading.Event()
+
+        def solve(item: int) -> str:
+            nonlocal active
+            with lock:
+                active += 1
+                if active == 2:
+                    both_started.set()
+            self.assertTrue(both_started.wait(timeout=1.0))
+            if item == 2:
+                time.sleep(0.1)
+            with lock:
+                active -= 1
+            return f"solved-{item}"
+
+        def verify(_item: int, result: str) -> str:
+            with lock:
+                self.assertEqual(active, 0)
+            return result
+
+        results = PIPELINE._run_solver_jobs_then_verify(
+            (1, 2), 2, solve, verify
+        )
+
+        self.assertEqual(results, ("solved-1", "solved-2"))
+
+    def test_solver_transcript_is_retained_without_streaming_to_terminal(self):
+        with tempfile.TemporaryDirectory() as directory:
+            run_dir = Path(directory)
+            terminal = StringIO()
+            command = [
+                sys.executable,
+                "-c",
+                (
+                    "import sys; "
+                    "print('Traceback: expected per-image solver failure'); "
+                    "sys.exit(1)"
+                ),
+            ]
+
+            with redirect_stdout(terminal):
+                return_code, transcript = PIPELINE._run_logged_solver(
+                    command,
+                    run_dir,
+                    cwd=Path(__file__).resolve().parent,
+                    prefix="PROCESS test-image.fits\n",
+                )
+
+            saved = (run_dir / "run.log").read_text(encoding="utf-8")
+
+        self.assertEqual(return_code, 1)
+        self.assertEqual(
+            terminal.getvalue(),
+            f"SOLVER EXIT 1; details: {run_dir / 'run.log'}\n",
+        )
+        self.assertIn("PROCESS test-image.fits", saved)
+        self.assertIn("Traceback: expected per-image solver failure", saved)
+        self.assertEqual(transcript, saved)
+
     def test_variable_star_stage_launcher_is_executable(self):
         stages = dict(PIPELINE._stage_commands(
             PIPELINE.REPO_ROOT,
@@ -88,6 +289,49 @@ class V24ProgressInheritanceTests(unittest.TestCase):
             command[command.index("--camera-installation-id") + 1],
             "mmto-skycam-2026a",
         )
+
+    def test_mmto_assignment_resolves_through_bundled_generic_registry(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            assignments = root / "assignments.jsonl"
+            digest = "a" * 64
+            resolved = {
+                "source_id": "mmto",
+                "camera_id": "mmto-skycam",
+                "installation_id": "mmto-skycam-2026a",
+                "mask_id": "mmto-visible-sky-2026a-v1",
+                "manifest_path": str(
+                    root / "v24/data/sky_masks/mmto_installation_2026a.json"
+                ),
+            }
+            with mock.patch.object(
+                PIPELINE, "resolve_source_calibration", return_value=resolved
+            ) as resolve:
+                self.assertEqual(
+                    PIPELINE._resolve_mmto_calibration(root, assignments, digest),
+                    resolved,
+                )
+            resolve.assert_called_once_with(
+                (root / PIPELINE.MMTO_CALIBRATION_REGISTRY,),
+                assignments,
+                digest,
+            )
+
+    def test_batch_solver_refuses_a_non_mmto_mask_assignment(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            manifest = root / PIPELINE.MMTO_VISIBLE_SKY_MASK_MANIFEST
+            manifest.parent.mkdir(parents=True)
+            manifest.write_text("{}\n")
+            assignment = {
+                "installation_id": PIPELINE.MMTO_CAMERA_INSTALLATION_ID,
+                "manifest_path": str(manifest),
+                "mask_id": "another-mask",
+            }
+            with self.assertRaisesRegex(ValueError, "approved installation mask"):
+                PIPELINE._prepare_solver_run(
+                    root, root / "image.fits", root / "results", assignment
+                )
 
     def test_batch_solver_refuses_unassigned_source(self):
         with tempfile.TemporaryDirectory() as temporary:

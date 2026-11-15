@@ -1,8 +1,56 @@
 # Current development feature status
 
 The published checkpoint remains v0.11.0. Historical runtime boundaries through
-v22 are frozen by their manifests. V23 is the active aperture-photometry test
-line.
+v23 are frozen by their manifests. V24 is the active camera-installation
+visible-sky-mask line.
+
+## V24 in development
+
+- V24 now contains generic calibration machinery for any supported fixed
+  all-sky camera: sealed review proposals, immutable revision and approval,
+  layered append-only registries, explicit activation, checksum-keyed source
+  assignments, opt-in downloader integration, and automatic launcher
+  resolution. The existing unmasked numerical path remains available and is
+  recorded as `not_configured`.
+- A sealed MMTO cold-start replay freshly verified 3,194 native FITS originals
+  across 116 dates, reserved every fifth sorted date (669 frames on 24 dates),
+  and generated the proposal from 92 phase-cycled calibration dates before the
+  approved mask was revealed. The sealed result has 98.418% exact pixel
+  agreement, mask IoU 0.9751, mean boundary separation 5.50 pixels, and p95
+  separation 13.93 pixels from the approved MMTO reference. Production
+  point-source detection was also run on all 669 held-out frames: 380,048
+  unmasked detections were audited, with 10,539 supports intersecting the
+  proposed boundary and 3,410 wholly inside the excluded region. This is MMTO
+  evidence only: the generic workflow is not yet validated on a real non-MMTO camera.
+- A same-model FITS header that omits the known camera serial is compatible;
+  a different explicit serial remains fatal. A camera move, rotation, crop, or
+  replacement requires a new installation ID and approved artifact.
+- The packaged v24 MMTO demo uses the approved mask rather than the legacy
+  unconfigured path. Its versioned baseline records the expected numerical
+  change from 1,526/1,409 unmasked detections/associations to 1,362/1,280 masked
+  detections/associations and requires the exact approved mask checksum.
+
+- The concurrent MMTO batch retains each solver's complete command, diagnostics,
+  and traceback in its private `run.log`, while the terminal prints only one
+  `SOLVER EXIT` line with that evidence path. A failed blind bootstrap remains a
+  recorded per-image solver failure and does not resemble a pipeline crash on
+  the routine terminal display.
+- Receipt validation starts only after every concurrent solver has finished its
+  atomic SQLite append. This removes the rollback-journal reader/writer race on
+  the large shared results database without changing solver concurrency,
+  receipts, or scientific results.
+- The v24 pipeline carries its own launchers and implementations for grey
+  extinction, same-sidereal transmission, known-site/time validation, and the
+  differential-photometry benchmark; each configured derived stage is checked
+  by starting its exact command with `--help`.
+- Differential-photometry control replay combines the versioned v21, v23, and
+  v24 FITS-header observation sidecars read-only. This preserves exact replay
+  of the cumulative nightly-extinction population when it contains frozen v23
+  receipts, while only v24 receipts count as completed masked solver work.
+- A v24 MMTO run cannot report `complete` unless all 33 fixed figure paths from
+  the latest complete v23 output contract exist and are non-empty. This
+  explicitly includes the R, G, and B planet plots against UTC time and hours
+  past local noon. Same-sidereal map counts remain data-dependent.
 
 ## Independent OpenOrb planet experiment
 
@@ -18,7 +66,7 @@ line.
   comparison occurs only after the anonymous evidence is sealed and does not
   establish a Mars identification.
 
-## V23 in development
+## V23 frozen implementation
 
 - The MMTO v23 pipeline runs four independent, single-threaded image solvers
   concurrently by default; `--solver-workers N` changes the bound. Each solve
@@ -133,4 +181,5 @@ line.
   photometric-zenith fit.
 - Planet epoch evidence remains secondary and may be ambiguous.
 - The existing Monster2 distributor is pinned to v11 and is not a v21 runner.
-- New hardware calibration is outside scope because there is no camera access.
+- Real non-MMTO calibration evidence is not yet available because no second
+  fixed camera installation has been supplied for validation.

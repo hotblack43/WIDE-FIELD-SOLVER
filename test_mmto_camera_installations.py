@@ -62,6 +62,33 @@ class CameraInstallationAssignmentsTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'checksum mismatch'):
                 assign_source(root/'new.jsonl', source, '0'*64, manifest, 'installation-a')
 
+    def test_existing_legacy_assignment_is_read_idempotently_without_rewrite(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source, digest, manifest = self.fixture(root)
+            registry = root / "assignments.jsonl"
+            record = {
+                "schema": "mmto-camera-installation-assignment-v1",
+                "source_sha256": digest,
+                "installation_id": "installation-a",
+                "mask_id": "mask-a",
+                "mask_sha256": json.loads(manifest.read_text())["mask_sha256"],
+                "manifest_path": str(manifest.resolve()),
+                "manifest_sha256": hashlib.sha256(manifest.read_bytes()).hexdigest(),
+                "instrument": "ZWO ASI294MC Pro (21599760)",
+                "detector_shape": [20, 24],
+                "plane_layout": "plane_first",
+                "orientation": "detector_native_top_left_xy_right_y_down",
+            }
+            registry.write_text(json.dumps(record, sort_keys=True) + "\n")
+            before = registry.read_bytes()
+
+            self.assertEqual(
+                assign_source(registry, source, digest, manifest, "installation-a"),
+                record,
+            )
+            self.assertEqual(registry.read_bytes(), before)
+
 
 if __name__ == '__main__':
     unittest.main()

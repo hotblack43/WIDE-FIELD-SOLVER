@@ -6,7 +6,7 @@ Peter Thejll and Chris Flynn
 
 [![Solver regression](https://github.com/hotblack43/WIDE-FIELD-SOLVER/actions/workflows/tests.yml/badge.svg)](https://github.com/hotblack43/WIDE-FIELD-SOLVER/actions/workflows/tests.yml)
 [![Python 3.12](https://img.shields.io/badge/Python-3.12-312E81)](pyproject.toml)
-[![Recommended runtime](https://img.shields.io/badge/runtime-v0.16.0-C026D3)](v16/README.md)
+[![Development runtime](https://img.shields.io/badge/runtime-v0.24.0-C026D3)](v24/README.md)
 [![MMTO astrometry](https://img.shields.io/badge/MMTO_RMS-0.327_px-F2B134)](docs/SCIENTIFIC_STATUS.md)
 [![License: BSD 3-Clause](https://img.shields.io/badge/license-BSD_3--Clause-312E81)](LICENSE)
 
@@ -65,14 +65,14 @@ The tested platform is Linux. Install
 ```bash
 git clone https://github.com/hotblack43/WIDE-FIELD-SOLVER.git
 cd WIDE-FIELD-SOLVER
-uv sync --project v16 --frozen
-./go16.sh /full/path/to/image.fits
+uv sync --project v24 --frozen
+./go24.sh /full/path/to/image.fits
 ```
 
 Compressed FITS input is accepted directly:
 
 ```bash
-./go16.sh /full/path/to/image.fits.bz2
+./go24.sh /full/path/to/image.fits.bz2
 ```
 
 Canon CR2/CR3 collections can be converted to linear, MMTO-layout colour FITS
@@ -100,13 +100,13 @@ Canon CR2 input is decoded from the native 14-bit Bayer sensor data, not its
 embedded JPEG preview:
 
 ```bash
-./go16.sh /full/path/to/image.cr2
+./go24.sh /full/path/to/image.cr2
 ```
 
 Shell-expanded wildcards process a batch sequentially with the same options:
 
 ```bash
-./go16.sh raw_allsky_samples/mmto/mmto-skycam/*/*.fits.bz2 \
+./go24.sh raw_allsky_samples/mmto/mmto-skycam/*/*.fits.bz2 \
   --results-dir /path/to/results
 ```
 
@@ -153,9 +153,9 @@ and redistribute it under those terms. If you use WIDE-FIELD SOLVER in
 scientific work, please use the repository's [`CITATION.cff`](CITATION.cff);
 GitHub's **Cite this repository** menu supplies APA and BibTeX forms.
 
-For FITS-header-timed MMTO reprocessing, `go21.sh` and
-`go_mmto_photometry_v21.sh` are the current development launchers. The frozen
-v20 launchers remain available for reproducible comparison. The independent v17 launcher remains specific to
+For installation-masked development, `go24.sh` and
+`go_mmto_photometry_v24.sh` are the current launchers. The frozen v23 and
+earlier launchers remain available for reproducible comparison. The independent v17 launcher remains specific to
 KNALDGAS inputs. The
 latest packaged GitHub release remains v0.11.0; its complete `go11.sh` runtime
 is frozen by `docs/v11-runtime.json`. Historical solvers remain available for
@@ -169,6 +169,12 @@ catalogues or images. Those materials retain their own terms. Read
 Analyses and publications using MMTO all-sky-camera data should acknowledge the
 MMT Observatory. We thank Tim Pickering and the Observatory for maintaining the
 camera and making its colour FITS archive available.
+
+The v24 package also supports reviewed visible-sky masks for other fixed
+all-sky cameras. Proposal, revision, approval, activation, source-checksum
+assignment, and automatic-resolution commands are documented in
+[the v24 README](v24/README.md). The generic machinery is implemented, while
+real non-MMTO camera validation remains future work.
 
 ## Raw colour all-sky acquisition
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import date
 import hashlib
 import json
@@ -30,10 +30,20 @@ if str(PACKAGE_ROOT) not in sys.path:
 
 from point_star_footprint import infer_sky_footprint
 from point_star_image import load_scientific_image, report_display_rgb
+from visible_sky_calibration import (
+    approve_proposal,
+    finalize_binary_mask,
+    detector_signature,
+    draft_filename,
+    require_single_detector_signature,
+    revise_proposal,
+    seal_artifact_inventory,
+    verified_sources_from_manifest,
+)
+from visible_sky_registry import activate_installation, register_calibration
 
 
 DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-INSTALLATION_DRAFT_NAME = "mmto_installation_2026a.draft.png"
 
 
 @dataclass(frozen=True)
@@ -85,6 +95,7 @@ def load_native_luminance(path: Path):
         "decoded_dtype": metadata["decoded_dtype"],
         "channel_layout": metadata["channel_layout"],
         "plane_names": metadata["plane_names"],
+        "instrument": metadata.get("instrument"),
         "observation_date": _observation_date(image.path),
     }
     return (
@@ -292,31 +303,11 @@ def finalize_approved_mask(
     safety_margin_pixels: int = 5,
 ) -> dict[str, object]:
     """Freeze an approved draft after expanding excluded foreground inward."""
-    draft_path = Path(draft_path).expanduser().resolve(strict=True)
-    output_path = Path(output_path).expanduser().resolve()
-    if output_path.exists():
-        raise FileExistsError(output_path)
-    if safety_margin_pixels < 0:
-        raise ValueError("safety margin must be non-negative")
-    with Image.open(draft_path) as image:
-        pixels = np.asarray(image.convert("L"), dtype=np.uint8)
-    values = set(np.unique(pixels).tolist())
-    if not values.issubset({0, 255}):
-        raise ValueError(f"draft mask must be binary 0/255, found {sorted(values)}")
-    visible = pixels == 255
-    approved = binary_erosion(visible, iterations=safety_margin_pixels)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    Image.fromarray(np.where(approved, 255, 0).astype(np.uint8), mode="L").save(output_path)
-    return {
-        "draft_path": str(draft_path),
-        "draft_sha256": _sha256(draft_path),
-        "approved_path": str(output_path),
-        "approved_sha256": _sha256(output_path),
-        "safety_margin_pixels": int(safety_margin_pixels),
-        "draft_visible_pixels": int(visible.sum()),
-        "approved_visible_pixels": int(approved.sum()),
-        "excluded_pixels_added": int(visible.sum() - approved.sum()),
-    }
+    return finalize_binary_mask(
+        draft_path,
+        output_path,
+        safety_margin_pixels=safety_margin_pixels,
+    )
 
 
 def write_proposal(
@@ -327,6 +318,11 @@ def write_proposal(
     reference_rgb: np.ndarray,
     source_records: Sequence[dict[str, object]],
     audit: dict[str, object],
+    source_id: str,
+    camera_id: str,
+    installation_id: str,
+    orientation: str,
+    detector_signature: dict[str, object],
 ) -> None:
     """Write immutable review artifacts; never update an existing directory."""
     output = Path(output)
@@ -335,7 +331,7 @@ def write_proposal(
     reference = np.asarray(reference_rgb, dtype=np.uint8)
     if reference.shape != (*binary.shape, 3):
         reference = _reference_from_evidence(evidence)
-    draft_path = output / INSTALLATION_DRAFT_NAME
+    draft_path = output / draft_filename(installation_id)
     Image.fromarray(binary, mode="L").save(draft_path)
     temporal_path = output / "temporal_reference.png"
     Image.fromarray(_reference_from_evidence(evidence), mode="RGB").save(temporal_path)
@@ -344,10 +340,21 @@ def write_proposal(
     inverted_path = output / "boundary_review_inverted.png"
     Image.fromarray(_review_overlay(reference, mask, inverted=True), mode="RGB").save(inverted_path)
     dates = sorted({str(record["observation_date"]) for record in source_records})
+    artifacts = {
+        draft_path.name: _sha256(draft_path),
+        temporal_path.name: _sha256(temporal_path),
+        review_path.name: _sha256(review_path),
+        inverted_path.name: _sha256(inverted_path),
+    }
     payload = {
         "status": "draft_not_approved",
         "production_eligible": False,
-        "draft_id": "mmto_installation_2026a_temporal_consensus_draft",
+        "draft_id": f"{installation_id}-temporal-consensus-draft",
+        "source_id": source_id,
+        "camera_id": camera_id,
+        "installation_id": installation_id,
+        "orientation": orientation,
+        "detector_signature": detector_signature,
         "coordinate_convention": "array[y, x]; origin top-left",
         "pixel_values": {"0": "excluded", "255": "candidate visible sky"},
         "spatial_shape": list(binary.shape),
@@ -364,13 +371,9 @@ def write_proposal(
         "normalization": "finite_1_99_percentile_linear_clip",
         "proposal": audit,
         "generation_code_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
-        "artifacts": {
-            draft_path.name: _sha256(draft_path),
-            temporal_path.name: _sha256(temporal_path),
-            review_path.name: _sha256(review_path),
-            inverted_path.name: _sha256(inverted_path),
-        },
+        "artifacts": artifacts,
     }
+    payload["seal"] = seal_artifact_inventory(artifacts, payload)
     (output / "selection.json").write_text(
         json.dumps(payload, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
@@ -391,8 +394,35 @@ def _source_paths(path: Path) -> list[Path]:
     return answer
 
 
-def propose_command(source_json: Path, output: Path) -> None:
-    selected = select_representative_sources(_source_paths(source_json))
+def propose_command(
+    *,
+    source_json: Path | None,
+    download_manifest: Path | None,
+    archive_root: Path | None,
+    output: Path,
+    source_id: str,
+    camera_id: str,
+    installation_id: str,
+    orientation: str,
+) -> None:
+    if source_json is not None:
+        paths = _source_paths(source_json)
+    else:
+        if download_manifest is None or archive_root is None:
+            raise ValueError("managed proposal requires download manifest and archive root")
+        paths = [
+            source.path
+            for source in verified_sources_from_manifest(
+                download_manifest, archive_root, source_id, camera_id
+            )
+        ]
+    signature = require_single_detector_signature(
+        tuple(
+            (path, detector_signature(path, orientation=orientation))
+            for path in paths
+        )
+    )
+    selected = select_representative_sources(paths)
     frames = []
     records = []
     displays = []
@@ -413,6 +443,11 @@ def propose_command(source_json: Path, output: Path) -> None:
         reference_rgb=reference,
         source_records=records,
         audit=audit,
+        source_id=source_id,
+        camera_id=camera_id,
+        installation_id=installation_id,
+        orientation=orientation,
+        detector_signature=asdict(signature),
     )
 
 
@@ -420,11 +455,79 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
     propose_parser = subparsers.add_parser("propose", help="write review-only draft products")
-    propose_parser.add_argument("--sources", type=Path, required=True)
+    inputs = propose_parser.add_mutually_exclusive_group(required=True)
+    inputs.add_argument("--sources", type=Path)
+    inputs.add_argument("--download-manifest", type=Path)
+    propose_parser.add_argument("--archive-root", type=Path)
+    propose_parser.add_argument("--source", required=True)
+    propose_parser.add_argument("--camera", required=True)
+    propose_parser.add_argument("--installation-id", required=True)
+    propose_parser.add_argument("--orientation", required=True)
     propose_parser.add_argument("--output", type=Path, required=True)
+    revise_parser = subparsers.add_parser("revise", help="write an immutable corrected draft")
+    revise_parser.add_argument("--parent-selection", type=Path, required=True)
+    revise_parser.add_argument("--edited-mask", type=Path, required=True)
+    revise_parser.add_argument("--output", type=Path, required=True)
+    approve_parser = subparsers.add_parser("approve", help="approve one exact sealed draft")
+    approve_parser.add_argument("--proposal", type=Path, required=True)
+    approve_parser.add_argument("--reviewed-draft-sha256", required=True)
+    approve_parser.add_argument("--mask-id", required=True)
+    approve_parser.add_argument("--approved-by", required=True)
+    approve_parser.add_argument("--safety-margin-pixels", type=int, default=5)
+    approve_parser.add_argument("--calibration-root", type=Path, required=True)
+    activate_parser = subparsers.add_parser(
+        "activate", help="select a registered installation for future downloads"
+    )
+    activate_parser.add_argument("--calibration-registry", type=Path, required=True)
+    activate_parser.add_argument("--source", required=True)
+    activate_parser.add_argument("--camera", required=True)
+    activate_parser.add_argument("--installation-id", required=True)
     args = parser.parse_args(argv)
     if args.command == "propose":
-        propose_command(args.sources, args.output)
+        if args.download_manifest is not None and args.archive_root is None:
+            parser.error("--archive-root is required with --download-manifest")
+        if args.sources is not None and args.archive_root is not None:
+            parser.error("--archive-root is valid only with --download-manifest")
+        propose_command(
+            source_json=args.sources,
+            download_manifest=args.download_manifest,
+            archive_root=args.archive_root,
+            output=args.output,
+            source_id=args.source,
+            camera_id=args.camera,
+            installation_id=args.installation_id,
+            orientation=args.orientation,
+        )
+        return 0
+    if args.command == "revise":
+        print(revise_proposal(args.parent_selection, args.edited_mask, args.output))
+        return 0
+    if args.command == "approve":
+        manifest_path = approve_proposal(
+            args.proposal,
+            args.calibration_root,
+            reviewed_draft_sha256=args.reviewed_draft_sha256,
+            mask_id=args.mask_id,
+            approved_by=args.approved_by,
+            safety_margin_pixels=args.safety_margin_pixels,
+        )
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        register_calibration(
+            args.calibration_root / "registry.jsonl",
+            manifest_path,
+            source_id=str(manifest["source_id"]),
+            camera_id=str(manifest["camera_id"]),
+        )
+        print(manifest_path)
+        return 0
+    if args.command == "activate":
+        record = activate_installation(
+            args.calibration_registry,
+            source_id=args.source,
+            camera_id=args.camera,
+            installation_id=args.installation_id,
+        )
+        print(json.dumps(record, sort_keys=True))
         return 0
     raise AssertionError(args.command)
 

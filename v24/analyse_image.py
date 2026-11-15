@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 from pathlib import Path
 import zipfile
 
@@ -48,6 +49,14 @@ def parser():
                    help='Approved installation-specific visible-sky mask manifest')
     p.add_argument('--camera-installation-id',
                    help='Camera installation identity required by the visible-sky mask')
+    p.add_argument('--calibration-registry', type=Path,
+                   help='User calibration registry layer for checksum assignment resolution')
+    p.add_argument('--bundled-calibration-registry', type=Path, action='append', default=[],
+                   help='Read-only bundled calibration registry layer; repeat as needed')
+    p.add_argument('--installation-assignments', type=Path,
+                   help='Append-only source-checksum installation assignments')
+    p.add_argument('--allow-unconfigured-visible-sky', action='store_true',
+                   help='In automatic mode only, allow a source with no assignment to run unmasked')
     p.add_argument('--blind-planets', action='store_true',
                    help='Ignore time metadata and force the full blind planetary epoch search')
     p.add_argument('--compare-metadata', action='store_true',
@@ -60,19 +69,126 @@ def parser():
     return p
 
 
+def validate_arguments(p, args):
+    """Validate mode combinations without creating an output directory."""
+    if (args.epoch_mode == 'fixed') != (args.epoch_year is not None):
+        raise ValueError('--epoch-year is required exactly when --epoch-mode fixed is used')
+    if (args.latitude is None) != (args.longitude is None):
+        raise ValueError('--latitude and --longitude must be supplied together')
+    explicit_any = (
+        args.visible_sky_mask_manifest is not None
+        or args.camera_installation_id is not None
+    )
+    explicit_complete = (
+        args.visible_sky_mask_manifest is not None
+        and args.camera_installation_id is not None
+    )
+    registries = tuple(args.bundled_calibration_registry) + (
+        ((args.calibration_registry,) if args.calibration_registry is not None else ())
+    )
+    automatic_any = bool(registries) or args.installation_assignments is not None
+    automatic_complete = bool(registries) and args.installation_assignments is not None
+    if explicit_any and not explicit_complete:
+        raise ValueError(
+            '--visible-sky-mask-manifest and --camera-installation-id must be supplied together'
+        )
+    if explicit_any and automatic_any:
+        raise ValueError('explicit and automatic visible-sky calibration modes cannot be combined')
+    if automatic_any and not automatic_complete:
+        raise ValueError(
+            'automatic visible-sky calibration requires a registry layer and '
+            '--installation-assignments'
+        )
+    if args.allow_unconfigured_visible_sky and not automatic_complete:
+        raise ValueError(
+            '--allow-unconfigured-visible-sky requires complete automatic calibration options'
+        )
+    if args.database and (args.database.resolve() == args.output.resolve()
+                         or args.output.resolve() in args.database.resolve().parents):
+        raise ValueError('--database must be outside --output')
+
+
+def _file_sha256(path):
+    digest = hashlib.sha256()
+    with Path(path).open('rb') as stream:
+        while chunk := stream.read(1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def resolve_visible_sky_configuration(args):
+    """Resolve automatic checksum assignment into the existing explicit pair."""
+    registries = tuple(args.bundled_calibration_registry) + (
+        ((args.calibration_registry,) if args.calibration_registry is not None else ())
+    )
+    if not registries:
+        return {
+            'mode': 'explicit' if args.visible_sky_mask_manifest else 'unmanaged',
+            'status': 'explicit' if args.visible_sky_mask_manifest else 'not_configured',
+        }
+    source = args.image.expanduser().resolve(strict=True)
+    source_sha256 = _file_sha256(source)
+    registry_paths = tuple(Path(path).expanduser().resolve(strict=True)
+                           for path in registries)
+    assignments_path = args.installation_assignments.expanduser().resolve()
+    from visible_sky_registry import (
+        assignment_for_source,
+        load_registry,
+        resolve_source_calibration,
+    )
+    # Configuration corruption is fatal even when this particular checksum is
+    # explicitly permitted to continue without a configured mask.
+    load_registry(registry_paths)
+    assignment = assignment_for_source(assignments_path, source_sha256)
+    registry_layers = [
+        {'path': str(path), 'sha256': _file_sha256(path)}
+        for path in registry_paths
+    ]
+    if assignment is None:
+        if args.allow_unconfigured_visible_sky:
+            return {
+                'mode': 'automatic',
+                'status': 'not_configured',
+                'source_sha256': source_sha256,
+                'assignment_path': str(assignments_path),
+                'registry_layers': registry_layers,
+                'reason': 'source_checksum_has_no_installation_assignment',
+            }
+        raise ValueError(
+            f'source checksum has no installation assignment: {source_sha256}'
+        )
+    calibration = resolve_source_calibration(
+        registry_paths, assignments_path, source_sha256
+    )
+    manifest_path = Path(str(calibration['manifest_path'])).resolve(strict=True)
+    args.visible_sky_mask_manifest = manifest_path
+    args.camera_installation_id = str(calibration['installation_id'])
+    return {
+        'mode': 'automatic',
+        'status': 'resolved',
+        'source_sha256': source_sha256,
+        'source_id': assignment.get('source_id'),
+        'camera_id': assignment.get('camera_id'),
+        'installation_id': calibration['installation_id'],
+        'mask_id': calibration['mask_id'],
+        'mask_sha256': calibration['mask_sha256'],
+        'manifest_path': str(manifest_path),
+        'manifest_sha256': calibration['manifest_sha256'],
+        'assignment_path': str(assignments_path),
+        'assignment_registry_sha256': _file_sha256(assignments_path),
+        'assignment': assignment,
+        'registry_layers': registry_layers,
+    }
+
+
 def main():
     p = parser()
     args = p.parse_args()
-    if (args.epoch_mode == 'fixed') != (args.epoch_year is not None):
-        p.error('--epoch-year is required exactly when --epoch-mode fixed is used')
-    if (args.latitude is None) != (args.longitude is None):
-        p.error('--latitude and --longitude must be supplied together')
-    if ((args.visible_sky_mask_manifest is None)
-            != (args.camera_installation_id is None)):
-        p.error('--visible-sky-mask-manifest and --camera-installation-id must be supplied together')
-    if args.database and (args.database.resolve() == args.output.resolve()
-                         or args.output.resolve() in args.database.resolve().parents):
-        p.error('--database must be outside --output')
+    try:
+        validate_arguments(p, args)
+        args.visible_sky_resolution = resolve_visible_sky_configuration(args)
+    except ValueError as exc:
+        p.error(str(exc))
     exit_code, error = 0, None
     try:
         analyse(args)
@@ -109,6 +225,8 @@ def analyse(args):
                  saturation_level=args.saturation_level,
                  visible_sky_mask_manifest=args.visible_sky_mask_manifest,
                  camera_installation_id=args.camera_installation_id)
+    if hasattr(args, 'visible_sky_resolution'):
+        result['visible_sky_calibration_resolution'] = args.visible_sky_resolution
     science = analyse_existing(args.image.resolve(), args.output, result, args.catalog,
                                force_blind_planets=args.blind_planets)
     from point_star_joint_epoch import refine_joint_epoch

@@ -11,7 +11,12 @@ from types import MappingProxyType
 import unittest
 from unittest.mock import patch
 
-from v24.mmto_differential_benchmark import _plot_planets, _plot_signals, run_benchmark
+from v24.mmto_differential_benchmark import (
+    FIGURES,
+    _plot_planets,
+    _plot_signals,
+    run_benchmark,
+)
 from v24.mmto_differential_features import FeatureRow, FeatureTable
 from v24.mmto_differential_models import SignalRecoveryRow, ValidationResult
 from v24.mmto_planet_relative_photometry import CorrectedPlanetMeasurement
@@ -262,6 +267,8 @@ class DifferentialBenchmarkTests(unittest.TestCase):
             text = (root / "failed" / "planet_relative_photometry.csv").read_text()
             self.assertIn("model_unavailable", text)
             self.assertIn("raw_machine_magnitude", text)
+            for filename in FIGURES:
+                self.assertGreater((root / "failed" / filename).stat().st_size, 1000)
 
     def test_nonempty_output_is_never_overwritten(self):
         with tempfile.TemporaryDirectory() as temporary:

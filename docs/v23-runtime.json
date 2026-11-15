@@ -94,6 +94,7 @@
     "v23/examples/milky_way/reference/result.json": "518831c59f8a6b8b281b7d5db5950e1de4f299064d4210ad0f8e7bbdba84554f",
     "v23/examples/milky_way/reference/star_coordinates.csv": "f962b1b418bbbe9f0e8c5ccdc3c856582e1676025ff9733216ff66430230bfb7",
     "v23/examples/mmto/2026_09_19__02_20_01.fits.bz2": "d7278337c18a87e19b4254dbd053769cc10233732f1ce686a44b235a567fa960",
+    "v23/examples/mmto/WCS_FOUND/2026_09_19__02_20_01_WCS.fits.bz2": "3de98e39ddb0652c405d895a7bd8b52ca2cbcbcdb00b363debb78421344e9ad9",
     "v23/examples/mmto/baseline.json": "01e0d1e92854558fb62c8edf29773504916007236c0a0c4d5f44f3a48a6265a7",
     "v23/mmto_aperture_radius_benchmark.py": "9905bee56716cbf4499536aa6f2226b653461b3b96b00083cf764e491732a71b",
     "v23/mmto_differential_benchmark.py": "62f76e97992f7daafb6c193d4a484e8c7ea118e93aa3387b91bcd256ff5c1d33",
