@@ -28,7 +28,6 @@ REQUIRED_AUDIT_FIELDS = {
     "association_measured_x_px",
     "association_measured_y_px",
     "stellar_only_fit_rms_arcmin",
-    "saturated",
 }
 
 
@@ -75,6 +74,10 @@ def select_answer_key_rows(
             raise ControlledExtractionError(
                 f"audit is missing required fields: {', '.join(missing)}"
             )
+        if "saturated" not in fields and not {"saturation_known", "channel_saturated"} <= fields:
+            raise ControlledExtractionError(
+                "audit needs saturated or the saturation_known/channel_saturated pair"
+            )
         original_rows = [dict(row) for row in reader]
 
     selected: list[SelectedCentroid] = []
@@ -104,6 +107,14 @@ def select_answer_key_rows(
             )
             if fit_rms <= 0:
                 raise ControlledExtractionError("stellar-only fit RMS must be positive")
+            if "saturated" in row:
+                saturated = _boolean(row["saturated"], "saturated")
+            else:
+                if not _boolean(row["saturation_known"], "saturation known"):
+                    raise ControlledExtractionError(
+                        "selected row has no known channel saturation state"
+                    )
+                saturated = _boolean(row["channel_saturated"], "channel saturated")
             centroid = SelectedCentroid(
                 run_id=row["run_id"],
                 source_sha256=row["source_sha256"],
@@ -115,7 +126,7 @@ def select_answer_key_rows(
                 y_px=y_px,
                 stellar_fit_rms_arcmin=fit_rms,
                 source_class=row["source_class"],
-                saturated=_boolean(row["saturated"], "saturated"),
+                saturated=saturated,
             )
             selected.append(centroid)
             selected_sources.add(row["source_sha256"])

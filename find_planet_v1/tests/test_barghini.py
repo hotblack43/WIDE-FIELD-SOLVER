@@ -93,6 +93,52 @@ class BarghiniRoundTripTests(unittest.TestCase):
 
         np.testing.assert_allclose(recovered, point, atol=1e-6)
 
+    def test_real_camera_with_unused_corner_beyond_pi_accepts_in_field_centroid(self):
+        receipt = saved_camera(parity="mirrored")
+        camera = dict(receipt.camera)
+        camera["parameters"] = {
+            "a0": 0.000204341536069043,
+            "x_o": 703.3870008841685,
+            "y_o": 704.1050078630846,
+            "x_z": 711.018585075199,
+            "y_z": 704.8535055092319,
+            "v": 0.002040293638509593,
+            "s": 0.007262815473162861,
+            "d": 0.004991891641377516,
+        }
+        receipt = replace(receipt, camera=camera)
+        point = np.array([140.2352314653957, 875.6935295904382])
+        unit = camera_to_icrs_unit(receipt, *point)
+        recovered = icrs_unit_to_camera(receipt, unit)
+        np.testing.assert_allclose(np.linalg.norm(unit), 1.0, atol=1e-12)
+        np.testing.assert_allclose(recovered, point, atol=1e-6)
+
+    def test_saved_derefractor_accepts_real_near_domain_edge_centroid(self):
+        receipt = saved_camera(parity="mirrored")
+        camera = dict(receipt.camera)
+        camera["parameters"] = {
+            "a0": 0.0002702816649397473, "x_o": 703.325395364717,
+            "y_o": 704.2905635022753, "x_z": 710.7602973372617,
+            "y_z": 704.7036574769148, "v": 0.0020405253305903984,
+            "s": 0.007112586540401267, "d": 0.004991891641377516,
+        }
+        camera["reference_rotation"] = [
+            [0.6692437719548714, 0.3602160984371432, 0.6498900954210175],
+            [-0.7424093736290238, 0.3602728760054991, 0.5648289801014881],
+            [-0.030677282268429782, -0.8604927758217662, 0.5085381864827604],
+        ]
+        camera["integrated_refraction"] = {
+            "status": "adopted",
+            "zenith_camera_unit_vector": [0.13923288495673072, 0.07065693185215924, 0.9877356942663685],
+            "refraction_a_arcsec": 148.98571498782158,
+            "refraction_b_arcsec": -0.164703733946742,
+            "authoritative_camera_state": True,
+        }
+        receipt = replace(receipt, camera=camera)
+        unit = camera_to_icrs_unit(receipt, 110.65609889374196, 865.5617499816681)
+        self.assertTrue(np.isfinite(unit).all())
+        np.testing.assert_allclose(np.linalg.norm(unit), 1.0, atol=1e-12)
+
     def test_mirrored_parity_reflects_camera_y_axis(self):
         normal = saved_camera(parity="normal")
         mirrored = saved_camera(parity="mirrored")

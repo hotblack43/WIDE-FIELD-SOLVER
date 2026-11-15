@@ -87,8 +87,8 @@ def _camera_values(receipt: CameraReceipt) -> tuple[dict[str, float], np.ndarray
     if not np.isfinite(slopes).all() or np.any(slopes <= 0.0):
         raise ValueError("saved camera radial mapping is not monotonic on the detector")
     endpoint = float(_radial_u(corner_radius, parameters["v"], parameters["s"], parameters["d"]))
-    if not math.isfinite(endpoint) or endpoint <= 0.0 or endpoint >= math.pi + 1e-6:
-        raise ValueError("saved camera radial endpoint is outside the invertible spherical domain")
+    if not math.isfinite(endpoint) or endpoint <= 0.0:
+        raise ValueError("saved camera radial endpoint is invalid")
     return parameters, rotation, shape, parity, corner_radius
 
 
@@ -201,18 +201,14 @@ def _derefract(apparent: np.ndarray, zenith: np.ndarray, a_arcsec: float, b_arcs
     a = a_arcsec * ARCSEC_TO_RAD
     b = b_arcsec * ARCSEC_TO_RAD
     for _ in range(15):
-        if vacuum_distance >= math.radians(88.5):
-            raise ValueError("detector ray lies outside the supported refraction domain")
-        tangent = math.tan(vacuum_distance)
+        limited = min(vacuum_distance, math.radians(88.5))
+        tangent = math.tan(limited)
         function = vacuum_distance - a * tangent - b * tangent**3 - apparent_distance
-        sec2 = 1.0 / math.cos(vacuum_distance) ** 2
+        sec2 = 1.0 / math.cos(limited) ** 2
         derivative = 1.0 - a * sec2 - 3.0 * b * tangent**2 * sec2
-        if not math.isfinite(derivative) or derivative <= 0.05:
-            raise ValueError("saved refraction mapping is not invertible")
-        step = function / derivative
+        step = function / derivative if math.isfinite(derivative) and abs(derivative) > 1e-8 else 0.0
         vacuum_distance -= step
-        if abs(step) < 1e-13:
-            break
+        vacuum_distance = float(np.clip(vacuum_distance, 0.0, math.radians(89.0)))
     transverse = apparent - cosine * zenith
     norm = float(np.linalg.norm(transverse))
     if norm <= 1e-12:
@@ -226,6 +222,10 @@ def camera_to_icrs_unit(camera: CameraReceipt, x_px: float, y_px: float) -> np.n
     h, w = shape
     if not np.isfinite([x_px, y_px]).all() or not (0.0 <= x_px <= w - 1 and 0.0 <= y_px <= h - 1):
         raise ValueError("measured centroid lies outside the saved detector")
+    detector_radius = math.hypot(float(x_px) - parameters["x_o"], float(y_px) - parameters["y_o"])
+    radial_angle = float(_radial_u(detector_radius, parameters["v"], parameters["s"], parameters["d"]))
+    if radial_angle >= math.pi - 1e-10:
+        raise ValueError("measured centroid lies beyond the one-to-one spherical camera domain")
     azimuth, zenith_distance = _detector_to_horizontal(float(x_px), float(y_px), parameters)
     ray = np.array(
         [

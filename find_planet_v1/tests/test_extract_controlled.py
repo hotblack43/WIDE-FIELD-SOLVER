@@ -64,6 +64,22 @@ class ControlledSelectionTests(unittest.TestCase):
             self.assertNotIn(word, field_names)
             self.assertNotIn(word, serialised)
 
+    def test_channel_saturated_schema_used_by_pinned_audit_is_supported(self):
+        source = FIXTURES / "controlled_audit.csv"
+        with source.open(newline="", encoding="utf-8") as handle:
+            rows = list(csv.DictReader(handle))
+        for row in rows:
+            row["saturation_known"] = "True"
+            row["channel_saturated"] = row.pop("saturated")
+        with tempfile.TemporaryDirectory() as directory:
+            audit = Path(directory) / "channel-schema.csv"
+            with audit.open("w", newline="", encoding="utf-8") as handle:
+                writer = csv.DictWriter(handle, fieldnames=list(rows[0]))
+                writer.writeheader()
+                writer.writerows(rows)
+            selected, _ = select_answer_key_rows(audit, fixture_hash(audit))
+        self.assertEqual([row.saturated for row in selected], [False, False])
+
     def test_answer_key_writer_preserves_every_original_row(self):
         audit = FIXTURES / "controlled_audit.csv"
         _, audit_rows = select_answer_key_rows(audit, fixture_hash(audit))

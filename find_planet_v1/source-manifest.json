@@ -1,0 +1,23 @@
+{
+  "format": "find-planet-source-manifest-v1",
+  "scope": "independent controlled Object A orbit-fitting runtime",
+  "files": [
+    {"path": "find_planet_v1/find_planet/__init__.py", "sha256": "f19c260bdfe0475c054c6d351b905055fe41e171d8999a2e3d1df6720ec6960e", "role": "package version"},
+    {"path": "find_planet_v1/find_planet/barghini.py", "sha256": "e2d8b9c584496c58cfed5f98eae5c7e93e087e9678667cca5ce5881021be62d1", "role": "saved-camera inversion"},
+    {"path": "find_planet_v1/find_planet/controlled_cli.py", "sha256": "ba9b5e19eca2b8c210af0ef251d0378691235fe392820cfb52387b149fc19311", "role": "controlled orchestration"},
+    {"path": "find_planet_v1/find_planet/dynamics.py", "sha256": "5ba6f24b62c46e79e2725acfb05c66531ac94db187d49451644c3a85095653d6", "role": "Sun-only two-body dynamics"},
+    {"path": "find_planet_v1/find_planet/evaluate.py", "sha256": "66b621a68e0c027d442fea5053caa3d1eb5b912d7a9c1c100e12eadef31fe5ac", "role": "whole-night validation and uncertainty"},
+    {"path": "find_planet_v1/find_planet/extract_controlled.py", "sha256": "43bd319e95606db207fd6b3f1a01ba2fa61650a13e1d56f1e795e2a507003ca5", "role": "pinned controlled selection"},
+    {"path": "find_planet_v1/find_planet/fitting.py", "sha256": "93ada1a0bc15123dd9d06780e71b67ed54d4e9fb3d475b986b6d3277d1df4019", "role": "robust orbit-family fitting"},
+    {"path": "find_planet_v1/find_planet/geometry.py", "sha256": "fad861d02ff344aa41ba295a59a6a16fcb6830068e3a0523a345a20ec3977db8", "role": "topocentric light-time geometry"},
+    {"path": "find_planet_v1/find_planet/observer.py", "sha256": "fbf5b06ac96f5c5bf4f51909f910a139e031d3470e0c3be41b53cf8867bdba68", "role": "Earth-only MMTO observer state"},
+    {"path": "find_planet_v1/find_planet/provenance.py", "sha256": "0f8daf58ffc31310804b7f263b2652957eebeb605f3e4972d03c918ef0069213", "role": "read-only and fresh-output guards"},
+    {"path": "find_planet_v1/find_planet/ranging.py", "sha256": "dfa30e3ce1e667d06a382e0135dbbb11f7e2b0951e33e65a05a42ea9487c8cd8", "role": "deterministic systematic ranging"},
+    {"path": "find_planet_v1/find_planet/report.py", "sha256": "df6a6b00a706d805e93c7856e534c990aecfb6f108598cf2796bdbe18e48859a", "role": "tables and diagnostic figures"},
+    {"path": "find_planet_v1/find_planet/seal.py", "sha256": "d3e6fe25132c4ecb2350f64392463e783a8db086870f97f8e430d2d05b686d57", "role": "immutable output sealing"},
+    {"path": "find_planet_v1/find_planet/types.py", "sha256": "1aab2b7686ea43c6c1228366f01b529dd437d4f4622e341a7420c917d20285c3", "role": "immutable scientific records"},
+    {"path": "find_planet_v1/pyproject.toml", "sha256": "ad3cdc45484a8dd38951903830dbdcb3e58646ac1450e642901ee57c45122f0c", "role": "independent project definition"},
+    {"path": "find_planet_v1/uv.lock", "sha256": "38efa2fb6741f6a81045297f996f2c99342e7e31965e110ba08384763b1d4841", "role": "frozen dependency resolution"},
+    {"path": "go_find_planet_controlled_v1.sh", "sha256": "a0bc71d2d35fac78825f4eb75cbdabe8f7b5ddcf4384d53aa8092e25fbc34034", "role": "stable controlled launcher"}
+  ]
+}

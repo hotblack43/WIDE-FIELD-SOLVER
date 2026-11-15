@@ -4,6 +4,24 @@ The published checkpoint remains v0.11.0. Historical runtime boundaries through
 v22 are frozen by their manifests. V23 is the active aperture-photometry test
 line.
 
+## Independent controlled orbit experiment
+
+- `go_find_planet_controlled_v1.sh` is a new, independent runtime; it does not
+  change the active V23 photometry line or any preserved solver.
+- A pinned answer-key step selects the existing MMTO Mars-associated
+  centroids, then seals a separate identity-free `Object A` direction table.
+  The selection is explicitly controlled and non-blind.
+- Orbit fitting uses Earth-only ERFA observer states, Sun-only two-body
+  propagation, deterministic systematic ranging, robust differential
+  correction, one-way light time, whole-night holdout, and matched stationary
+  and constant-angular-velocity baselines.
+- Covariance rank, whole-night bootstrap and half/double uncertainty
+  sensitivities are reported. `unresolved` and `not_predictive` are preserved
+  outcomes rather than operational failures.
+- This stage does not compare against known planetary elements and cannot yet
+  claim that Object A has been identified as Mars. That reveal remains a
+  separate future stage after the anonymous fit is sealed.
+
 ## V23 in development
 
 - MMTO v23 now writes `acquisition_timeline.pdf` and its per-image CSV after

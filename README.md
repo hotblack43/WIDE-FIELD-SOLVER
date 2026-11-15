@@ -118,6 +118,27 @@ Each run gets a unique directory. The command prints the location of
 `analysis/report.pdf`, the run log and `stars.sqlite` when it starts and again
 when it finishes.
 
+## Controlled moving-object orbit experiment
+
+The separate `go_find_planet_controlled_v1.sh` family tests whether dated MMTO
+centroids selected with a known answer key can subsequently be treated as an
+anonymous `Object A` and fitted with a bound heliocentric orbit. The orbit
+fitter receives measured ICRS directions, uncertainties, TDB epochs and the
+Earth/MMTO observer state, but no object name, known distance, predicted
+position or known orbital element. Whole nights are withheld and compared
+against fixed-direction and constant-angular-velocity baselines.
+
+```bash
+./go_find_planet_controlled_v1.sh \
+  --audit results/photometry-runs/v23-20261027T050447Z/planet-empirical-extinction/B/planet_only_airmass_correction_audit.csv \
+  --database results/stars.sqlite
+```
+
+This is a controlled, non-blind orbit experiment, not yet a blind discovery or
+known-object identification. Its independent runtime and output guide are in
+[`find_planet_v1/README.md`](find_planet_v1/README.md). No preserved solver
+launcher or version directory is replaced.
+
 ## Read next
 
 | If you want to… | Read… |
