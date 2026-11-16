@@ -57,6 +57,48 @@ from visible_sky_calibration import (
 
 SEAL_SCHEMA = "wide-field-solver-visible-sky-cold-start-seal-v1"
 SPLIT_SCHEMA = "wide-field-solver-visible-sky-cold-start-split-v1"
+ACCEPTANCE_SCHEMA = "wide-field-solver-visible-sky-cold-start-acceptance-v1"
+MMTO_ACCEPTANCE_ID = "mmto-visible-sky-cold-start-20261115-native-v1"
+MMTO_ACCEPTANCE_SCOPE = (
+    "MMTO camera-installation cold-start reproducibility; not cross-camera validation"
+)
+MMTO_ACCEPTANCE_PROPOSAL_SEAL_SHA256 = (
+    "08207d2758c02138c5d5c590fb29255f883f58461177a7b1b38fe025fde03423"
+)
+MMTO_ACCEPTANCE_REFERENCE = {
+    "manifest_sha256": "383dd5f2f212f1035d71612970a3456496c3c4f4c11ad3edacea6e3b37f4f904",
+    "mask_id": "mmto-visible-sky-2026a-v1",
+    "mask_sha256": "996e27f13cb726c8b759fca641c05b7937325ebd81e297db2f06de17f48cd144",
+}
+MMTO_ACCEPTANCE_EVIDENCE_SHA256 = {
+    "approved_comparison.png": "7f90983b8046a9fa5355b1b27a4088227d67fd71a1d1156f54e03b4932b34129",
+    "cold_start_boundary_review.png": "0c53bf1c96f377da7b13a4f7ccd549ad7cbbeb6ed8eb09f31e9a303cd2be3f65",
+    "cold_start_boundary_review_inverted.png": "c0f89e67afb68763ecfefdb0c3ef79287d3953031e8dd8599276acae70701584",
+    "comparison.json": "0eee5dffc417fb5eb7692bcda4f4fc2a420d1d72421e8763565a5e6a5ca95a98",
+    "point_source_audit_summary.json": "2a9b8fbeced6a7190fc39b59cfff80f75a45bb34c1067a4f83ad66d9cb9cf284",
+    "proposal-seal.json": MMTO_ACCEPTANCE_PROPOSAL_SEAL_SHA256,
+    "selection.json": "24ca1fcf55216bd54696af3892d4bd9e6498e8f557daf358d31a3f4cddc37dc8",
+}
+MMTO_ACCEPTANCE_THRESHOLDS = {
+    "boundary_distance_mean_pixels": {"maximum": 6.5},
+    "boundary_distance_p95_pixels": {"maximum": 16.0},
+    "exact_pixel_agreement": {"minimum": 0.98},
+    "false_excluded_fraction": {"maximum": 0.005},
+    "false_visible_fraction": {"maximum": 0.015},
+    "intersection_over_union": {"minimum": 0.97},
+}
+FIXED_ACCEPTANCE_BASELINES = {
+    MMTO_ACCEPTANCE_ID: {
+        "scope": MMTO_ACCEPTANCE_SCOPE,
+        "proposal_seal_sha256": MMTO_ACCEPTANCE_PROPOSAL_SEAL_SHA256,
+        "approved_reference": MMTO_ACCEPTANCE_REFERENCE,
+        "evidence_sha256": MMTO_ACCEPTANCE_EVIDENCE_SHA256,
+        "thresholds": MMTO_ACCEPTANCE_THRESHOLDS,
+    }
+}
+DEFAULT_ACCEPTANCE_RECEIPT = (
+    PACKAGE_ROOT / "examples/mmto/cold_start_regression_acceptance.json"
+)
 _AUDIT_PROPOSAL: np.ndarray | None = None
 
 
@@ -160,6 +202,102 @@ def comparison_metrics(proposed: np.ndarray, approved: np.ndarray) -> dict[str, 
         else 0.0,
         "boundary_distance_max_pixels": float(np.max(distances)) if len(distances) else 0.0,
     }
+
+
+def check_regression_acceptance(
+    comparison: dict[str, object], acceptance: dict[str, object]
+) -> dict[str, object]:
+    """Check one sealed comparison against a visually approved fixed baseline."""
+    if (
+        acceptance.get("schema") != ACCEPTANCE_SCHEMA
+        or acceptance.get("status") != "accepted_regression_baseline"
+        or not isinstance(acceptance.get("visual_review"), dict)
+        or acceptance["visual_review"].get("decision") != "accepted"
+    ):
+        raise ValueError("cold-start regression acceptance is not approved")
+    baseline_id = acceptance.get("baseline_id")
+    fixed = FIXED_ACCEPTANCE_BASELINES.get(baseline_id)
+    if fixed is None:
+        raise ValueError("unknown cold-start regression acceptance baseline")
+    expected_seal = fixed["proposal_seal_sha256"]
+    if acceptance.get("proposal_seal_sha256") != expected_seal:
+        raise ValueError("cold-start acceptance proposal seal was altered")
+    if acceptance.get("scope") != fixed["scope"]:
+        raise ValueError("cold-start acceptance scope was altered")
+    if acceptance.get("approved_reference") != fixed["approved_reference"]:
+        raise ValueError("cold-start acceptance reference was altered")
+    if acceptance.get("evidence_sha256") != fixed["evidence_sha256"]:
+        raise ValueError("cold-start acceptance evidence was altered")
+    if acceptance.get("thresholds") != fixed["thresholds"]:
+        raise ValueError("cold-start acceptance thresholds were altered")
+    if comparison.get("status") != "evaluated_after_sealed_cold_start":
+        raise ValueError("comparison is not a sealed cold-start evaluation")
+    candidate_seal = comparison.get("proposal_seal_sha256")
+    if not _is_sha256(candidate_seal):
+        raise ValueError("comparison proposal seal is missing or invalid")
+    candidate_seal_path = comparison.get("proposal_seal")
+    if not isinstance(candidate_seal_path, str) or not candidate_seal_path:
+        raise ValueError("comparison proposal seal path is missing or invalid")
+    verified_seal_path = Path(candidate_seal_path).expanduser().resolve(strict=True)
+    verify_proposal_seal(verified_seal_path)
+    if _sha256(verified_seal_path) != candidate_seal:
+        raise ValueError("comparison proposal seal checksum mismatch")
+    reference = fixed["approved_reference"]
+    comparison_reference = {
+        "manifest_sha256": comparison.get("approved_reference_manifest_sha256"),
+        "mask_id": comparison.get("approved_reference_mask_id"),
+        "mask_sha256": comparison.get("approved_reference_mask_sha256"),
+    }
+    if comparison_reference != reference:
+        raise ValueError("comparison approved reference does not match the baseline")
+    metrics = comparison.get("metrics")
+    thresholds = acceptance.get("thresholds")
+    if not isinstance(metrics, dict) or not isinstance(thresholds, dict):
+        raise ValueError("comparison metrics or acceptance thresholds are missing")
+    checks = []
+    failed = []
+    for metric, rule in thresholds.items():
+        if not isinstance(rule, dict) or set(rule) not in ({"minimum"}, {"maximum"}):
+            raise ValueError(f"invalid regression threshold rule: {metric}")
+        observed = metrics.get(metric)
+        if (
+            isinstance(observed, bool)
+            or not isinstance(observed, (int, float))
+            or not np.isfinite(observed)
+        ):
+            raise ValueError(f"missing or non-finite regression metric: {metric}")
+        if "minimum" in rule:
+            limit = float(rule["minimum"])
+            passed = float(observed) >= limit
+            relation = "minimum"
+        else:
+            limit = float(rule["maximum"])
+            passed = float(observed) <= limit
+            relation = "maximum"
+        checks.append({
+            "metric": metric,
+            "observed": float(observed),
+            "relation": relation,
+            "limit": limit,
+            "passed": bool(passed),
+        })
+        if not passed:
+            failed.append(metric)
+    return {
+        "status": "pass" if not failed else "fail",
+        "candidate_proposal_seal_sha256": candidate_seal,
+        "accepted_baseline_proposal_seal_sha256": expected_seal,
+        "checks": checks,
+        "failed_metrics": failed,
+    }
+
+
+def _is_sha256(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) == 64
+        and all(character in "0123456789abcdef" for character in value)
+    )
 
 
 def _source_payload(source) -> dict[str, object]:
@@ -565,6 +703,10 @@ def evaluate_command(args: argparse.Namespace) -> Path:
             args.approved_reference_manifest.expanduser().resolve(strict=True)
         ),
         "approved_reference_mask_id": manifest.get("mask_id"),
+        "approved_reference_manifest_sha256": _sha256(
+            args.approved_reference_manifest.expanduser().resolve(strict=True)
+        ),
+        "approved_reference_mask_sha256": manifest.get("mask_sha256"),
         "held_out": held_out,
         "metrics": metrics,
     }
@@ -578,6 +720,14 @@ def evaluate_command(args: argparse.Namespace) -> Path:
         root / "approved_comparison.png"
     )
     return comparison_path
+
+
+def check_acceptance_command(args: argparse.Namespace) -> dict[str, object]:
+    comparison_path = args.comparison.expanduser().resolve(strict=True)
+    acceptance_path = args.acceptance.expanduser().resolve(strict=True)
+    comparison = json.loads(comparison_path.read_text(encoding="utf-8"))
+    acceptance = json.loads(acceptance_path.read_text(encoding="utf-8"))
+    return check_regression_acceptance(comparison, acceptance)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -606,6 +756,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     audit.add_argument("--proposal-seal", type=Path, required=True)
     audit.add_argument("--workers", type=int, default=min(8, os.cpu_count() or 1))
+    check = commands.add_parser(
+        "check-acceptance",
+        help="enforce a visually accepted fixed regression baseline",
+    )
+    check.add_argument("--comparison", type=Path, required=True)
+    check.add_argument(
+        "--acceptance",
+        type=Path,
+        default=DEFAULT_ACCEPTANCE_RECEIPT,
+    )
     return parser
 
 
@@ -620,6 +780,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "audit-held-out":
         print(audit_held_out_command(args))
         return 0
+    if args.command == "check-acceptance":
+        result = check_acceptance_command(args)
+        print(json.dumps(result, indent=2, sort_keys=True))
+        return 0 if result["status"] == "pass" else 1
     raise AssertionError(args.command)
 
 

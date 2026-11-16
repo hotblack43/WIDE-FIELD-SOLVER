@@ -1,0 +1,12 @@
+# Keep the bundled regression input and historical evidence in Git.
+!/examples/milky_way/input.jpeg
+!/examples/milky_way/diagnostics/astrometry_overlay.png
+!/examples/milky_way/diagnostics/astrometry_residuals.png
+!/examples/milky_way/reference/identified_40_stars.png
+!/examples/mmto/2026_09_19__02_20_01.fits.bz2
+!/data/sky_masks/mmto_installation_2026a.png
+!/examples/mmto/cold_start_candidate_mask.png
+!/examples/mmto/visible_sky_mask_review/boundary_review.png
+!/examples/mmto/visible_sky_mask_review/boundary_review_inverted.png
+!/examples/mmto/visible_sky_mask_review/mmto_installation_2026a.draft.png
+!/examples/mmto/visible_sky_mask_review/temporal_reference.png

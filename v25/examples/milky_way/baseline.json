@@ -1,0 +1,24 @@
+{
+  "source_sha256": "f06569c1397e92d60740d55cf9910113418f8bfc01ee0d9b24aa6cd1f8d467c2",
+  "catalogue_sha256": "63a3b3e2667bbdc7ce25a7eb14f05618b3168aa9df2e17b6c4c491b573fb8965",
+  "observed_2026_09_13": {
+    "detection_count": 3688,
+    "associated_stars": 3653,
+    "rms_px": 0.39789212340991864,
+    "median_px": 0.24894430254792,
+    "p90_px": 0.6058576426027359,
+    "broad_or_saturated_objects": 962,
+    "withheld_stars": 0,
+    "label_count": 40
+  },
+  "acceptance": {
+    "minimum_detections": 3600,
+    "minimum_associated_stars": 3600,
+    "maximum_rms_px": 0.5,
+    "maximum_median_px": 0.35,
+    "maximum_p90_px": 0.8,
+    "minimum_broad_or_saturated_objects": 900,
+    "label_count": 40,
+    "minimum_label_span_fraction": 0.75
+  }
+}

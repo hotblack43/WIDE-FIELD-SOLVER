@@ -163,6 +163,27 @@ supports intersected the proposed boundary and 3,410 were wholly excluded.
 These figures validate the generic machinery on MMTO only; they do not claim a
 successful calibration for another camera installation.
 
+Peter visually accepted the sealed MMTO boundary on 2026-11-16. The immutable
+acceptance receipt is `examples/mmto/cold_start_regression_acceptance.json`.
+The corresponding sealed proposal mask is preserved as
+`examples/mmto/cold_start_candidate_mask.png`, so the test suite recomputes the
+comparison metrics from the two binary masks instead of trusting metric values
+copied into the receipt. Enforce the fixed receipt on any newly generated
+comparison with:
+
+```sh
+uv run --project v24 --frozen python v24/scripts/replay_visible_sky_cold_start.py \
+  check-acceptance --comparison /path/to/cold-start/comparison.json
+```
+
+The command exits nonzero when any fixed limit fails or when the receipt,
+approved-reference identity, evidence hashes, or proposal seal are invalid.
+It fixes these conservative regression limits: exact agreement at least 0.98,
+mask IoU at least 0.97, false-visible fraction at most 0.015, false-excluded
+fraction at most 0.005, mean boundary separation at most 6.5 pixels, and p95
+boundary separation at most 16 pixels. These limits were selected only after
+the sealed comparison and must not be relaxed to conceal a later regression.
+
 ## Aperture-radius benchmark
 
 Run `./run_v24_aperture_radius_benchmark.sh --help`. It compares fixed and

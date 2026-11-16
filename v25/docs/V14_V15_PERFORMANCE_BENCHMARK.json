@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "recorded_utc_date": "2026-10-06",
+  "image": {
+    "repository_relative_path": "raw_allsky_samples/mmto/mmto-skycam/2026-10-05/2026_10_05__22_00_10.fits.bz2",
+    "sha256": "6024db5eca256e1a6cdf9f33aa75ff48722f82bed77127a67aff50e59fa5d6e1"
+  },
+  "method": {
+    "search": "full blind 1850-to-present planetary search",
+    "catalogue": "packaged Gaia DR3 G<=7.5 catalogue",
+    "planet_workers": 4,
+    "v14_command": "./go14.sh IMAGE --blind-planets",
+    "v15_command": "/usr/bin/time -p ./go15.sh IMAGE --blind-planets --results-dir RESULTS",
+    "comparison_note": "Planet-stage telemetry is directly comparable. The v14 full-run wall time is inferred from its UTC run-directory start and final run.log modification time; the v15 wall time is from /usr/bin/time. An independent v14 queue was active during the v15 run."
+  },
+  "v14": {
+    "version": "0.14.0",
+    "planet_stage_seconds": 215.9939738409994,
+    "exact_dates": 172704,
+    "joint_trials": 846,
+    "refined_visits": 982,
+    "full_run_seconds": 372.69,
+    "full_run_timing_source": "inferred"
+  },
+  "v15": {
+    "version": "0.15.0",
+    "planet_stage_seconds": 30.28675734599892,
+    "exact_dates": 21439,
+    "joint_trials": 88,
+    "refined_visits": 982,
+    "celestial_gate_rejected_visits": 881,
+    "full_run_seconds": 341.17,
+    "full_run_timing_source": "measured"
+  },
+  "comparison": {
+    "planet_stage_speedup_factor": 7.131630876605996,
+    "planet_stage_time_reduction_percent": 85.97796188133746,
+    "exact_date_reduction_percent": 87.58627478228645,
+    "full_run_speedup_factor": 1.092377633651845,
+    "full_run_time_reduction_percent": 8.456565825411888,
+    "v15_faster_than_v14": true
+  }
+}

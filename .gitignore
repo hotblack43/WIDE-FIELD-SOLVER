@@ -10,6 +10,7 @@ results/
 /site/
 *.pdf
 *.png
+!/v24/examples/mmto/cold_start_candidate_mask.png
 *.jpg
 *.jpeg
 !/reports/wide-field-diagnostics/figures/mmto_machine_magnitude_vs_catalogue_magnitude.png

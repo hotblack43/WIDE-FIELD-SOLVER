@@ -47,3 +47,23 @@ jobs:
           tests.test_allsky_manifest tests.test_allsky_cli
       - name: Fresh v24 pixel-to-sky solution (offline)
         run: ./v24/demo.sh --output v24/results/ci-visible-sky
+  v25-operator:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: "0.9.30"
+          python-version: "3.12"
+      - run: uv sync --project v25 --frozen
+      - name: V25 operator and calibration checks
+        run: >-
+          cd v25 && uv run --frozen python -m unittest -v
+          test_visible_sky_operator test_visible_sky_auto_workflow
+          test_visible_sky_automatic test_visible_sky_calibration
+          test_visible_sky_registry test_visible_sky_cold_start
+      - name: V24 freeze and v25 boundary checks
+        run: uv run --frozen python -m unittest -v test_v25_runtime_boundary
+      - name: Fresh v25 pixel-to-sky solution (offline)
+        run: ./v25/demo.sh --output v25/results/ci-visible-sky

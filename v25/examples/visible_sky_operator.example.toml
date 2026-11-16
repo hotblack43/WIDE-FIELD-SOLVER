@@ -1,0 +1,14 @@
+# Advanced override for an external archive or operator-chosen installation ID.
+# Normal managed-archive operation is simply: ./go_visible_sky_v25.sh
+# This example is not evidence that camera-a has been validated.
+# Override command: ./go_visible_sky_v25.sh auto --config /path/to/this-file.toml
+# Add --replace-active only when intentionally replacing another active installation.
+schema = "wide-field-solver-visible-sky-operator-v1"
+source_id = "example"
+camera_id = "camera-a"
+installation_id = "example-camera-2026a"
+orientation = "detector_native_top_left_xy_right_y_down"
+download_manifest = "../../raw_allsky_samples/manifest.sqlite"
+archive_root = "../../raw_allsky_samples"
+review_root = "../../calibration-review"
+calibration_root = "../../camera-calibrations"

@@ -1,10 +1,50 @@
 # Current development feature status
 
 The published checkpoint remains v0.11.0. Historical runtime boundaries through
-v23 are frozen by their manifests. V24 is the active camera-installation
-visible-sky-mask line.
+v24 are frozen by their manifests. V25 is the active camera-installation
+visible-sky operator line.
 
-## V24 in development
+## V25 in development
+
+- V25 is the active v0.25.0 development runtime and preserves the accepted v24
+  numerical mask generation and application. Its automatic mask engine can
+  discover sufficiently populated uncalibrated cameras from the managed
+  archive, hold acquisition to ten completed nights and ten native originals
+  per night, reserve complete dates, check five date-fold proposals against
+  fixed conservative gates, and approve, register and activate only on a
+  complete pass.
+- Interface review on 2026-11-16 found that promoting the separate
+  zero-argument `go_visible_sky_v25.sh` operator as the normal workflow was an
+  overdesign. The intended v25 boundary is v24's existing operational pipeline
+  and arguments plus transparent horizon-mask construction when that normal
+  pipeline encounters a new detector/installation. This integration remains
+  incomplete at this checkpoint. The standalone operator and `auto --config`,
+  `propose`, `revise`, `approve`, and `activate` operations are retained as
+  advanced testing, maintenance and recovery tools.
+- `go25.sh` is the real single-image launcher and
+  `go_mmto_photometry_v25.sh` is the routine MMTO pipeline. A missing v25 state
+  inherits the durable v24 cursor; v23 and v24 receipts preserve bounded
+  acquisition progress, while only a successful masked v25 receipt completes
+  v25 solver work.
+- V25 combines the v21, v23, v24, and v25 FITS-header observation sidecars
+  read-only for cumulative differential-photometry replay. MMTO remains the
+  only real cold-start camera validation; the generic non-MMTO workflow is not
+  yet validated on another physical installation.
+- Automatic acceptance is content-addressed, records
+  `approval_mode: automated_validation`, and is not represented as visual
+  approval. A different active installation is never replaced without the
+  explicit `--replace-active` option. Synthetic success, rejection, locking,
+  idempotency, partial-failure, and tamper tests cover the automation; MMTO is
+  still the only real camera cold-start evidence.
+- The exact safety-margined production mask is gated again before approval.
+  Changed accepted evidence for a stationary installation creates a distinct
+  immutable mask version, and activation records bind the exact mask ID while
+  preserving earlier versions and history.
+
+## V24 frozen checkpoint
+
+V24 is frozen by `docs/v24-runtime.json` at the v25 boundary. Its accepted
+cold-start evidence and fixed thresholds remain unchanged.
 
 - V24 now contains generic calibration machinery for any supported fixed
   all-sky camera: sealed review proposals, immutable revision and approval,
@@ -22,6 +62,15 @@ visible-sky-mask line.
   unmasked detections were audited, with 10,539 supports intersecting the
   proposed boundary and 3,410 wholly inside the excluded region. This is MMTO
   evidence only: the generic workflow is not yet validated on a real non-MMTO camera.
+- Peter visually accepted the sealed MMTO cold-start boundary on 2026-11-16.
+  The versioned receipt and sealed candidate mask let the test suite recompute
+  its metrics from the binary masks. The `check-acceptance` command enforces
+  the receipt on new comparisons and fails if its identities or evidence are
+  altered. It fixes regression limits of 0.98 minimum exact agreement, 0.97
+  minimum mask IoU, 0.015 maximum false-visible fraction, 0.005 maximum
+  false-excluded fraction, 6.5 pixels maximum mean boundary separation, and 16
+  pixels maximum p95 separation. These limits must not be relaxed to conceal a
+  later regression.
 - A same-model FITS header that omits the known camera serial is compatible;
   a different explicit serial remains fatal. A camera move, rotation, crop, or
   replacement requires a new installation ID and approved artifact.

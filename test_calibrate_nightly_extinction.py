@@ -918,7 +918,10 @@ class CalibrationCliTests(unittest.TestCase):
         self.assertEqual(result, 0)
         load_mock.assert_called_once_with(database.resolve(), expected_manifest.resolve())
         output = write_mock.call_args.args[1]
-        self.assertEqual(output.parent, database.parent / "extinction-calibration")
+        self.assertEqual(
+            output.parent,
+            database.resolve().parent / "extinction-calibration",
+        )
         self.assertRegex(output.name, r"^\d{8}T\d{12}Z$")
         self.assertIn("Reference defaults:", stdout.getvalue())
         self.assertIn("Calibrated night/channels: 1; insufficient: 0", stdout.getvalue())

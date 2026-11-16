@@ -28,22 +28,24 @@ tests; they are not aliases for the newest code.
 | `go21.sh` | Frozen | v0.21.0 FITS-header-timed MMTO reprocessing and post-fit validation |
 | `go22.sh` | Frozen experiment | v0.22.0 differential-photometry model benchmark |
 | `go23.sh` | Frozen | v0.23.0 aperture and sky-annulus validation |
-| `go24.sh` | Active development | v0.24.0 immutable camera-installation visible-sky calibration and masked MMTO processing |
+| `go24.sh` | Frozen | v0.24.0 accepted generic camera-installation calibration checkpoint |
+| `go25.sh` | Active development | v0.25.0 configuration-driven visible-sky operator and masked MMTO processing |
 
 For current installation-masked MMTO development from a repository checkout,
-use `go_mmto_photometry_v24.sh`. Use `go17.sh` only for its independent
+use `go_mmto_photometry_v25.sh`. Configure a new installation through
+`go_visible_sky_v25.sh`. Use `go17.sh` only for its independent
 KNALDGAS line, and use earlier launchers when reproducing older results.
 
 ## Releases versus the development line
 
 The **Latest packaged release** is v0.11.0. Download the named `.tar.gz` or
 `.zip` asset and `SHA256SUMS` from that release; GitHub's automatic source-code
-archives are not the curated runnable package. The active v0.24.0 development
-runtime is used from a repository checkout. It preserves the bounded
-acquisition line and adds an approved installation mask, generic calibration
-registry, immutable checksum assignments, and cold-start MMTO evidence. Every
-earlier launcher remains separate; v24 is not represented as a published
-release.
+archives are not the curated runnable package. The active v0.25.0 development
+runtime is used from a repository checkout. It preserves v24's approved
+installation mask, generic calibration registry, immutable checksum assignments,
+and cold-start MMTO evidence while adding the public configuration-driven
+operator command. Every earlier launcher remains separate; v25 is not
+represented as a published release.
 
 The complete launcher syntax and output-directory behaviour remain in the
 repository's `REFERENCE.md`.

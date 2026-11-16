@@ -1,0 +1,24 @@
+{
+  "catalogue": "AAVSO International Variable Star Index (VSX)",
+  "catalogue_version": "2026-08-09",
+  "created_utc": "2026-10-15T12:13:44.770934+00:00",
+  "input_catalogue_sha256": {
+    "stars_gaia_dr3_g75.csv": "766a5cbfc9c1f935a9b67a083ca1e86e09c1201cb00011f139f8ddf751a9d4a0",
+    "stars_tycho2_mag75.csv": "63a3b3e2667bbdc7ce25a7eb14f05618b3168aa9df2e17b6c4c491b573fb8965"
+  },
+  "input_star_count": 61272,
+  "match_radius_arcsec": 1.0,
+  "matched_candidate_rows": 13962,
+  "output_csv": "vsx_crossmatch.csv",
+  "output_csv_sha256": "73b2f2e2ace94791191a880d3901aad0bbba59aa86bf2f340c8216cd0b6f72d7",
+  "position_epoch": "J2000.0",
+  "schema_version": 1,
+  "status_counts": {
+    "ambiguous_vsx_oid": 12,
+    "eligible_catalogue_variable": 7257,
+    "missing_period": 2731,
+    "vsx_flag_not_confirmed_variable": 3962
+  },
+  "vizier_catalogue": "B/vsx/vsx",
+  "xmatch_endpoint": "https://cdsxmatch.cds.unistra.fr/xmatch/api/v1/sync"
+}

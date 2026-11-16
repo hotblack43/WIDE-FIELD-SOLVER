@@ -1,0 +1,63 @@
+{
+  "approved_reference": {
+    "manifest_sha256": "383dd5f2f212f1035d71612970a3456496c3c4f4c11ad3edacea6e3b37f4f904",
+    "mask_id": "mmto-visible-sky-2026a-v1",
+    "mask_sha256": "996e27f13cb726c8b759fca641c05b7937325ebd81e297db2f06de17f48cd144"
+  },
+  "baseline_id": "mmto-visible-sky-cold-start-20261115-native-v1",
+  "evidence_sha256": {
+    "approved_comparison.png": "7f90983b8046a9fa5355b1b27a4088227d67fd71a1d1156f54e03b4932b34129",
+    "cold_start_boundary_review.png": "0c53bf1c96f377da7b13a4f7ccd549ad7cbbeb6ed8eb09f31e9a303cd2be3f65",
+    "cold_start_boundary_review_inverted.png": "c0f89e67afb68763ecfefdb0c3ef79287d3953031e8dd8599276acae70701584",
+    "comparison.json": "0eee5dffc417fb5eb7692bcda4f4fc2a420d1d72421e8763565a5e6a5ca95a98",
+    "point_source_audit_summary.json": "2a9b8fbeced6a7190fc39b59cfff80f75a45bb34c1067a4f83ad66d9cb9cf284",
+    "proposal-seal.json": "08207d2758c02138c5d5c590fb29255f883f58461177a7b1b38fe025fde03423",
+    "selection.json": "24ca1fcf55216bd54696af3892d4bd9e6498e8f557daf358d31a3f4cddc37dc8"
+  },
+  "observed_metrics": {
+    "boundary_distance_max_pixels": 54.91812087098393,
+    "boundary_distance_mean_pixels": 5.500628918101569,
+    "boundary_distance_p95_pixels": 13.92838827718412,
+    "exact_pixel_agreement": 0.9841814515445749,
+    "false_excluded_fraction": 0.003807236889977383,
+    "false_excluded_pixels": 7639,
+    "false_visible_fraction": 0.012011311565447692,
+    "false_visible_pixels": 24100,
+    "intersection_over_union": 0.9750704748619368,
+    "intersection_pixels": 1241410,
+    "matching_pixels": 1974703,
+    "pixels": 2006442,
+    "union_pixels": 1273149
+  },
+  "policy": "Thresholds were fixed only after the proposal was sealed, held-out evidence was complete, the approved reference was revealed, and Peter visually accepted the boundary. They must not be relaxed to conceal a later regression.",
+  "proposal_seal_sha256": "08207d2758c02138c5d5c590fb29255f883f58461177a7b1b38fe025fde03423",
+  "schema": "wide-field-solver-visible-sky-cold-start-acceptance-v1",
+  "scope": "MMTO camera-installation cold-start reproducibility; not cross-camera validation",
+  "status": "accepted_regression_baseline",
+  "thresholds": {
+    "boundary_distance_mean_pixels": {
+      "maximum": 6.5
+    },
+    "boundary_distance_p95_pixels": {
+      "maximum": 16.0
+    },
+    "exact_pixel_agreement": {
+      "minimum": 0.98
+    },
+    "false_excluded_fraction": {
+      "maximum": 0.005
+    },
+    "false_visible_fraction": {
+      "maximum": 0.015
+    },
+    "intersection_over_union": {
+      "minimum": 0.97
+    }
+  },
+  "visual_review": {
+    "decision": "accepted",
+    "review_statement": "The boundary follows the physical sky edge and fixed obstructions; transient Moon, glare, cloud and stars remain inside the sky region as intended.",
+    "reviewed_by": "Peter Thejll",
+    "reviewed_date": "2026-11-16"
+  }
+}
