@@ -166,7 +166,7 @@
     "scripts/compare_integrated_refraction.py": "afb8a6630903a96cfd3bc612ed3b104668c74a06ac84b553fb6dcd8fffe5c63b",
     "scripts/compare_radial_models.py": "028c2f3d01c5c7b6043aa743ffc000a35f337833de1d0286d55810103056650c",
     "scripts/plot_mmto_variable_stars.py": "c0c065cb187aaa60cd09d8c2ad69ada4957a1d25aac7f885e6d5f269fbbb0d88",
-    "scripts/plot_planet_photometry.py": "78a551cff0348a2dd28794a4f3fea5b28ed15a562088bd1f442138330461c807",
+    "scripts/plot_planet_photometry.py": "077f2f02a1977672f4fbf76ae48918f359982c4eceb74d3e89e955f1ac55c641",
     "scripts/rebuild_catalogue.py": "eecc182c6e1a443f70481149878c89ea6800f33a8aec173fa58ff11c1a0a1f79",
     "scripts/run_demo.py": "9026dff7d7484821f2a2c1075e4ba0a2db86af415b1f1ac573be4e1c58ed1885",
     "scripts/run_mmto_demo.py": "d1416ce160951859bb3b7856b4810473a997e36d77ffc312ce5c36db9807c24a",

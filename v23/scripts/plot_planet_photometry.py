@@ -3479,7 +3479,7 @@ def main(argv=None):
     )
     parser.add_argument("--database", type=Path, default=ROOT / "results" / "stars.sqlite")
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--channel", choices="RGB", default="G")
+    parser.add_argument("--channel", choices=("R", "G", "B", "RGB"), default="G")
     parser.add_argument(
         "--manifest",
         type=Path,
