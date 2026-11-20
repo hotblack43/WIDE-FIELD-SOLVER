@@ -45,6 +45,7 @@ nav:
   - Versions:
       - Version guide: VERSIONS.md
       - Legacy guide: LEGACY_GUIDE.md
+      - Latest release: RELEASE_v0.25.0.md
       - First release: RELEASE_v0.1.0.md
   - Project record:
       - Consolidation notes: CONSOLIDATION.md

@@ -168,7 +168,8 @@ For the v0.25.0 release, `go25.sh`,
 `go_visible_sky_v25.sh`, and `go_mmto_photometry_v25.sh` are the current
 launchers. The frozen v24 and earlier launchers remain available for
 reproducible comparison. The independent v17 launcher remains specific to
-KNALDGAS inputs. The latest packaged GitHub release is v0.25.0. The earlier
+KNALDGAS inputs. The latest packaged GitHub release is
+[v0.25.0](docs/RELEASE_v0.25.0.md). The earlier
 v0.11.0 release and every historical solver remain available for reproducible
 comparison and are protected by recorded manifests and regression tests.
 
