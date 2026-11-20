@@ -12,6 +12,7 @@ from astropy.io import fits
 from PIL import Image
 import tifffile
 
+import point_star_image
 from point_star_image import (ImageLayoutError, load_recorded_image,
                               load_scientific_image, report_display_rgb)
 from point_star_raw import CameraRawImage
@@ -142,7 +143,9 @@ class ScientificImageTests(unittest.TestCase):
             Image.fromarray(pixels).save(path)
             image = load_scientific_image(path)
         before = image.luminance.copy()
-        image.display_rgb[:] = 0
+        self.assertFalse(image.display_rgb.flags.writeable)
+        with self.assertRaises(ValueError):
+            image.display_rgb[:] = 0
         np.testing.assert_array_equal(image.luminance, before)
 
     def test_fits_accepts_plane_first_and_plane_last_rgb(self):
@@ -337,6 +340,109 @@ class ScientificImageTests(unittest.TestCase):
                 hdus['SCI'].data[0, 0] = 9
             with self.assertRaisesRegex(ValueError, 'checksum'):
                 load_recorded_image(path, root)
+
+    def test_identical_source_and_policy_reuse_immutable_scientific_image(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder)/'cached.fits'
+            fits.PrimaryHDU(np.ones((18, 20), dtype=np.float32)).writeto(path)
+
+            original_loader = point_star_image._load_scientific_image_uncached
+            with patch('point_star_image._load_scientific_image_uncached',
+                       wraps=original_loader) as decode:
+                first = load_scientific_image(path)
+                second = load_scientific_image(path)
+
+            self.assertIsNot(second, first)
+            self.assertEqual(decode.call_count, 1)
+            arrays = [
+                *first.planes.values(), first.luminance, first.valid_mask,
+                first.saturated_mask, *first.plane_saturated_masks.values(),
+                first.display_rgb,
+            ]
+            self.assertTrue(all(not array.flags.writeable for array in arrays))
+            with self.assertRaises(ValueError):
+                first.luminance.setflags(write=True)
+            changed_provenance = first.provenance()
+            changed_provenance['saturation']['L']['level'] = -1
+            self.assertNotEqual(second.provenance()['saturation']['L']['level'], -1)
+            first.luminance.shape = (-1,)
+            third = load_scientific_image(path)
+            self.assertEqual(third.shape, (18, 20))
+
+            with fits.open(path, mode='update') as hdus:
+                hdus[0].data[0, 0] = 9
+            changed = load_scientific_image(path)
+            self.assertIsNot(changed, first)
+            self.assertEqual(float(changed.planes['L'][0, 0]), 9.0)
+
+    def test_source_replaced_between_digest_and_decode_is_retried(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder)/'raced.fits'
+            fits.PrimaryHDU(np.ones((18, 20), dtype=np.float32)).writeto(path)
+            original_loader = point_star_image._load_scientific_image_uncached
+            replaced = False
+
+            def replace_then_decode(*args, **kwargs):
+                nonlocal replaced
+                if not replaced:
+                    replaced = True
+                    path.unlink()
+                    fits.PrimaryHDU(np.full((18, 20), 9, dtype=np.float32)).writeto(path)
+                return original_loader(*args, **kwargs)
+
+            with patch('point_star_image._load_scientific_image_uncached',
+                       side_effect=replace_then_decode):
+                image = load_scientific_image(path)
+
+            self.assertEqual(float(image.planes['L'][0, 0]), 9.0)
+            self.assertEqual(image.provenance()['source_sha256'],
+                             hashlib.sha256(path.read_bytes()).hexdigest())
+
+    def test_snapshot_digest_rejects_transient_replacement_bytes(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            path = root/'raced.fits'
+            replacement = root/'replacement.fits'
+            fits.PrimaryHDU(np.ones((18, 20), dtype=np.float32)).writeto(path)
+            fits.PrimaryHDU(np.full((18, 20), 9, dtype=np.float32)).writeto(replacement)
+            original_bytes = path.read_bytes()
+            replacement_bytes = replacement.read_bytes()
+            original_copy = point_star_image.shutil.copyfileobj
+            attacked = False
+
+            def transient_copy(source, target):
+                nonlocal attacked
+                if not attacked:
+                    attacked = True
+                    target.write(replacement_bytes)
+                    path.write_bytes(original_bytes)
+                    return None
+                return original_copy(source, target)
+
+            with patch('point_star_image.shutil.copyfileobj',
+                       side_effect=transient_copy):
+                image = load_scientific_image(path)
+
+            self.assertTrue(attacked)
+            self.assertEqual(float(image.planes['L'][0, 0]), 1.0)
+            self.assertEqual(image.provenance()['source_sha256'],
+                             hashlib.sha256(original_bytes).hexdigest())
+
+    def test_saturation_mapping_order_preserves_alias_override_semantics(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder)/'aliases.fits'
+            fits.PrimaryHDU(np.ones((18, 20), dtype=np.float32)).writeto(path)
+
+            lower_then_upper = load_scientific_image(
+                path, saturation_level={'l': 3, 'L': 9})
+            upper_then_lower = load_scientific_image(
+                path, saturation_level={'L': 9, 'l': 3})
+
+            self.assertEqual(
+                lower_then_upper.provenance()['saturation']['L']['level'], 9)
+            self.assertEqual(
+                upper_then_lower.provenance()['saturation']['L']['level'], 3)
+            self.assertIsNot(lower_then_upper, upper_then_lower)
 
 
 if __name__ == '__main__':

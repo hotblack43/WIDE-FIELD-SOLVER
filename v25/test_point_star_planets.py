@@ -43,6 +43,24 @@ class PlanetSearchTests(unittest.TestCase):
                                     gate_arcmin=20., positional_sigma_arcmin=4.,
                                     zenith_unit_vector=[0, 0, 1])
 
+    def test_scalar_planet_state_reuses_one_authoritative_evaluation(self):
+        from point_star_planets import _scalar_planet_state_cache
+        calls = []
+
+        def vectors(name, dates):
+            calls.append((name, tuple(dates)))
+            return self.camera.to_sky(np.array([[170., 120.]]))
+
+        state = _scalar_planet_state_cache(
+            self.camera, vectors, np.array([0., 0., 1.]))
+        first_ray, first_point = state('mars', self.origin)
+        second_ray, second_point = state('mars', self.origin)
+
+        self.assertEqual(calls, [('mars', (self.origin,))])
+        np.testing.assert_array_equal(second_ray, first_ray)
+        np.testing.assert_array_equal(second_point, first_point)
+        np.testing.assert_allclose(first_point, [170., 120.], atol=1e-7)
+
     def test_visibility_records_geometric_zenith_provenance(self):
         from point_star_planets import search_planet_epochs
         dates = self.origin + np.arange(2.)

@@ -28,6 +28,16 @@ installation-masked MMTO, and advanced visible-sky operator line.
   inherits the durable v24 cursor; v23 and v24 receipts preserve bounded
   acquisition progress, while only a successful masked v25 receipt completes
   v25 solver work.
+- V25 reuses one digest-verified scientific image decode across the stages of a
+  solve and reuses identical exact scalar planet states within one planet
+  search. On the representative native MMTO input
+  `2026_06_30__20_35_11.fits.bz2`, a warm-filesystem, one-process benchmark
+  fell from 60.96 s to 50.36 s wall time (17.4%) on the final tree. All 431
+  stellar associations and all 43 planet-candidate identities were retained;
+  measured star positions were identical, while the largest model-position
+  differences were 1.2e-8 pixel for stars and 1.2e-5 pixel for planets. Peak
+  RSS rose from 917 MiB to 949 MiB because the decoded image remains resident
+  for the solve.
 - V25 combines the v21, v23, v24, and v25 FITS-header observation sidecars
   read-only for cumulative differential-photometry replay. MMTO remains the
   only real cold-start camera validation; the generic non-MMTO workflow is not

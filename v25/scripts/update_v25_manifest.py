@@ -37,6 +37,7 @@ CHANGES = [
     "Integrate opt-in assignment with new and bounded historical downloads while preserving verified-but-unassigned originals on validation failure.",
     "Reproduce the MMTO proposal from 3,194 freshly verified originals with whole-date holdout evidence before revealing the approved reference mask.",
     "Record the visually accepted MMTO cold-start baseline and enforce its fixed regression thresholds against recomputed mask metrics.",
+    "Reuse digest-verified image decodes and identical exact scalar planet states within each solve to reduce single-image runtime without changing solver concurrency.",
 ]
 
 

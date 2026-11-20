@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import csv
+from functools import lru_cache
 import json
 from pathlib import Path
 import time
@@ -159,6 +160,26 @@ def _visible_projection(camera, vectors, zenith):
         valid[indices] &= np.linalg.norm(inverse-vectors[valid], axis=1) < 1e-6
     points[~valid] = np.nan
     return points
+
+
+def _scalar_planet_state_cache(camera, vector_function, zenith):
+    """Reuse one authoritative ray and visible projection per planet/date."""
+
+    @lru_cache(maxsize=16384)
+    def cached(name, date):
+        rays = np.asarray(vector_function(name, [date]), dtype=float)
+        if rays.shape != (1, 3) or not np.isfinite(rays).all():
+            raise ValueError('Scalar planet ephemeris returned an invalid ray')
+        ray = rays[0].copy()
+        point = _visible_projection(camera, rays, zenith)[0].copy()
+        ray.flags.writeable = False
+        point.flags.writeable = False
+        return ray, point
+
+    def state(name, date):
+        return cached(name, float(date))
+
+    return state
 
 
 def _record_empty_performance(output, search_started, requested_workers):
@@ -369,11 +390,13 @@ def search_planet_epochs(camera, detections, jd_grid, sky_grid, vector_function,
         output['planet_search_performance'] = performance.serialise(
             total_planet_stage=time.perf_counter()-search_started)
 
+    scalar_state = _scalar_planet_state_cache(camera, vector_function, zenith)
+
     def prediction(name, date):
-        return _visible_projection(camera, vector_function(name, np.atleast_1d(date)), zenith)[0]
+        return scalar_state(name, date)[1]
 
     def angular_residual_arcmin(name, date, source):
-        ray = np.asarray(vector_function(name, [date]), dtype=float)
+        ray = scalar_state(name, date)[0][None, :]
         return float(_paired_angular_separations_arcmin(
             ray, measured_rays[source:source+1])[0])
 
@@ -383,10 +406,12 @@ def search_planet_epochs(camera, detections, jd_grid, sky_grid, vector_function,
             for name, source in assignments:
                 # A flat invalid-visibility penalty can hide a brief visible
                 # passage. Minimise the actual positional residual first.
-                predicted = _project(camera, vector_function(name, [start+offset]))[0]
+                ray = scalar_state(name, start+offset)[0]
+                predicted = _project(camera, ray[None, :])[0]
                 if not np.isfinite(predicted).all():
                     return 1e100
-                total += angular_residual_arcmin(name, start+offset, source)**2
+                total += float(_paired_angular_separations_arcmin(
+                    ray[None, :], measured_rays[source:source+1])[0])**2
             return total
         optimum = minimize_scalar(objective, bounds=(0., stop-start), method='bounded',
                                   options={'xatol': 1e-7})
@@ -395,7 +420,8 @@ def search_planet_epochs(camera, detections, jd_grid, sky_grid, vector_function,
         # minimum may be at a rise/set crossing. Retain these boundaries too.
         for name, _ in assignments:
             def altitude(offset):
-                return float(_altitudes(vector_function(name, [start+offset]), zenith)[0])
+                ray = scalar_state(name, start+offset)[0]
+                return float(_altitudes(ray[None, :], zenith)[0])
             for left, right in zip(offsets[:2], offsets[1:3]):
                 if altitude(left)*altitude(right) < 0:
                     crossing = brentq(altitude, left, right, xtol=1e-9)
@@ -500,7 +526,8 @@ def search_planet_epochs(camera, detections, jd_grid, sky_grid, vector_function,
             options = [by_date[date] for date in sorted(by_date)]
             # Preserve exact rise/set boundary options around an invisible minimum.
             def altitude(date):
-                return float(_altitudes(vector_function(name, [date]), zenith)[0])
+                ray = scalar_state(name, date)[0]
+                return float(_altitudes(ray[None, :], zenith)[0])
             for left_option, right_option in zip(options[:-1], options[1:]):
                 left, right = left_option[0], right_option[0]
                 left_altitude, right_altitude = left_option[2], right_option[2]
@@ -553,8 +580,9 @@ def search_planet_epochs(camera, detections, jd_grid, sky_grid, vector_function,
         return output
 
     def assign(date, forced=()):
-        predictions = np.array([prediction(name, date) for name in names])
-        planet_rays = np.array([vector_function(name, [date])[0] for name in names])
+        states = [scalar_state(name, date) for name in names]
+        planet_rays = np.array([state[0] for state in states])
+        predictions = np.array([state[1] for state in states])
         distance2 = _angular_separation_matrix_arcmin(planet_rays, measured_rays)**2
         distance2[~np.isfinite(predictions).all(axis=1), :] = 1e100
         distance2[~np.isfinite(distance2)] = 1e100
@@ -585,9 +613,9 @@ def search_planet_epochs(camera, detections, jd_grid, sky_grid, vector_function,
                             and not eligible[source] and np.isfinite(star_residual[source])]
         if not remaining_planets or not override_sources:
             return []
-        predictions = np.array([prediction(name, date) for name in remaining_planets])
-        planet_rays = np.array([
-            vector_function(name, [date])[0] for name in remaining_planets])
+        states = [scalar_state(name, date) for name in remaining_planets]
+        planet_rays = np.array([state[0] for state in states])
+        predictions = np.array([state[1] for state in states])
         distance2 = _angular_separation_matrix_arcmin(
             planet_rays, measured_rays[override_sources])**2
         distance2[~np.isfinite(predictions).all(axis=1), :] = 1e100
@@ -640,14 +668,15 @@ def search_planet_epochs(camera, detections, jd_grid, sky_grid, vector_function,
             return
         matches, speed_squared = [], 0.
         for name, source in assignments:
-            predicted = prediction(name, date)
+            ray, predicted = scalar_state(name, date)
             # The local derivative is geometric, even at a visibility boundary.
             nearby_rays = vector_function(name, [date-.001, date+.001])
             speed = float(_paired_angular_separations_arcmin(
                 nearby_rays[:1], nearby_rays[1:])[0]/.002)
             speed_squared += speed**2
             row = detections[source]
-            separation_arcmin = angular_residual_arcmin(name, date, source)
+            separation_arcmin = float(_paired_angular_separations_arcmin(
+                ray[None, :], measured_rays[source:source+1])[0])
             separation_px = float(np.linalg.norm(predicted-xy[source]))
             matches.append(dict(planet=name.title(), detection_id=int(row['detection_id']),
                 measured_x_px=float(xy[source, 0]), measured_y_px=float(xy[source, 1]),
@@ -656,7 +685,8 @@ def search_planet_epochs(camera, detections, jd_grid, sky_grid, vector_function,
                 saturated=str(row.get('saturated', False)).lower() == 'true',
                 source_class=row.get('source_class', 'unknown'),
                 measured_altitude_deg=float(max(0., measured_altitudes[source])),
-                predicted_altitude_deg=float(max(0., _altitudes(vector_function(name, [date]), zenith)[0])),
+                predicted_altitude_deg=float(max(
+                    0., _altitudes(ray[None, :], zenith)[0])),
                 catalogue_star_id=row.get('catalogue_star_id'),
                 catalogue_residual_px=(float(star_residual_px[source])
                                        if np.isfinite(star_residual_px[source]) else None),

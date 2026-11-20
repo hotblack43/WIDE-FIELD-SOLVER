@@ -6,9 +6,12 @@ is a one-way display product and must never be used for measurements.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
 import hashlib
 import json
 from pathlib import Path
+import shutil
+import tempfile
 from types import MappingProxyType
 from typing import Mapping
 
@@ -19,6 +22,43 @@ from PIL import Image
 
 class ImageLayoutError(ValueError):
     """The file contains pixels but their scientific meaning is ambiguous."""
+
+
+class _SourceChangedDuringLoad(RuntimeError):
+    """The source bytes changed while one verified decode was in progress."""
+
+
+def _freeze_metadata(value):
+    if isinstance(value, Mapping):
+        return MappingProxyType({key: _freeze_metadata(item)
+                                 for key, item in value.items()})
+    if isinstance(value, list):
+        return tuple(_freeze_metadata(item) for item in value)
+    if isinstance(value, tuple):
+        return tuple(_freeze_metadata(item) for item in value)
+    return value
+
+
+def _thaw_metadata(value):
+    if isinstance(value, Mapping):
+        return {key: _thaw_metadata(item) for key, item in value.items()}
+    if isinstance(value, tuple):
+        return [_thaw_metadata(item) for item in value]
+    return value
+
+
+def _immutable_array(value):
+    """Copy an array onto immutable bytes so writeability cannot be restored."""
+    array = np.ascontiguousarray(value)
+    packed = array.tobytes(order='C')
+    return np.ndarray(array.shape, dtype=array.dtype, buffer=packed)
+
+
+def _fresh_array_header(value):
+    """Expose cached immutable bytes through a caller-private ndarray header."""
+    if not isinstance(value.base, bytes):
+        raise RuntimeError('Cached scientific array is not backed by immutable bytes')
+    return np.ndarray(value.shape, dtype=value.dtype, buffer=value.base)
 
 
 @dataclass(frozen=True)
@@ -43,7 +83,7 @@ class ScientificImage:
         return self.valid_mask
 
     def provenance(self):
-        return dict(self.metadata)
+        return _thaw_metadata(self.metadata)
 
 
 def _channel_names(count, order=None):
@@ -348,16 +388,35 @@ def fits_image_suffix(path):
     return suffix if suffix in ('.fits', '.fit', '.fts') else ''
 
 
-def load_scientific_image(path, *, fits_hdu=None, channel_order=None, saturation_level=None):
+def _source_sha256(path):
+    with Path(path).open('rb') as stream:
+        return hashlib.file_digest(stream, 'sha256').hexdigest()
+
+
+def _saturation_cache_key(value):
+    if isinstance(value, Mapping):
+        return ('mapping', tuple(value.items()))
+    return ('scalar', value)
+
+
+def _saturation_from_cache_key(key):
+    kind, value = key
+    return dict(value) if kind == 'mapping' else value
+
+
+def _load_scientific_image_uncached(path, source_sha256, *, fits_hdu=None,
+                                    channel_order=None, saturation_level=None,
+                                    decode_path=None):
     """Decode an image without quantising its scientific samples."""
     path = Path(path).expanduser().resolve()
     if not path.is_file():
         raise FileNotFoundError(path)
+    decode_path = path if decode_path is None else Path(decode_path)
     suffix = path.suffix.lower()
     fits_suffix = fits_image_suffix(path)
     if fits_suffix:
         planes, layout, details, header_levels, black_levels = _read_fits(
-            path, fits_hdu=fits_hdu, channel_order=channel_order)
+            decode_path, fits_hdu=fits_hdu, channel_order=channel_order)
         if suffix == '.bz2':
             details['source_compression'] = 'bz2'
         rendered_uint8 = False
@@ -365,7 +424,7 @@ def load_scientific_image(path, *, fits_hdu=None, channel_order=None, saturation
                          if len(planes) > 1 else list(next(iter(planes.values())).shape))
     elif suffix == '.cr2':
         from point_star_raw import decode_cr2
-        raw = decode_cr2(path)
+        raw = decode_cr2(decode_path)
         planes = dict(raw.planes)
         layout = 'bayer_cell_planes'
         details = dict(raw.details)
@@ -377,7 +436,7 @@ def load_scientific_image(path, *, fits_hdu=None, channel_order=None, saturation
         rendered_uint8 = False
         decoded_shape = [len(planes), *next(iter(planes.values())).shape]
     else:
-        array, details = _read_raster(path)
+        array, details = _read_raster(decode_path)
         planes, layout = _split_array(array, channel_order=channel_order)
         header_levels = {}
         black_levels = {}
@@ -414,7 +473,7 @@ def load_scientific_image(path, *, fits_hdu=None, channel_order=None, saturation
         else:
             effective_bits[name] = None
     metadata = dict(
-        source=str(path), source_sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
+        source=str(path), source_sha256=source_sha256,
         format=(fits_suffix or suffix).lstrip('.'),
         decoded_dtype=({name: str(value.dtype) for name, value in planes.items()}),
         decoded_shape=decoded_shape, spatial_shape=list(luminance.shape),
@@ -435,9 +494,69 @@ def load_scientific_image(path, *, fits_hdu=None, channel_order=None, saturation
         fits_hdu=fits_hdu, channel_order=channel_order,
         saturation_level=(dict(saturation_level) if isinstance(saturation_level, Mapping)
                           else saturation_level))
+    planes = {name: _immutable_array(array) for name, array in planes.items()}
+    rgb = None if rgb is None else _immutable_array(rgb)
+    luminance = _immutable_array(luminance)
+    valid = _immutable_array(valid)
+    saturated = _immutable_array(saturated)
+    masks = {name: _immutable_array(array) for name, array in masks.items()}
+    display = _immutable_array(display)
     return ScientificImage(path, MappingProxyType(planes), rgb, luminance, valid,
                            saturated, MappingProxyType(masks), display,
-                           MappingProxyType(metadata))
+                           _freeze_metadata(metadata))
+
+
+@lru_cache(maxsize=1)
+def _load_scientific_image_cached(path, source_sha256, fits_hdu, channel_order,
+                                  saturation_key):
+    suffix = ''.join(Path(path).suffixes)
+    with tempfile.TemporaryDirectory(prefix='point-star-image-') as folder:
+        snapshot = Path(folder)/f'source{suffix}'
+        with Path(path).open('rb') as source, snapshot.open('xb') as target:
+            shutil.copyfileobj(source, target)
+        snapshot_sha256 = _source_sha256(snapshot)
+        if snapshot_sha256 != source_sha256:
+            raise _SourceChangedDuringLoad(path)
+        return _load_scientific_image_uncached(
+            path, snapshot_sha256, fits_hdu=fits_hdu,
+            channel_order=channel_order,
+            saturation_level=_saturation_from_cache_key(saturation_key),
+            decode_path=snapshot)
+
+
+def _fresh_scientific_image(image):
+    planes = MappingProxyType({name: _fresh_array_header(array)
+                               for name, array in image.planes.items()})
+    masks = MappingProxyType({name: _fresh_array_header(array)
+                              for name, array in image.plane_saturated_masks.items()})
+    rgb = None if image.rgb is None else _fresh_array_header(image.rgb)
+    visible = (None if image.visible_sky_mask is None
+               else _fresh_array_header(image.visible_sky_mask))
+    return ScientificImage(
+        image.path, planes, rgb, _fresh_array_header(image.luminance),
+        _fresh_array_header(image.valid_mask),
+        _fresh_array_header(image.saturated_mask), masks,
+        _fresh_array_header(image.display_rgb), image.metadata, visible)
+
+
+def load_scientific_image(path, *, fits_hdu=None, channel_order=None,
+                          saturation_level=None):
+    """Decode once per verified source and policy within this process."""
+    path = Path(path).expanduser().resolve()
+    if not path.is_file():
+        raise FileNotFoundError(path)
+    saturation_key = _saturation_cache_key(saturation_level)
+    for _ in range(3):
+        source_sha256 = _source_sha256(path)
+        try:
+            image = _load_scientific_image_cached(
+                path, source_sha256, fits_hdu, channel_order, saturation_key)
+        except _SourceChangedDuringLoad:
+            continue
+        if _source_sha256(path) == source_sha256:
+            return _fresh_scientific_image(image)
+        _load_scientific_image_cached.cache_clear()
+    raise RuntimeError(f'Source changed repeatedly while decoding: {path}')
 
 
 def load_recorded_image(path, solution):

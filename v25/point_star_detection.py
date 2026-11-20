@@ -35,7 +35,9 @@ def detect_stars(image, detection_sigma=6., background_sigma=10., *, valid_mask=
     if valid_mask is None:
         finite_mask = finite
     else:
-        finite_mask = np.asarray(valid_mask, dtype=bool)
+        # The loader may share an immutable verified image across stages.
+        # Detection combines its own finite-pixel test into a private mask.
+        finite_mask = np.array(valid_mask, dtype=bool, copy=True)
         if finite_mask.shape != pixels.shape:
             raise ValueError('Validity mask shape differs from image')
         finite_mask &= finite
