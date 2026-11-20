@@ -59,15 +59,26 @@ operational calibration.
 
 ## Quick start
 
-The tested platform is Linux. Install
-[`uv`](https://docs.astral.sh/uv/), then run:
+Ubuntu 24.04 and Ubuntu 26.04 LTS on x86-64 are certified. A new machine needs
+Bash, Git, HTTPS certificates, `tar`, `sha256sum`, and either `curl` or `wget`.
+Python and `uv` are installed inside the clone:
 
 ```bash
 git clone https://github.com/hotblack43/WIDE-FIELD-SOLVER.git
 cd WIDE-FIELD-SOLVER
-uv sync --project v25 --frozen
+./quickstart.sh
+```
+
+The command verifies its pinned bootstrap tool, creates the locked v25
+environment, and solves the bundled MMTO example. A passing run produces
+`results/quickstart-v25/report.pdf`. Then solve your own image with:
+
+```bash
 ./go25.sh /full/path/to/image.fits
 ```
+
+Other systems are not certified for this release. See the
+[quick-start guide](docs/QUICKSTART.md) for generated paths and removal.
 
 Compressed FITS input is accepted directly:
 

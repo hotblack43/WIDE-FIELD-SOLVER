@@ -1,81 +1,69 @@
 # Quick start
 
-## Requirements
+## Certified systems
 
-- Linux or another Unix-like system with Bash
-- Git
-- [`uv`](https://docs.astral.sh/uv/)
-- enough free space for the image, dependencies and generated report products
+The v25 clean-clone path is tested on Ubuntu 24.04 and Ubuntu 26.04 LTS on
+x86-64. Ubuntu 24.04 is the minimum supported baseline. Native Windows, macOS,
+ARM, and other Linux distributions are not certified by this release.
 
-Python 3.12 and the solver dependencies are selected from the committed v0.15.0
-lock file.
+A new machine needs Bash, Git, HTTPS certificates, `tar`, `sha256sum`, and
+either `curl` or `wget`. It does not need a preinstalled Python or `uv`.
+Internet access is required for the first dependency installation.
 
-## Install
+## Clone and verify
 
 ```bash
 git clone https://github.com/hotblack43/WIDE-FIELD-SOLVER.git
 cd WIDE-FIELD-SOLVER
-uv sync --project v15 --frozen
+./quickstart.sh
 ```
 
-The first installation requires network access to obtain the pinned Python
-packages. The Gaia catalogue and planetary proposal ephemeris used at runtime
-are already included.
+The command downloads the pinned Linux x86-64 `uv` archive, verifies its
+recorded SHA-256 checksum, and installs it under `.tools/`. It then obtains
+Python 3.12 and the exact packages in `v25/uv.lock` before running the bundled
+MMTO demonstration. A successful run prints:
 
-## Solve an image
+```text
+results/quickstart-v25/report.pdf
+```
+
+Open that PDF to inspect the first verified solution. The demonstration uses
+the bundled catalogue, installation mask, MMTO input, and numerical baseline;
+it does not require a separate input image.
+
+## Solve your image
 
 ```bash
-./go15.sh /full/path/to/image.fits
+./go25.sh /full/path/to/image.fits
 ```
 
-Accepted inputs include monochrome or RGB PNG/TIFF, ordinary FITS and
-losslessly compressed `.fits.bz2` files. Multi-plane FITS files may contain
-RGB or R/G1/G2/B channels.
+Compressed FITS, common raster formats, and supported camera RAW inputs may be
+passed directly. Quote paths containing spaces. Each image receives its own
+analysis directory and the launcher prints the resulting report path.
 
 ```bash
-./go15.sh /full/path/to/image.fits.bz2
+./go25.sh /full/path/to/image.fits.bz2
+./go25.sh /full/path/to/image.cr2
 ```
 
-Paths containing spaces must be quoted. Every invocation creates a unique run
-directory and prints its location before computation begins.
+Use `./go25.sh --help` for FITS HDU, channel-order, saturation, output, and
+visible-sky calibration options.
 
-## Ambiguous FITS files
+## Local generated files
 
-Most FITS files need no extra arguments. When the file does not identify its
-science HDU, channel order or saturation value, provide them explicitly:
+The bootstrap keeps its state inside the clone:
 
-```bash
-./go15.sh image.fits \
-  --fits-hdu SCI \
-  --channel-order RG1G2B \
-  --saturation-level R=4095,G1=4095,G2=4095,B=4095
-```
+- `.tools/uv/0.9.30/uv`: verified bootstrap executable;
+- `.tools/python/`: managed Python runtime;
+- `.tools/cache/`: dependency downloads;
+- `v25/.venv/`: frozen v25 environment; and
+- `results/quickstart-v25/`: verification result.
 
-These options describe input storage only; they do not supply a sky position,
-orientation or astrometric solution.
+All five paths are ignored by Git. To start again, remove only `.tools/`,
+`v25/.venv`, and `results/quickstart-v25`; the tracked solver, catalogue,
+calibration, and example files remain untouched.
 
-## Planet-search mode
-
-The normal v0.15.0 path uses a FITS, EXIF or filename observation time only after
-the stellar solution and image-derived constraints have been fixed. To suppress
-that time and request the full blind planetary search, run:
-
-```bash
-./go15.sh image.fits --blind-planets
-```
-
-## Retaining results elsewhere
-
-```bash
-./go15.sh image.fits --results-dir /data/wide-field-results
-```
-
-The unique run folders and their shared `stars.sqlite` database remain together
-under the selected directory.
-
-## What to open first
-
-At completion, open the printed `analysis/report.pdf`. Then consult
-`result.json` for fitted values and status flags. A visually convincing overlay
-does not by itself establish a unique epoch or physical zenith; read the status
-labels in both products.
+If a required Ubuntu utility is absent, `quickstart.sh` exits before downloading
+anything and prints one `apt-get` command naming the missing package. A checksum,
+dependency, or numerical demonstration failure exits nonzero and does not print
+the success message.

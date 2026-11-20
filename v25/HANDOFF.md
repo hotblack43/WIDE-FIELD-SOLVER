@@ -38,6 +38,12 @@ Do not describe the current standalone operator as the final v25 interface, and
 do not freeze v25 until this integration has regression evidence. The approved
 MMTO v24 mask and all historical runtimes remain preserved.
 
+The clean-clone release gate must also pass before v25 publication. The public
+`./quickstart.sh` path must reach the bundled verified report on clean Ubuntu
+24.04 and Ubuntu 26.04 LTS x86-64 environments without preinstalled Python or
+`uv`. Both explicit CI matrix entries are required; a moving
+`ubuntu-latest` result is insufficient.
+
 ## Current MMTO runtime
 
 Use `./go25.sh IMAGE` or `./go_v0.25.0.sh IMAGE` for the independent v25

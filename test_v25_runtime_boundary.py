@@ -31,6 +31,7 @@ V25_ROOT_FILES = {
     "go_mmto_photometry_v25.sh",
     "go_visible_sky_v25.sh",
     "plot_mmto_variable_stars_v25.sh",
+    "quickstart.sh",
     "run_v25_aperture_radius_benchmark.sh",
     "run_v25_photometry_benchmark.sh",
     "scripts/calibrate_nightly_extinction_v25.py",

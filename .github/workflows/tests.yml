@@ -67,3 +67,28 @@ jobs:
         run: uv run --frozen python -m unittest -v test_v25_runtime_boundary
       - name: Fresh v25 pixel-to-sky solution (offline)
         run: ./v25/demo.sh --output v25/results/ci-visible-sky
+  v25-clean-clone:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ["ubuntu:24.04", "ubuntu:26.04"]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Clean clone to verified v25 report
+        env:
+          CLEAN_IMAGE: ${{ matrix.image }}
+        run: |
+          docker run --rm \
+            --volume "$GITHUB_WORKSPACE:/workspace" \
+            --workdir /workspace \
+            "$CLEAN_IMAGE" \
+            bash -ceu '
+              apt-get update
+              DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends bash ca-certificates coreutils curl git tar
+              ./quickstart.sh
+              test -f results/quickstart-v25/report.pdf
+              ./quickstart.sh
+              test -f results/quickstart-v25/report.pdf
+            '

@@ -13,6 +13,10 @@ visible-sky operator line.
   per night, reserve complete dates, check five date-fold proposals against
   fixed conservative gates, and approve, register and activate only on a
   complete pass.
+- The clean-clone release gate requires `./quickstart.sh` to bootstrap the
+  pinned v25 environment and pass the bundled MMTO demonstration independently
+  on Ubuntu 24.04 and Ubuntu 26.04 LTS x86-64 before v25 publication. This gate
+  remains separate from the unfinished normal-pipeline mask integration.
 - Interface review on 2026-11-16 found that promoting the separate
   zero-argument `go_visible_sky_v25.sh` operator as the normal workflow was an
   overdesign. The intended v25 boundary is v24's existing operational pipeline

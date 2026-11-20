@@ -113,6 +113,51 @@ class V25DocumentationTests(unittest.TestCase):
         self.assertIn("test_v25_runtime_boundary", text)
         self.assertIn("./v25/demo.sh", text)
 
+    def test_ci_certifies_clean_clone_on_both_ubuntu_lts_versions(self):
+        text = (ROOT / ".github/workflows/tests.yml").read_text(encoding="utf-8")
+        marker = "  v25-clean-clone:\n"
+        self.assertIn(marker, text)
+        job = text.split(marker, 1)[1]
+        self.assertIn('"ubuntu:24.04"', job)
+        self.assertIn('"ubuntu:26.04"', job)
+        self.assertEqual(job.count("./quickstart.sh"), 2)
+        self.assertIn("results/quickstart-v25/report.pdf", job)
+        self.assertNotIn("setup-uv", job)
+        self.assertNotIn("setup-python", job)
+
+    def test_public_quickstart_is_consistent_and_blocks_release(self):
+        paths = (
+            ROOT / "README.md",
+            ROOT / "v25/README.md",
+            ROOT / "docs/QUICKSTART.md",
+        )
+        for path in paths:
+            with self.subTest(path=path):
+                text = path.read_text(encoding="utf-8")
+                for phrase in (
+                    "./quickstart.sh",
+                    "Ubuntu 24.04",
+                    "Ubuntu 26.04",
+                    "results/quickstart-v25/report.pdf",
+                    "./go25.sh /full/path/to/image.fits",
+                ):
+                    self.assertIn(phrase, text)
+        root_text = paths[0].read_text(encoding="utf-8")
+        v25_text = paths[1].read_text(encoding="utf-8")
+        if "./quickstart.sh" in root_text and "uv sync" in root_text:
+            self.assertLess(root_text.index("./quickstart.sh"), root_text.index("uv sync"))
+        if "./quickstart.sh" in v25_text:
+            self.assertLess(
+                v25_text.index("./quickstart.sh"),
+                v25_text.index("./go_visible_sky_v25.sh"),
+            )
+        handoff = (ROOT / "v25/HANDOFF.md").read_text(encoding="utf-8")
+        status = (ROOT / "docs/FEATURE_STATUS.md").read_text(encoding="utf-8")
+        self.assertIn("clean-clone release gate", handoff)
+        self.assertIn("clean-clone release gate", status)
+        self.assertIn("before v25 publication", handoff)
+        self.assertIn("before v25 publication", status)
+
 
 if __name__ == "__main__":
     unittest.main()

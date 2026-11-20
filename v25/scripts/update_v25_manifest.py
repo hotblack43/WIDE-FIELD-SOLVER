@@ -14,6 +14,7 @@ MANIFEST = PACKAGE / "SOURCE_MANIFEST.json"
 
 CHANGES = [
     "Fork the complete frozen v24 runtime into an independent v25 development package.",
+    "Add a checksum-verified clean-clone bootstrap and a release gate for its bundled demonstration on Ubuntu 24.04 and Ubuntu 26.04 LTS x86-64.",
     "Add a configuration-driven automatic mask command with fixed held-out and five-fold gates while retaining separate manual proposal, revision, approval, and activation tools.",
     "Add an installation-specific visible-sky mask without changing the generic unmasked numerical path.",
     "Add native-FITS aperture-radius and sky-annulus sweeps on held-out nights.",

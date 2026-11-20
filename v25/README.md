@@ -20,10 +20,41 @@ and redistribution while requiring the copyright notice and licence to remain
 with the software. It does not permit anyone to claim authorship of the original
 work.
 
+## Quick start
+
+Ubuntu 24.04 and Ubuntu 26.04 LTS on x86-64 are certified. From a new machine:
+
+```sh
+git clone https://github.com/hotblack43/WIDE-FIELD-SOLVER.git
+cd WIDE-FIELD-SOLVER
+./quickstart.sh
+```
+
+The first run requires internet access and the standard Ubuntu Bash, Git, HTTPS
+certificate, `tar`, `sha256sum`, and `curl` or `wget` utilities. It downloads a
+pinned, checksum-verified `uv` executable into `.tools/`, obtains Python 3.12
+and the frozen v25 dependencies there, and runs the bundled MMTO verification.
+A successful run prints and creates:
+
+```text
+results/quickstart-v25/report.pdf
+```
+
+The generated `.tools/`, `v25/.venv`, and `results/quickstart-v25` paths are
+local and ignored by Git. Remove only those paths if a completely fresh setup
+is required. Native Windows, macOS, ARM, and other Linux distributions are not
+certified by this release.
+
+Solve another image afterward with:
+
+```sh
+./go25.sh /full/path/to/image.fits
+```
+
 ## Operational commands
 
-The runtime requires Bash and uses [uv](https://docs.astral.sh/uv/) for its
-pinned Python environment. From the repository root, install it once:
+The bootstrap prepares the pinned environment automatically. Developers who
+already provide `uv` may prepare that same frozen environment explicitly:
 
 ```sh
 uv sync --project v25 --frozen
