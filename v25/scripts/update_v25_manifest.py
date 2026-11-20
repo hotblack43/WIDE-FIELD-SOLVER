@@ -13,6 +13,7 @@ PACKAGE = ROOT / "v25"
 MANIFEST = PACKAGE / "SOURCE_MANIFEST.json"
 
 CHANGES = [
+    "Accept the combined RGB planet-photometry channel used by the v23-v25 production launchers.",
     "Publish the complete frozen v24 runtime as the independent v25 release package.",
     "Add a checksum-verified clean-clone bootstrap and a release gate for its bundled demonstration on Ubuntu 24.04 and Ubuntu 26.04 LTS x86-64.",
     "Add a configuration-driven automatic mask command with fixed held-out and five-fold gates while retaining separate manual proposal, revision, approval, and activation tools.",
@@ -67,7 +68,7 @@ def repository_v25_files() -> list[tuple[str, Path]]:
 def build_manifest() -> dict[str, object]:
     boundary = json.loads((ROOT / "docs/v24-runtime.json").read_text())
     return {
-        "version": "0.25.0",
+        "version": "0.25.1",
         "based_on_version": "0.24.0",
         "based_on_snapshot_kind": boundary["snapshot_kind"],
         "parent_snapshot": "../docs/v24-runtime.json",

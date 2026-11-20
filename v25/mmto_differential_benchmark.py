@@ -51,7 +51,7 @@ FIGURES = (
 PDF_METADATA = {
     "Title": "V25 differential photometry benchmark",
     "Author": "Wide-Field Solver",
-    "Creator": "Wide-Field Solver v0.25.0",
+    "Creator": "Wide-Field Solver v0.25.1",
     "CreationDate": None,
     "ModDate": None,
 }

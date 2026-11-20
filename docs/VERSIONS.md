@@ -29,18 +29,18 @@ tests; they are not aliases for the newest code.
 | `go22.sh` | Frozen experiment | v0.22.0 differential-photometry model benchmark |
 | `go23.sh` | Frozen | v0.23.0 aperture and sky-annulus validation |
 | `go24.sh` | Frozen | v0.24.0 accepted generic camera-installation calibration checkpoint |
-| `go25.sh` | Latest packaged release; frozen | v0.25.0 clean-clone single-image solver, advanced visible-sky operator and masked MMTO processing |
+| `go25.sh` | Latest packaged release; frozen | v0.25.1 clean-clone single-image solver, advanced visible-sky operator and masked MMTO processing |
 
-For v0.25.0 installation-masked MMTO processing, use
+For v0.25.1 installation-masked MMTO processing, use
 `go_mmto_photometry_v25.sh`. Configure a new installation through
 `go_visible_sky_v25.sh`. Use `go17.sh` only for its independent
 KNALDGAS line, and use earlier launchers when reproducing older results.
 
 ## Releases versus the development line
 
-The **Latest packaged release** is v0.25.0. Download the named `.tar.gz` or
+The **Latest packaged release** is v0.25.1. Download the named `.tar.gz` or
 `.zip` asset and `SHA256SUMS` from that release; GitHub's automatic source-code
-archives are not the curated runnable package. The v0.25.0 runtime preserves
+archives are not the curated runnable package. The v0.25.1 runtime preserves
 v24's approved installation mask, generic calibration registry, immutable
 checksum assignments, and cold-start MMTO evidence while adding the
 clean-machine bootstrap and public configuration-driven operator command.

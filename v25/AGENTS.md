@@ -72,7 +72,7 @@ Preserve implemented capabilities and add regression evidence for new ones.
 
 ## Version boundary
 
-This directory is the active experimental v0.25.0 runtime based on frozen v24. Keep root legacy,
+This directory is the published v0.25.1 runtime based on frozen v24. Keep root legacy,
 `v4/`, `v5/`, `v6/`, `v7/`, `v8/`, the independent `v8a/` work snapshot,
 `v9/`, `v10/`, `v11/`, and `v12/` unchanged; `../docs/v12-runtime.json` freezes
 the experimental v12 snapshot, v13, and v14 unchanged; `../docs/v14-runtime.json`
@@ -81,7 +81,7 @@ freezes v15, `../docs/v16-runtime.json` freezes v16,
 `../docs/v19-runtime.json` freezes v19, `../docs/v20-runtime.json` freezes v20,
 `../docs/v21-runtime.json` freezes v21, `../docs/v22-runtime.json` freezes
 v22, and `../docs/v24-runtime.json` freezes v24. Develop v25 changes only here and through `go25.sh` or
-`go_v0.25.0.sh`. Keep this package self-contained and runnable without
+`go_v0.25.1.sh`. Keep this package self-contained and runnable without
 `.worktrees`.
 
 ## Language

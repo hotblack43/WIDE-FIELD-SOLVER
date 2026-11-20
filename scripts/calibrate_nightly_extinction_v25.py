@@ -67,7 +67,7 @@ def load_measurements(database_path: Path, manifest_path: Path):
             """SELECT run_id,source_sha256,catalogue_sha256 FROM (
                  SELECT run_id,source_sha256,catalogue_sha256,
                         row_number() OVER (PARTITION BY source_sha256 ORDER BY recorded_at_utc DESC,rowid DESC) rank
-                 FROM runs WHERE solver_version='0.25.0' AND exit_code=0
+                 FROM runs WHERE solver_version IN ('0.25.0','0.25.1') AND exit_code=0
                        AND source_sha256 IS NOT NULL AND catalogue_sha256 IS NOT NULL)
                WHERE rank=1 ORDER BY run_id"""
         ).fetchall()
@@ -141,7 +141,7 @@ def calibrate(database: Path, manifest: Path, output: Path, *, min_stars: int, m
             image_rows.append({
                 "night": night, "header_midpoint_utc": observations[digest],
                 "run_id": run_by_source[digest], "source_sha256": digest,
-                "channel": channel, "solver_version": "0.25.0", "model": fit.model,
+                "channel": channel, "solver_version": "0.25.1", "model": fit.model,
                 "status": fit.status, "grey_offset_magnitude": offset,
                 "grey_offset_uncertainty_magnitude": fit.image_offset_uncertainties[digest],
                 "night_reference_zero_point_magnitude": baseline,
@@ -191,7 +191,7 @@ def calibrate(database: Path, manifest: Path, output: Path, *, min_stars: int, m
     else: axis.text(0.5, 0.5, "No accepted nightly grey fits", transform=axis.transAxes, ha="center", va="center")
     fig.autofmt_xdate(); fig.tight_layout(); fig.savefig(output / "grey_transparency.png", dpi=160); plt.close(fig)
     provenance = {
-        "status": "complete", "solver_version": "0.25.0", "model": MODEL,
+        "status": "complete", "solver_version": "0.25.1", "model": MODEL,
         "formula": "m(s,i) = a_s + k X(s,i) + Z_i; sum_i Z_i = 0",
         "corrected_magnitude_formula": "m_corrected = m_machine - k X - Z_i",
         "sample_membership": "fixed within each night/channel; soft-L1 weighting; no residual clipping",

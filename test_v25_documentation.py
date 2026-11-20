@@ -83,17 +83,17 @@ class V25DocumentationTests(unittest.TestCase):
         status = (ROOT / "docs/FEATURE_STATUS.md").read_text(encoding="utf-8")
         versions = (ROOT / "docs/VERSIONS.md").read_text(encoding="utf-8")
         for text in (readme, status, versions):
-            self.assertIn("v0.25.0", text)
+            self.assertIn("v0.25.1", text)
             self.assertIn("go_visible_sky_v25.sh", text)
         self.assertIn("V24 is frozen", status)
         self.assertIn("V25 is the published", status)
         self.assertIn("`go24.sh` | Frozen", versions)
         self.assertIn("`go25.sh` | Latest packaged release; frozen", versions)
-        self.assertIn("**Latest packaged release** is v0.25.0", versions)
+        self.assertIn("**Latest packaged release** is v0.25.1", versions)
 
     def test_v25_manifest_contains_operator_and_uses_v24_parent(self):
         manifest = json.loads((ROOT / "v25/SOURCE_MANIFEST.json").read_text())
-        self.assertEqual(manifest["version"], "0.25.0")
+        self.assertEqual(manifest["version"], "0.25.1")
         self.assertEqual(manifest["based_on_version"], "0.24.0")
         self.assertEqual(manifest["parent_snapshot"], "../docs/v24-runtime.json")
         self.assertEqual(manifest["release_status"], "released")

@@ -119,7 +119,7 @@ def generate(database: Path, manifest: Path, calibration: Path, output: Path, *,
     _write(output / "sidereal_pair_summary.csv", ("pair_id", "first_source_sha256", "second_source_sha256", "first_night", "second_night", "same_night", "first_midpoint_utc", "second_midpoint_utc", "sidereal_separation_minutes", "channel", "common_star_count", "status", "interpolation_used"), summary_rows)
     _write(output / "sidereal_transmission_measurements.csv", ("pair_id", "first_source_sha256", "second_source_sha256", "catalogue_sha256", "star_id", "channel", "x_px", "y_px", "second_x_px", "second_y_px", "raw_difference_magnitude", "pair_grey_median_magnitude", "grey_centred_difference_magnitude", "status"), output_rows)
     record = {
-        "status": "complete", "solver_version": "0.25.0", "method": "distinct-night one-to-one nearest apparent-sidereal-time pairing",
+        "status": "complete", "solver_version": "0.25.1", "method": "distinct-night one-to-one nearest apparent-sidereal-time pairing",
         "longitude_deg_east_positive": -110.8841666667, "time_source": "validated FITS header midpoint",
         "tolerance_minutes": tolerance_minutes, "minimum_common_stars": min_common_stars,
         "exposure_count": len(exposures), "pair_count": len(pairs), "measurement_count": len(output_rows),

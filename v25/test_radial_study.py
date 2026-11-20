@@ -607,7 +607,7 @@ class RadialStudyCliTests(unittest.TestCase):
             self.assertTrue(operational[0]["robust_selected_camera"])
             payload = json.loads((output / "radial_model_study.json").read_text())
             self.assertEqual(payload["configuration"]["seed"], 27)
-            self.assertEqual(payload["provenance"]["solver_version"], "0.25.0")
+            self.assertEqual(payload["provenance"]["solver_version"], "0.25.1")
             summary = (output / "summary.md").read_text()
             self.assertIn("already-detected sources", summary)
             self.assertIn("not newly detected", summary)

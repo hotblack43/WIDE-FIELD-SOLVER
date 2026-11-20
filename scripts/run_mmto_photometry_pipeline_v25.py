@@ -50,8 +50,9 @@ from v25.mmto_time import read_mmto_observation
 from v25.visible_sky_registry import assign_source, resolve_source_calibration
 
 
-SOLVER_VERSION = "0.25.0"
+SOLVER_VERSION = "0.25.1"
 PREDECESSOR_PROGRESS_SOLVER_VERSIONS = ("0.23.0", "0.24.0")
+COMPLETED_MASKED_V25_SOLVER_VERSIONS = ("0.25.0", SOLVER_VERSION)
 SOLVER_ENTRYPOINT = Path("v25/analyse_image.py")
 MMTO_VISIBLE_SKY_MASK_MANIFEST = Path(
     "v25/data/sky_masks/mmto_installation_2026a.json"
@@ -339,6 +340,9 @@ def _processed_source_digests(results_database: Path) -> set[str]:
         if "runs" not in tables:
             return set()
         placeholders = ",".join("?" for _ in PREDECESSOR_PROGRESS_SOLVER_VERSIONS)
+        v25_placeholders = ",".join(
+            "?" for _ in COMPLETED_MASKED_V25_SOLVER_VERSIONS
+        )
         return {
             str(row[0])
             for row in database.execute(
@@ -356,10 +360,11 @@ def _processed_source_digests(results_database: Path) -> set[str]:
                       OR (
                           exit_code=0
                           AND (
-                              solver_version=?
+                              solver_version IN ({v25_placeholders})
                               OR CASE
                                   WHEN json_valid(source_manifest_json)
-                                  THEN json_extract(source_manifest_json, '$.version')=?
+                                  THEN json_extract(source_manifest_json, '$.version')
+                                       IN ({v25_placeholders})
                                   ELSE 0
                               END
                           )
@@ -387,8 +392,8 @@ def _processed_source_digests(results_database: Path) -> set[str]:
                 (
                     *PREDECESSOR_PROGRESS_SOLVER_VERSIONS,
                     *PREDECESSOR_PROGRESS_SOLVER_VERSIONS,
-                    SOLVER_VERSION,
-                    SOLVER_VERSION,
+                    *COMPLETED_MASKED_V25_SOLVER_VERSIONS,
+                    *COMPLETED_MASKED_V25_SOLVER_VERSIONS,
                     MMTO_VISIBLE_SKY_MASK_ID,
                     MMTO_CAMERA_INSTALLATION_ID,
                 ),
@@ -1173,10 +1178,10 @@ def _latest_completed_masked_v25_receipt(
             WHERE source_sha256=?
               AND exit_code=0
               AND (
-                  solver_version=?
+                  solver_version IN (?, ?)
                   OR CASE
                       WHEN json_valid(source_manifest_json)
-                      THEN json_extract(source_manifest_json, '$.version')=?
+                      THEN json_extract(source_manifest_json, '$.version') IN (?, ?)
                       ELSE 0
                   END
               )
@@ -1202,8 +1207,8 @@ def _latest_completed_masked_v25_receipt(
             """,
             (
                 source_sha256,
-                SOLVER_VERSION,
-                SOLVER_VERSION,
+                *COMPLETED_MASKED_V25_SOLVER_VERSIONS,
+                *COMPLETED_MASKED_V25_SOLVER_VERSIONS,
                 MMTO_VISIBLE_SKY_MASK_ID,
                 MMTO_CAMERA_INSTALLATION_ID,
             ),

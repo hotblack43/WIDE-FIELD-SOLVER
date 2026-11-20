@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Convenience launcher pinned to the v25 MMTO variable-star solver 0.25.0.
+# Convenience launcher pinned to the v25 MMTO variable-star solver 0.25.1.
 set -euo pipefail
 
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-expected_version='0.25.0'
+expected_version='0.25.1'
 
 usage() {
     echo "Usage: $0 IMAGE [IMAGE ...] [native-input options]"

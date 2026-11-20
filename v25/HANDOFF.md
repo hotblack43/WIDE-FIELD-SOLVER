@@ -1,11 +1,13 @@
 # V25 handoff
 
-## Published v0.25.0 boundary — 2026-11-20
+## Published v0.25.1 hotfix boundary — 2026-11-20
 
 The stable v25 boundary retains the complete v24 operational workflow and CLI,
 adds the clean-machine bootstrap, and publishes the tested automatic mask
 engine through a separate advanced operator. `go_mmto_photometry_v25.sh`
 remains the routine command and keeps the v24 options such as `--max-images`.
+The v0.25.1 hotfix accepts the combined `RGB` planet-photometry channel used by
+the production v23-v25 launchers. It does not change the numerical solver.
 
 The release contains a tested automatic mask engine and a separate
 `go_visible_sky_v25.sh` operator, including bounded acquisition, held-out-date
@@ -14,7 +16,7 @@ activation. The operator is not the normal interface and does not accept
 `--max-images N`.
 
 Automatic horizon-mask construction inside the routine pipeline is deferred
-beyond v0.25.0. A later version should reuse, not discard, the mask engine:
+beyond v0.25.1. A later version should reuse, not discard, the mask engine:
 
 1. Normal acquisition and solving continue through
    `go_mmto_photometry_v25.sh`, with the same arguments and bounded archive
@@ -39,7 +41,7 @@ each clean container without preinstalled Python or `uv`.
 
 ## Current MMTO runtime
 
-Use `./go25.sh IMAGE` or `./go_v0.25.0.sh IMAGE` for the independent v25
+Use `./go25.sh IMAGE` or `./go_v0.25.1.sh IMAGE` for the independent v25
 runtime. Use `./go_mmto_photometry_v25.sh` to select at most 40 MMTO images
 without v23/v24 acquisition progress or a successful masked v25 receipt, reuse
 local files, download only selected gaps, analyse them, and regenerate inherited

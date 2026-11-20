@@ -6,7 +6,7 @@ Peter Thejll and Chris Flynn
 
 [![Solver regression](https://github.com/hotblack43/WIDE-FIELD-SOLVER/actions/workflows/tests.yml/badge.svg)](https://github.com/hotblack43/WIDE-FIELD-SOLVER/actions/workflows/tests.yml)
 [![Python 3.12](https://img.shields.io/badge/Python-3.12-312E81)](pyproject.toml)
-[![Development runtime](https://img.shields.io/badge/runtime-v0.25.0-C026D3)](v25/README.md)
+[![Development runtime](https://img.shields.io/badge/runtime-v0.25.1-C026D3)](v25/README.md)
 [![MMTO astrometry](https://img.shields.io/badge/MMTO_RMS-0.327_px-F2B134)](docs/SCIENTIFIC_STATUS.md)
 [![License: BSD 3-Clause](https://img.shields.io/badge/license-BSD_3--Clause-312E81)](LICENSE)
 
@@ -164,12 +164,12 @@ and redistribute it under those terms. If you use WIDE-FIELD SOLVER in
 scientific work, please use the repository's [`CITATION.cff`](CITATION.cff);
 GitHub's **Cite this repository** menu supplies APA and BibTeX forms.
 
-For the v0.25.0 release, `go25.sh`,
+For the v0.25.1 release, `go25.sh`,
 `go_visible_sky_v25.sh`, and `go_mmto_photometry_v25.sh` are the current
 launchers. The frozen v24 and earlier launchers remain available for
 reproducible comparison. The independent v17 launcher remains specific to
 KNALDGAS inputs. The latest packaged GitHub release is
-[v0.25.0](docs/RELEASE_v0.25.0.md). The earlier
+[v0.25.1](docs/RELEASE_v0.25.1.md). The earlier
 v0.11.0 release and every historical solver remain available for reproducible
 comparison and are protected by recorded manifests and regression tests.
 
@@ -181,7 +181,7 @@ Analyses and publications using MMTO all-sky-camera data should acknowledge the
 MMT Observatory. We thank Tim Pickering and the Observatory for maintaining the
 camera and making its colour FITS archive available.
 
-The v0.25.0 release contains an automatically validated visible-sky
+The v0.25.1 release contains an automatically validated visible-sky
 mask engine for other fixed all-sky cameras. The routine operational command
 remains the v24-compatible pipeline, including its image cap:
 
@@ -190,7 +190,7 @@ remains the v24-compatible pipeline, including its image cap:
 ```
 
 Transparent mask construction inside the normal pipeline when a new
-detector/installation appears is deferred beyond v0.25.0. The
+detector/installation appears is deferred beyond v0.25.1. The
 `go_visible_sky_v25.sh` command exercises the mask engine separately and is an
 advanced maintenance interface rather than the routine user path. The separate
 operator requires no camera identifiers, paths, hashes, or mask names. Cameras with a

@@ -50,7 +50,7 @@ class V24DocumentationTests(unittest.TestCase):
         self.assertIn("frozen v24", readme)
         self.assertIn("go24.sh", versions)
         self.assertIn("v0.24.0", versions)
-        self.assertIn("v0.25.0", versions)
+        self.assertIn("v0.25.1", versions)
         self.assertIn("frozen", versions)
         self.assertIn("Latest packaged release", versions)
 

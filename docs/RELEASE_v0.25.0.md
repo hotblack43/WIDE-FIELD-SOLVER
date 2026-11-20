@@ -1,5 +1,8 @@
 # Wide-Field Solver v0.25.0
 
+> **Superseded:** use v0.25.1. The v0.25.0 derived planet-photometry command
+> rejected the combined `RGB` channel requested by the production launchers.
+
 Wide-Field Solver v0.25.0 is the stable public release of the active v25
 runtime by Peter Thejll and Chris Flynn. It was published on 20 November 2026
 from commit `ccd0b52ff6c364554413a5fa6fc002730267acc7` and is available from the

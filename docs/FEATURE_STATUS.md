@@ -1,12 +1,12 @@
 # Current feature status
 
-The published checkpoint is v0.25.0. Historical runtime boundaries through v24
+The published checkpoint is v0.25.1. Historical runtime boundaries through v24
 remain frozen by their manifests. V25 is the published single-image,
 installation-masked MMTO, and advanced visible-sky operator line.
 
 ## V25 published checkpoint
 
-- V25 is the published v0.25.0 runtime and preserves the accepted v24
+- V25 is the published v0.25.1 runtime and preserves the accepted v24
   numerical mask generation and application. Its automatic mask engine can
   discover sufficiently populated uncalibrated cameras from the managed
   archive, hold acquisition to ten completed nights and ten native originals
@@ -20,7 +20,7 @@ installation-masked MMTO, and advanced visible-sky operator line.
   zero-argument `go_visible_sky_v25.sh` operator as the normal workflow was an
   overdesign. The stable v25 boundary retains v24's existing operational
   pipeline and arguments. Transparent mask construction inside that routine
-  pipeline is deferred beyond v0.25.0. The standalone operator and
+  pipeline is deferred beyond v0.25.1. The standalone operator and
   `auto --config`, `propose`, `revise`, `approve`, and `activate` operations are
   retained as advanced testing, maintenance and recovery tools.
 - `go25.sh` is the real single-image launcher and

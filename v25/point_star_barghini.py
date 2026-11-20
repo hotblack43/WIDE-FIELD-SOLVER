@@ -35,7 +35,7 @@ from point_star_refraction import (
 from point_star_time_bounds import capture_time_ceiling, limit_epoch_range
 
 
-SOLVER_VERSION = '0.25.0'
+SOLVER_VERSION = '0.25.1'
 ARCMIN_PER_RADIAN = 180.*60./np.pi
 ASTROMETRIC_LOSS_SCALE_ARCMIN = 3.
 BOOTSTRAP_STRONG_RMS_ARCMIN = 3.

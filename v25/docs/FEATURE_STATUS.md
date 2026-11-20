@@ -1,4 +1,4 @@
-# Point-source feature status, version 0.25.0
+# Point-source feature status, version 0.25.1
 
 **Parallel offline MMTO batch solving (6 November 2026):** the v25 MMTO
 pipeline runs four independent single-threaded image solves concurrently by

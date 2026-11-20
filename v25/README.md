@@ -1,6 +1,6 @@
-# Wide-Field Solver v0.25.0
+# Wide-Field Solver v0.25.1
 
-V25 is the published v0.25.0 release based directly on frozen v24. It preserves
+V25 is the published v0.25.1 release based directly on frozen v24. It preserves
 the accepted generic visible-sky calibration and masked photometry runtime. Its automatic
 managed-archive camera-mask engine is implemented and tested; its standalone
 operator is an advanced maintenance interface rather than the routine workflow.
@@ -402,8 +402,9 @@ time or site coordinates.
 
 The existing `results/stars.sqlite` and
 `raw_allsky_samples/manifest.sqlite` files are reused append-only. V25 does not
-copy either database. Runs are distinguished by solver version `0.25.0`, while
-the header-observation sidecar is keyed by the verified source SHA-256.
+copy either database. New runs use solver version `0.25.1`; successful masked
+`0.25.0` receipts remain recognised as completed work. The header-observation
+sidecar is keyed by the verified source SHA-256.
 
 Post-processing adds these v25 directories below each pipeline output:
 

@@ -28,6 +28,7 @@ V25_ROOT_FILES = {
     "calibrate_mmto_extinction_v25.sh",
     "go25.sh",
     "go_v0.25.0.sh",
+    "go_v0.25.1.sh",
     "go_mmto_photometry_v25.sh",
     "go_visible_sky_v25.sh",
     "plot_mmto_variable_stars_v25.sh",
@@ -92,10 +93,10 @@ class V25RuntimeBoundaryTests(unittest.TestCase):
                 self.assertTrue((ROOT / name).is_file(), f"missing v25 runtime: {name}")
         project = tomllib.loads((ROOT / "v25/pyproject.toml").read_text())
         lock = tomllib.loads((ROOT / "v25/uv.lock").read_text())
-        self.assertEqual(project["project"]["version"], "0.25.0")
+        self.assertEqual(project["project"]["version"], "0.25.1")
         packages = {row["name"]: row["version"] for row in lock["package"]}
-        self.assertEqual(packages[project["project"]["name"]], "0.25.0")
-        for name in ("go25.sh", "go_v0.25.0.sh"):
+        self.assertEqual(packages[project["project"]["name"]], "0.25.1")
+        for name in ("go25.sh", "go_v0.25.1.sh"):
             completed = subprocess.run(
                 [str(ROOT / name), "--version"],
                 cwd=Path("/tmp"),
@@ -106,7 +107,7 @@ class V25RuntimeBoundaryTests(unittest.TestCase):
                 check=False,
             )
             self.assertEqual(completed.returncode, 0, completed.stdout)
-            self.assertIn("0.25.0", completed.stdout)
+            self.assertIn("0.25.1", completed.stdout)
 
     def test_v25_pipeline_invokes_only_v25_runtime(self):
         from scripts.run_mmto_photometry_pipeline_v25 import (
@@ -114,7 +115,7 @@ class V25RuntimeBoundaryTests(unittest.TestCase):
             SOLVER_VERSION,
         )
 
-        self.assertEqual(SOLVER_VERSION, "0.25.0")
+        self.assertEqual(SOLVER_VERSION, "0.25.1")
         self.assertEqual(SOLVER_ENTRYPOINT, Path("v25/analyse_image.py"))
         offenders = []
         for path in sorted((ROOT / "v25").rglob("*.py")):

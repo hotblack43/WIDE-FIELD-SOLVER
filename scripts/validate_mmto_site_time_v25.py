@@ -52,7 +52,7 @@ def _successful_v25_runs(database: sqlite3.Connection) -> list[tuple[str, str]]:
               SELECT run_id, source_sha256,
                      row_number() OVER (PARTITION BY source_sha256 ORDER BY rowid DESC) AS rank
               FROM runs
-              WHERE solver_version='0.25.0' AND exit_code=0 AND source_sha256 IS NOT NULL
+              WHERE solver_version IN ('0.25.0','0.25.1') AND exit_code=0 AND source_sha256 IS NOT NULL
             )
             SELECT run_id, source_sha256 FROM ranked WHERE rank=1 ORDER BY run_id
             """
@@ -218,7 +218,7 @@ def write_validation(database_path: Path, manifest_path: Path, output: Path) -> 
     figure.tight_layout(); figure.savefig(output / "mmto_planet_epoch_validation.png", dpi=160); plt.close(figure)
 
     summary = {
-        "status": "complete", "solver_version": "0.25.0",
+        "status": "complete", "solver_version": "0.25.1",
         "stage": "post_blind_fit_validation", "used_in_fit": False,
         "database_open_mode": "read_only", "manifest_open_mode": "read_only",
         "successful_v25_runs": len(site_rows), "airmass_rows": len(airmass_rows),
