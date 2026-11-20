@@ -887,10 +887,6 @@ class CalibrationOutputTests(unittest.TestCase):
 class CalibrationCliTests(unittest.TestCase):
     def test_cli_uses_repo_sqlite_manifest_default_and_timestamped_output(self) -> None:
         data = synthetic_loaded_data(10)
-        database = calibration_cli.ROOT / "results" / "stars.sqlite"
-        expected_manifest = (
-            calibration_cli.ROOT / "raw_allsky_samples" / "manifest.sqlite"
-        )
         summary = {
             "calibrated_nights": 1,
             "insufficient_nights": 0,
@@ -899,32 +895,46 @@ class CalibrationCliTests(unittest.TestCase):
             "output": "unused",
         }
         stdout = io.StringIO()
-        with (
-            patch.object(calibration_cli, "default_database", return_value=database),
-            patch.object(
-                calibration_cli,
-                "load_mmto_calibration_data",
-                return_value=data,
-            ) as load_mock,
-            patch.object(
-                calibration_cli,
-                "write_calibration_outputs",
-                return_value=summary,
-            ) as write_mock,
-            redirect_stdout(stdout),
-        ):
-            result = main([])
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            database = root / "results" / "stars.sqlite"
+            expected_manifest = root / "raw_allsky_samples" / "manifest.sqlite"
+            expected_manifest.parent.mkdir(parents=True)
+            expected_manifest.touch()
+            with (
+                patch.object(calibration_cli, "ROOT", root),
+                patch.object(
+                    calibration_cli, "default_database", return_value=database
+                ),
+                patch.object(
+                    calibration_cli,
+                    "load_mmto_calibration_data",
+                    return_value=data,
+                ) as load_mock,
+                patch.object(
+                    calibration_cli,
+                    "write_calibration_outputs",
+                    return_value=summary,
+                ) as write_mock,
+                redirect_stdout(stdout),
+            ):
+                result = main([])
 
-        self.assertEqual(result, 0)
-        load_mock.assert_called_once_with(database.resolve(), expected_manifest.resolve())
-        output = write_mock.call_args.args[1]
-        self.assertEqual(
-            output.parent,
-            database.resolve().parent / "extinction-calibration",
-        )
-        self.assertRegex(output.name, r"^\d{8}T\d{12}Z$")
-        self.assertIn("Reference defaults:", stdout.getvalue())
-        self.assertIn("Calibrated night/channels: 1; insufficient: 0", stdout.getvalue())
+            self.assertEqual(result, 0)
+            load_mock.assert_called_once_with(
+                database.resolve(), expected_manifest.resolve()
+            )
+            output = write_mock.call_args.args[1]
+            self.assertEqual(
+                output.parent,
+                database.resolve().parent / "extinction-calibration",
+            )
+            self.assertRegex(output.name, r"^\d{8}T\d{12}Z$")
+            self.assertIn("Reference defaults:", stdout.getvalue())
+            self.assertIn(
+                "Calibrated night/channels: 1; insufficient: 0",
+                stdout.getvalue(),
+            )
 
     def test_cli_forwards_explicit_database_manifest_and_output(self) -> None:
         data = synthetic_loaded_data(9)
