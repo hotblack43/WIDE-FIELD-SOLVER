@@ -1,30 +1,28 @@
-# Current development feature status
+# Current feature status
 
-The published checkpoint remains v0.11.0. Historical runtime boundaries through
-v24 are frozen by their manifests. V25 is the active camera-installation
-visible-sky operator line.
+The published checkpoint is v0.25.0. Historical runtime boundaries through v24
+remain frozen by their manifests. V25 is the published single-image,
+installation-masked MMTO, and advanced visible-sky operator line.
 
-## V25 in development
+## V25 published checkpoint
 
-- V25 is the active v0.25.0 development runtime and preserves the accepted v24
+- V25 is the published v0.25.0 runtime and preserves the accepted v24
   numerical mask generation and application. Its automatic mask engine can
   discover sufficiently populated uncalibrated cameras from the managed
   archive, hold acquisition to ten completed nights and ten native originals
   per night, reserve complete dates, check five date-fold proposals against
   fixed conservative gates, and approve, register and activate only on a
   complete pass.
-- The clean-clone release gate requires `./quickstart.sh` to bootstrap the
-  pinned v25 environment and pass the bundled MMTO demonstration independently
-  on Ubuntu 24.04 and Ubuntu 26.04 LTS x86-64 before v25 publication. This gate
-  remains separate from the unfinished normal-pipeline mask integration.
+- The clean-clone release gate passed on Ubuntu 24.04 and Ubuntu 26.04 LTS
+  x86-64. In both clean containers, `./quickstart.sh` bootstrapped the pinned
+  v25 environment and passed the bundled MMTO demonstration twice.
 - Interface review on 2026-11-16 found that promoting the separate
   zero-argument `go_visible_sky_v25.sh` operator as the normal workflow was an
-  overdesign. The intended v25 boundary is v24's existing operational pipeline
-  and arguments plus transparent horizon-mask construction when that normal
-  pipeline encounters a new detector/installation. This integration remains
-  incomplete at this checkpoint. The standalone operator and `auto --config`,
-  `propose`, `revise`, `approve`, and `activate` operations are retained as
-  advanced testing, maintenance and recovery tools.
+  overdesign. The stable v25 boundary retains v24's existing operational
+  pipeline and arguments. Transparent mask construction inside that routine
+  pipeline is deferred beyond v0.25.0. The standalone operator and
+  `auto --config`, `propose`, `revise`, `approve`, and `activate` operations are
+  retained as advanced testing, maintenance and recovery tools.
 - `go25.sh` is the real single-image launcher and
   `go_mmto_photometry_v25.sh` is the routine MMTO pipeline. A missing v25 state
   inherits the durable v24 cursor; v23 and v24 receipts preserve bounded

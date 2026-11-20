@@ -78,7 +78,7 @@ class V25DocumentationTests(unittest.TestCase):
         self.assertIn("v23 or v24 receipt", handoff)
         self.assertIn("approved MMTO installation mask", handoff)
 
-    def test_root_status_freezes_v24_and_names_v25_as_active(self):
+    def test_root_status_names_v25_as_latest_packaged_release(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         status = (ROOT / "docs/FEATURE_STATUS.md").read_text(encoding="utf-8")
         versions = (ROOT / "docs/VERSIONS.md").read_text(encoding="utf-8")
@@ -86,15 +86,17 @@ class V25DocumentationTests(unittest.TestCase):
             self.assertIn("v0.25.0", text)
             self.assertIn("go_visible_sky_v25.sh", text)
         self.assertIn("V24 is frozen", status)
-        self.assertIn("V25 is the active", status)
+        self.assertIn("V25 is the published", status)
         self.assertIn("`go24.sh` | Frozen", versions)
-        self.assertIn("`go25.sh` | Active development", versions)
+        self.assertIn("`go25.sh` | Latest packaged release; frozen", versions)
+        self.assertIn("**Latest packaged release** is v0.25.0", versions)
 
     def test_v25_manifest_contains_operator_and_uses_v24_parent(self):
         manifest = json.loads((ROOT / "v25/SOURCE_MANIFEST.json").read_text())
         self.assertEqual(manifest["version"], "0.25.0")
         self.assertEqual(manifest["based_on_version"], "0.24.0")
         self.assertEqual(manifest["parent_snapshot"], "../docs/v24-runtime.json")
+        self.assertEqual(manifest["release_status"], "released")
         self.assertIn("visible_sky_operator.py", manifest["sha256"])
         self.assertIn("test_visible_sky_operator.py", manifest["sha256"])
         self.assertIn(
@@ -125,7 +127,7 @@ class V25DocumentationTests(unittest.TestCase):
         self.assertNotIn("setup-uv", job)
         self.assertNotIn("setup-python", job)
 
-    def test_public_quickstart_is_consistent_and_blocks_release(self):
+    def test_public_quickstart_is_consistent_and_records_release_gate(self):
         paths = (
             ROOT / "README.md",
             ROOT / "v25/README.md",
@@ -155,8 +157,8 @@ class V25DocumentationTests(unittest.TestCase):
         status = (ROOT / "docs/FEATURE_STATUS.md").read_text(encoding="utf-8")
         self.assertIn("clean-clone release gate", handoff)
         self.assertIn("clean-clone release gate", status)
-        self.assertIn("before v25 publication", handoff)
-        self.assertIn("before v25 publication", status)
+        self.assertIn("passed on Ubuntu 24.04 and Ubuntu 26.04", handoff)
+        self.assertIn("passed on Ubuntu 24.04 and Ubuntu 26.04", status)
 
 
 if __name__ == "__main__":

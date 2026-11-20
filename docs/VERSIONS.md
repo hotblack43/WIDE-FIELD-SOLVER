@@ -15,7 +15,7 @@ tests; they are not aliases for the newest code.
 | `go8a.sh` | Frozen work snapshot | Portable result storage plus v8 capabilities |
 | `go9.sh` | Frozen | v0.9.0 consolidated runtime and reports |
 | `go10.sh` | Frozen | v0.10.0 native colour inputs and metadata-conditioned planet validation |
-| `go11.sh` | Latest packaged release; frozen | v0.11.0 joint stellar/planetary epoch profile and permitted MMTO demo |
+| `go11.sh` | Frozen release | v0.11.0 joint stellar/planetary epoch profile and permitted MMTO demo |
 | `go12.sh` | Frozen experiment | v0.12.0 radial-model study |
 | `go13.sh` | Frozen | v0.13.0 integrated-refraction runtime |
 | `go14.sh` | Frozen | v0.14.0 lunar corroboration runtime |
@@ -29,23 +29,23 @@ tests; they are not aliases for the newest code.
 | `go22.sh` | Frozen experiment | v0.22.0 differential-photometry model benchmark |
 | `go23.sh` | Frozen | v0.23.0 aperture and sky-annulus validation |
 | `go24.sh` | Frozen | v0.24.0 accepted generic camera-installation calibration checkpoint |
-| `go25.sh` | Active development | v0.25.0 configuration-driven visible-sky operator and masked MMTO processing |
+| `go25.sh` | Latest packaged release; frozen | v0.25.0 clean-clone single-image solver, advanced visible-sky operator and masked MMTO processing |
 
-For current installation-masked MMTO development from a repository checkout,
-use `go_mmto_photometry_v25.sh`. Configure a new installation through
+For v0.25.0 installation-masked MMTO processing, use
+`go_mmto_photometry_v25.sh`. Configure a new installation through
 `go_visible_sky_v25.sh`. Use `go17.sh` only for its independent
 KNALDGAS line, and use earlier launchers when reproducing older results.
 
 ## Releases versus the development line
 
-The **Latest packaged release** is v0.11.0. Download the named `.tar.gz` or
+The **Latest packaged release** is v0.25.0. Download the named `.tar.gz` or
 `.zip` asset and `SHA256SUMS` from that release; GitHub's automatic source-code
-archives are not the curated runnable package. The active v0.25.0 development
-runtime is used from a repository checkout. It preserves v24's approved
-installation mask, generic calibration registry, immutable checksum assignments,
-and cold-start MMTO evidence while adding the public configuration-driven
-operator command. Every earlier launcher remains separate; v25 is not
-represented as a published release.
+archives are not the curated runnable package. The v0.25.0 runtime preserves
+v24's approved installation mask, generic calibration registry, immutable
+checksum assignments, and cold-start MMTO evidence while adding the
+clean-machine bootstrap and public configuration-driven operator command.
+Automatic mask construction inside the routine MMTO pipeline is deferred
+beyond this release. Every earlier launcher remains separate.
 
 The complete launcher syntax and output-directory behaviour remain in the
 repository's `REFERENCE.md`.

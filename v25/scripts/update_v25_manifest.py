@@ -13,7 +13,7 @@ PACKAGE = ROOT / "v25"
 MANIFEST = PACKAGE / "SOURCE_MANIFEST.json"
 
 CHANGES = [
-    "Fork the complete frozen v24 runtime into an independent v25 development package.",
+    "Publish the complete frozen v24 runtime as the independent v25 release package.",
     "Add a checksum-verified clean-clone bootstrap and a release gate for its bundled demonstration on Ubuntu 24.04 and Ubuntu 26.04 LTS x86-64.",
     "Add a configuration-driven automatic mask command with fixed held-out and five-fold gates while retaining separate manual proposal, revision, approval, and activation tools.",
     "Add an installation-specific visible-sky mask without changing the generic unmasked numerical path.",
@@ -71,7 +71,7 @@ def build_manifest() -> dict[str, object]:
         "based_on_version": "0.24.0",
         "based_on_snapshot_kind": boundary["snapshot_kind"],
         "parent_snapshot": "../docs/v24-runtime.json",
-        "release_status": "development",
+        "release_status": "released",
         "changes": CHANGES,
         "sha256": {
             relative: hashlib.sha256(source.read_bytes()).hexdigest()

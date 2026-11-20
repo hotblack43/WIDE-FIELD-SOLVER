@@ -1,23 +1,20 @@
 # V25 handoff
 
-## Interface correction recorded 2026-11-16
+## Published v0.25.0 boundary — 2026-11-20
 
-Peter's intended v25 boundary is deliberately small: retain the complete v24
-operational workflow and CLI, then add automatic horizon-mask construction when
-normal processing encounters a genuinely new camera installation. In
-particular, `go_mmto_photometry_v25.sh` remains the routine command and keeps
-the v24 options such as `--max-images`.
+The stable v25 boundary retains the complete v24 operational workflow and CLI,
+adds the clean-machine bootstrap, and publishes the tested automatic mask
+engine through a separate advanced operator. `go_mmto_photometry_v25.sh`
+remains the routine command and keeps the v24 options such as `--max-images`.
 
-The current checkpoint contains a tested automatic mask engine and a separate
+The release contains a tested automatic mask engine and a separate
 `go_visible_sky_v25.sh` operator, including bounded acquisition, held-out-date
 validation, five-fold stability checks, content-addressed approval and
-activation. That machinery is useful, but promoting the separate operator as
-the normal interface was an overdesign. It is not yet integrated into the
-routine v24-shaped pipeline, and `go_visible_sky_v25.sh --max-images N` is not a
-valid command at this checkpoint.
+activation. The operator is not the normal interface and does not accept
+`--max-images N`.
 
-The next v25 change should reuse, not discard, the mask engine while simplifying
-the user path:
+Automatic horizon-mask construction inside the routine pipeline is deferred
+beyond v0.25.0. A later version should reuse, not discard, the mask engine:
 
 1. Normal acquisition and solving continue through
    `go_mmto_photometry_v25.sh`, with the same arguments and bounded archive
@@ -34,15 +31,11 @@ the user path:
    source/camera ID; detector signature and installation identity must decide
    whether an existing mask is compatible.
 
-Do not describe the current standalone operator as the final v25 interface, and
-do not freeze v25 until this integration has regression evidence. The approved
-MMTO v24 mask and all historical runtimes remain preserved.
+The approved MMTO v24 mask and all historical runtimes remain preserved.
 
-The clean-clone release gate must also pass before v25 publication. The public
-`./quickstart.sh` path must reach the bundled verified report on clean Ubuntu
-24.04 and Ubuntu 26.04 LTS x86-64 environments without preinstalled Python or
-`uv`. Both explicit CI matrix entries are required; a moving
-`ubuntu-latest` result is insufficient.
+The clean-clone release gate passed on Ubuntu 24.04 and Ubuntu 26.04 LTS x86-64.
+The public `./quickstart.sh` path reached the bundled verified report twice in
+each clean container without preinstalled Python or `uv`.
 
 ## Current MMTO runtime
 

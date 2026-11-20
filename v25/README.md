@@ -1,10 +1,11 @@
 # Wide-Field Solver v0.25.0
 
-V25 is based directly on frozen v24. It preserves the accepted generic
-visible-sky calibration and masked photometry runtime. Its automatic
-managed-archive camera-mask engine is implemented and tested, but the current
-standalone operator is an experimental maintenance interface rather than the
-final routine workflow. V25 does not change the accepted MMTO mask or the
+V25 is the published v0.25.0 release based directly on frozen v24. It preserves
+the accepted generic visible-sky calibration and masked photometry runtime. Its automatic
+managed-archive camera-mask engine is implemented and tested; its standalone
+operator is an advanced maintenance interface rather than the routine workflow.
+Automatic mask construction inside the normal pipeline is deferred beyond this
+release. V25 does not change the accepted MMTO mask or the
 underlying proposal algorithm.
 
 ## Overview

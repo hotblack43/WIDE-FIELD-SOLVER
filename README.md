@@ -164,15 +164,13 @@ and redistribute it under those terms. If you use WIDE-FIELD SOLVER in
 scientific work, please use the repository's [`CITATION.cff`](CITATION.cff);
 GitHub's **Cite this repository** menu supplies APA and BibTeX forms.
 
-For installation-masked development, `go25.sh`,
+For the v0.25.0 release, `go25.sh`,
 `go_visible_sky_v25.sh`, and `go_mmto_photometry_v25.sh` are the current
 launchers. The frozen v24 and earlier launchers remain available for
 reproducible comparison. The independent v17 launcher remains specific to
-KNALDGAS inputs. The
-latest packaged GitHub release remains v0.11.0; its complete `go11.sh` runtime
-is frozen by `docs/v11-runtime.json`. Historical solvers remain available for
-reproducible comparison and are protected by recorded manifests and regression
-tests.
+KNALDGAS inputs. The latest packaged GitHub release is v0.25.0. The earlier
+v0.11.0 release and every historical solver remain available for reproducible
+comparison and are protected by recorded manifests and regression tests.
 
 The BSD licence covers project-authored software, not third-party code,
 catalogues or images. Those materials retain their own terms. Read
@@ -182,7 +180,7 @@ Analyses and publications using MMTO all-sky-camera data should acknowledge the
 MMT Observatory. We thank Tim Pickering and the Observatory for maintaining the
 camera and making its colour FITS archive available.
 
-The v0.25.0 development package contains an automatically validated visible-sky
+The v0.25.0 release contains an automatically validated visible-sky
 mask engine for other fixed all-sky cameras. The routine operational command
 remains the v24-compatible pipeline, including its image cap:
 
@@ -190,12 +188,11 @@ remains the v24-compatible pipeline, including its image cap:
 ./go_mmto_photometry_v25.sh --max-images 123
 ```
 
-The intended final v25 addition is transparent mask construction inside that
-normal pipeline when a new detector/installation appears. The current
+Transparent mask construction inside the normal pipeline when a new
+detector/installation appears is deferred beyond v0.25.0. The
 `go_visible_sky_v25.sh` command exercises the mask engine separately and is an
-advanced maintenance interface, not the final routine user path; its integration
-into the pipeline remains unfinished. The separate operator requires no camera
-identifiers, paths, hashes, or mask names. Cameras with a
+advanced maintenance interface rather than the routine user path. The separate
+operator requires no camera identifiers, paths, hashes, or mask names. Cameras with a
 registered approved mask are reused even as their archive grows. For a new
 supported public RAW camera it first downloads a bounded calibration population
 of at most ten completed nights and ten originals per night. Once sufficient,
