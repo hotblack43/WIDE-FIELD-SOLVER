@@ -115,6 +115,13 @@ class V25DocumentationTests(unittest.TestCase):
         self.assertIn("test_v25_runtime_boundary", text)
         self.assertIn("./v25/demo.sh", text)
 
+    def test_baseline_ci_fetches_history_required_by_boundary_tests(self):
+        text = (ROOT / ".github/workflows/tests.yml").read_text(encoding="utf-8")
+        baseline = text.split("  baseline:\n", 1)[1].split(
+            "\n  v24-calibration:", 1
+        )[0]
+        self.assertIn("fetch-depth: 0", baseline)
+
     def test_ci_certifies_clean_clone_on_both_ubuntu_lts_versions(self):
         text = (ROOT / ".github/workflows/tests.yml").read_text(encoding="utf-8")
         marker = "  v25-clean-clone:\n"
