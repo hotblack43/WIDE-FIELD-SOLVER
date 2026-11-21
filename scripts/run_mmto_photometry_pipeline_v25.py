@@ -552,6 +552,22 @@ def _default_results_dir(repo_root: Path) -> Path:
     return Path(repo_root) / "results"
 
 
+def _default_archive_dir(repo_root: Path, state_path: Path) -> Path:
+    state_path = Path(state_path)
+    candidate = state_path
+    if not candidate.is_file() and candidate.name == "mmto-v25-backfill-state.json":
+        candidate = candidate.with_name("mmto-v24-backfill-state.json")
+    if not candidate.is_file():
+        return Path(repo_root) / "raw_allsky_samples"
+    payload = json.loads(candidate.read_text(encoding="utf-8"))
+    archive = Path(str(payload.get("archive", ""))).expanduser()
+    if not archive.is_absolute() or not archive.is_dir():
+        raise ValueError(
+            f"archive recorded by backfill state is unavailable: {archive}"
+        )
+    return archive
+
+
 def current_mmto_night(site, now: datetime | None = None) -> date:
     instant = datetime.now(UTC) if now is None else now
     if instant.tzinfo is None or instant.utcoffset() is None:
@@ -1465,10 +1481,12 @@ def main(
 ) -> int:
     args = _build_parser().parse_args(argv)
     repo_root = args.repo_root.resolve()
-    archive = (args.archive or repo_root / "raw_allsky_samples").resolve()
     results = (args.results_dir or _default_results_dir(repo_root)).resolve()
     database = results / "stars.sqlite"
     state_path = (args.state_file or results / "mmto-v25-backfill-state.json").resolve()
+    archive = (
+        args.archive or _default_archive_dir(repo_root, state_path)
+    ).resolve()
     output = args.output
     summary: dict[str, object] | None = None
     registry = SourceRegistry.from_json(REPO_ROOT / "sources.json")

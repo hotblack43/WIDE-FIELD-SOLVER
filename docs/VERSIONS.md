@@ -30,6 +30,7 @@ tests; they are not aliases for the newest code.
 | `go23.sh` | Frozen | v0.23.0 aperture and sky-annulus validation |
 | `go24.sh` | Frozen | v0.24.0 accepted generic camera-installation calibration checkpoint |
 | `go25.sh` | Latest packaged release; frozen | v0.25.1 clean-clone single-image solver, advanced visible-sky operator and masked MMTO processing |
+| `go26.sh` | Development | v0.26.0 typed direct, saturated-wing, and clipped-aperture planet-brightness evidence |
 
 For v0.25.1 installation-masked MMTO processing, use
 `go_mmto_photometry_v25.sh`. Configure a new installation through

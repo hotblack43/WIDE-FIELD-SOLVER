@@ -1,0 +1,35 @@
+{
+  "source_sha256": "d7278337c18a87e19b4254dbd053769cc10233732f1ce686a44b235a567fa960",
+  "catalogue_sha256": "766a5cbfc9c1f935a9b67a083ca1e86e09c1201cb00011f139f8ddf751a9d4a0",
+  "visible_sky_mask": {
+    "status": "approved",
+    "mask_id": "mmto-visible-sky-2026a-v1",
+    "installation_id": "mmto-skycam-2026a",
+    "mask_sha256": "996e27f13cb726c8b759fca641c05b7937325ebd81e297db2f06de17f48cd144"
+  },
+  "observed_2026_09_19": {
+    "detection_count": 1362,
+    "associated_stars": 1280,
+    "rms_px": 0.3262632833970703,
+    "median_px": 0.2221685584417898,
+    "p90_px": 0.5054421994805568,
+    "rms_arcmin": 2.521533578510462,
+    "broad_or_saturated_objects": 2,
+    "withheld_stars": 0,
+    "shape": [
+      1411,
+      1422
+    ],
+    "detector_parity": "mirrored"
+  },
+  "acceptance": {
+    "minimum_detections": 1350,
+    "minimum_associated_stars": 1260,
+    "maximum_rms_px": 0.4,
+    "maximum_median_px": 0.3,
+    "maximum_p90_px": 0.65,
+    "maximum_rms_arcmin": 3.0,
+    "minimum_broad_or_saturated_objects": 2,
+    "exposure_seconds": 20.0
+  }
+}

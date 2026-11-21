@@ -27,6 +27,13 @@ uv run --frozen python -m unittest discover -v
 Keep `uv.lock` committed. Document numerical changes and their reasons. Leave
 the historical comparison with solve-field factual and bounded by its tests.
 
+## Codex CLI inspection paths
+
+- Do not format local files as clickable Markdown links in Codex CLI replies.
+  Those links split Peter's terminal and fail with an open-file/UTF-8 error.
+- Give inspection targets as plain absolute filesystem paths, preferably in a
+  code block. When useful, provide a separate explicit `xdg-open` command.
+
 ## Prefer high-dynamic-range source images
 
 Peter is strongly interested in high-dynamic-range imaging. When both rendered

@@ -344,6 +344,15 @@ Run the incremental MMTO queue from the repository root with:
 ./go_mmto_photometry_v25.sh
 ```
 
+When no explicit paths are supplied, the launcher selects results through
+`WFS_RESULTS_DIR`, then
+`$XDG_CONFIG_HOME/wide-field-solver/results-dir.$(uname -n)`, then the
+repository-local `results`. The v25 backfill state in those selected results
+chooses its matching archive; a missing v25 state uses the v24 state's archive.
+Explicit `--results-dir` and `--archive` arguments retain precedence. This
+keeps home and work databases and archives paired without sharing a cursor
+between machines.
+
 V25 first requests the current MMTO observing-night directory and then any
 intervening recent nights not completed since the previous invocation. New
 images therefore cannot be hidden by a skipped daily run. It inherits the

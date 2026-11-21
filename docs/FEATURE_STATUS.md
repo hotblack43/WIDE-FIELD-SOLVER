@@ -4,6 +4,27 @@ The published checkpoint is v0.25.1. Historical runtime boundaries through v24
 remain frozen by their manifests. V25 is the published single-image,
 installation-masked MMTO, and advanced visible-sky operator line.
 
+## V26 development line
+
+- V26 is based directly on frozen v25 and is not yet a packaged release.
+- Planet-candidate ranking retains direct aperture measurements, accepted
+  saturated-wing model estimates, and clipped saturated-aperture flux lower
+  bounds as distinct evidence. Lower bounds use a one-sided magnitude
+  residual; unavailable measurements remain recorded with their reason.
+- This evidence can order otherwise comparable aliases but cannot identify an
+  epoch from a single planet. It does not change source centroids, astrometric
+  costs, or the fixed unsaturated zenith/extinction sample.
+- Cumulative MMTO planet photometry now propagates accepted saturated-wing
+  estimates into its CSV and figures with a conservative 1.8 mag method floor.
+  Clipped apertures without an accepted wing fit remain audited lower bounds
+  rather than being plotted as ordinary magnitude measurements.
+- Cumulative v26 differential-photometry replay discovers compatible versioned
+  FITS-header observation sidecars through v26 instead of maintaining a manual
+  table list. It validates required replay columns, includes v25 history,
+  ignores future-version tables, and retains fatal conflict detection.
+- The rationale is recorded in
+  `docs/superpowers/specs/2026-11-21-v26-saturated-photometric-evidence-design.md`.
+
 ## V25 published checkpoint
 
 - V25 is the published v0.25.1 runtime and preserves the accepted v24
@@ -28,6 +49,11 @@ installation-masked MMTO, and advanced visible-sky operator line.
   inherits the durable v24 cursor; v23 and v24 receipts preserve bounded
   acquisition progress, while only a successful masked v25 receipt completes
   v25 solver work.
+- The routine launcher no longer overrides the existing hostname-specific
+  results selection. The state stored with the selected home or work database
+  now supplies the matching archive automatically, while explicit
+  `--results-dir` and `--archive` arguments still take precedence. This is an
+  operational routing correction and does not change solver measurements.
 - V25 reuses one digest-verified scientific image decode across the stages of a
   solve and reuses identical exact scalar planet states within one planet
   search. On the representative native MMTO input

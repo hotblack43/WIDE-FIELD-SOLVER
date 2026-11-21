@@ -13,6 +13,7 @@ import sys
 import tempfile
 import threading
 import time
+from types import SimpleNamespace
 import unittest
 from unittest import mock
 
@@ -82,6 +83,81 @@ def write_state(
 
 
 class V25ProgressInheritanceTests(unittest.TestCase):
+    def test_host_selected_results_state_selects_the_matching_archive(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            repo = root / "repo"
+            repo.mkdir()
+            config_root = root / "config"
+            config_dir = config_root / "wide-field-solver"
+            config_dir.mkdir(parents=True)
+
+            for hostname in ("home-host", "work-host"):
+                with self.subTest(hostname=hostname):
+                    results = root / f"{hostname}-results"
+                    archive = root / f"{hostname}-archive"
+                    results.mkdir()
+                    archive.mkdir()
+                    (config_dir / f"results-dir.{hostname}").write_text(
+                        str(results) + "\n", encoding="utf-8"
+                    )
+                    state_path = results / "mmto-v25-backfill-state.json"
+                    write_state(
+                        state_path,
+                        archive,
+                        next_night="2026-06-29",
+                        latest_current_night="2026-11-17",
+                    )
+
+                    with (
+                        mock.patch.dict(
+                            os.environ,
+                            {"XDG_CONFIG_HOME": str(config_root)},
+                            clear=True,
+                        ),
+                        mock.patch.object(
+                            PIPELINE.os,
+                            "uname",
+                            return_value=SimpleNamespace(nodename=hostname),
+                        ),
+                    ):
+                        selected_results = PIPELINE._default_results_dir(repo)
+
+                    self.assertEqual(selected_results, results)
+                    self.assertEqual(
+                        PIPELINE._default_archive_dir(repo, state_path), archive
+                    )
+
+    def test_v25_launcher_does_not_override_host_selected_results(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            bin_dir = root / "bin"
+            bin_dir.mkdir()
+            capture = root / "uv-arguments.txt"
+            uv = bin_dir / "uv"
+            uv.write_text(
+                "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$WFS_CAPTURE\"\n",
+                encoding="utf-8",
+            )
+            uv.chmod(0o755)
+            env = dict(os.environ)
+            env["PATH"] = str(bin_dir) + os.pathsep + env.get("PATH", "")
+            env["WFS_CAPTURE"] = str(capture)
+
+            completed = subprocess.run(
+                [str(PIPELINE.REPO_ROOT / "go_mmto_photometry_v25.sh"), "--max-images", "234"],
+                cwd=root,
+                env=env,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                check=False,
+            )
+
+            self.assertEqual(completed.returncode, 0, completed.stdout)
+            arguments = capture.read_text(encoding="utf-8").splitlines()
+            self.assertNotIn("--results-dir", arguments)
+
     def test_v23_figure_contract_matches_latest_complete_v23_output(self):
         # Normalized fixed-figure inventory from v23-20261110T191148Z.
         self.assertEqual(len(V23_PRODUCTION_CORE_FIGURES), 33)
